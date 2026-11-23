@@ -22,7 +22,7 @@ enum SignedStep {
     ps_close
 };
 enum PackBlobStep { pb_stage, pb_replace, pb_publish, pb_open, pb_read, pb_link };
-enum PackOp : U32 { pack_status, pack_import, pack_cancel, pack_enable, pack_disable, pack_trace };
+enum PackOp : U32 { pack_status, pack_import, pack_cancel, pack_enable, pack_disable, pack_trace, pack_timing };
 const char* const pack_record_head = "version=1\nsha256=";
 volatile U32 signed_pack_phase __attribute__((section(".data"))) = pack_idle;
 U32 signed_pack_done __attribute__((section(".data"))) = 0;
@@ -53,6 +53,44 @@ U32 pack_fail(U32 site, U32 detail, U32 code) {
 }
 
 void signed_pack_usb_turn();
+// #279: where the last import's time went on B, by the cycle counter (400 MHz). Each cycle counts in one bucket, the
+// innermost one running (pack_clock); sums in units of 1024 cycles (2.56 us), operation 6 returns them. The phases:
+// hash (A authenticates the source; B polls), admit (B authenticates its header, reads the archive's directory,
+// opens the window), finish (blobs, records, publish, or the cleanup). Extraction, by what B does: source (waiting
+// for A's reads of the source, and for a write's answer before one), aes (decrypting, copying), inflate (decoding,
+// CRC-32, stored copies), sha (SHA-256), put (sending a piece to A, waiting for the last one's answer), member (A's
+// creates, closes and folders), service (the checkpoint's link tick and USB turns), loop (the menu loop between
+// pump passes), other (the rest of the job's own work).
+enum PackClock : U32 {
+    pc_hash,
+    pc_admit,
+    pc_source,
+    pc_aes,
+    pc_inflate,
+    pc_sha,
+    pc_put,
+    pc_member,
+    pc_service,
+    pc_loop,
+    pc_other,
+    pc_finish,
+    pc_count
+};
+// Then the counts: source reads asked, pieces put, members written, member bytes.
+const U32 pack_timing_words = 1 + pc_count + 4;
+struct PackClocks {
+    uint64_t spent[pc_count], last;
+    U32 current, reads, puts, members, bytes;
+};
+PackClocks pack_clocks __attribute__((section(".data"))) = {};
+U32 pack_clock(U32 bucket) {
+    const uint64_t t = xyf::clock::cycles();
+    pack_clocks.spent[pack_clocks.current] += t - pack_clocks.last;
+    pack_clocks.last = t;
+    const U32 was = pack_clocks.current;
+    pack_clocks.current = bucket;
+    return was;
+}
 void storage_space_product(U32 block, U32 blocks, U32& hi, U32& lo);
 bool signed_pack_checkpoint(void*);
 struct SignedPackJob {
@@ -62,6 +100,7 @@ struct SignedPackJob {
     sp::Layout layout;
     sp::ManifestBuffer manifest;
     zip::Archive archive;
+    zip::Reader plain;   // the source's decrypted reader, which archive.reader times (signed_pack_read)
     zip::InflateWorkspace inflate;
     zip::Entry entries[4096];
     Tree tree;
@@ -85,17 +124,35 @@ struct SignedPackJob {
 };
 constexpr U32 signed_pack_work = XYF_JOB_REGION_BEGIN + job_slot_bytes + content_slot_bytes + 0x20000u;
 static_assert(sizeof(SignedPackJob) < job_work_end - signed_pack_work, "signed pack workspace");
+#if !defined(XYF_MTP_SESSION)
+static_assert(signed_pack_work + sizeof(SignedPackJob) <= file_client::stream_buffer, "the read-ahead buffer is free");
+#endif
 SignedPackJob& signed_pack() { return *reinterpret_cast<SignedPackJob*>(signed_pack_work); }
 
 bool signed_pack_checkpoint(void* context) {
     auto& j = *static_cast<SignedPackJob*>(context);
+    const U32 was = pack_clock(pc_service);
     tick();
     const U32 t = now();
     if (t - j.last_usb >= 20) {
         j.last_usb = t;
         signed_pack_usb_turn();
     }
+    pack_clock(was);
     return !j.cancelled;
+}
+
+// The archive's reads: decrypting (aes), less the source's own waits for A (source).
+bool signed_pack_read(void* context, U32 offset, xyf_core::Byte* out, U32 count) {
+    auto& j = *static_cast<SignedPackJob*>(context);
+    const U32 was = pack_clock(pc_aes);
+    const uint64_t waited = j.source.waited();
+    const bool ok = j.plain.read(j.plain.context, offset, out, count);
+    pack_clock(was);
+    const uint64_t source = j.source.waited() - waited;
+    pack_clocks.spent[pc_aes] -= source;
+    pack_clocks.spent[pc_source] += source;
+    return ok;
 }
 
 bool signed_pack_name(const char* name) {
@@ -162,6 +219,8 @@ U32 signed_pack_start(const char* name) {
     signed_pack_phase = pack_authenticating;
     signed_pack_done = signed_pack_error = signed_pack_site = signed_pack_detail = signed_pack_traced = 0;
     signed_pack_total = j.source.size();
+    pack_clocks = PackClocks();
+    pack_clocks.last = xyf::clock::cycles();
     return P::s_ok;
 }
 
@@ -170,7 +229,7 @@ bool signed_pack_collect(SignedPackJob& j) {
     if (!j.put_bytes) return true;
     const U32 bytes = j.put_bytes;
     j.put_bytes = 0;
-    const auto wrote = file_client::left_poll(true);
+    const auto wrote = j.source.owner_kept() ? j.source.take_owner() : file_client::left_poll(true);
     const U32 at = U32(ps_extract) << 8 | site_flush, member = (j.member - 1) << 16;
     if (wrote.outcome) {
         j.io.fail(wrote);
@@ -270,7 +329,8 @@ U32 signed_pack_window(SignedPackJob& j) {
     if (code) return code;
     file_client::log_note(file_client::log_mark, 1);                    // B's log: the source authenticated
     const auto reader = j.source.reader();
-    j.archive.reader = {reader.context, reader.size, reader.read};
+    j.plain = {reader.context, reader.size, reader.read};
+    j.archive.reader = {&j, reader.size, signed_pack_read};
     signed_pack_phase = pack_staging;
     signed_pack_total = j.layout.files;
     signed_pack_done = 0;
@@ -281,7 +341,12 @@ U32 signed_pack_window(SignedPackJob& j) {
 // A writes this one.
 bool signed_pack_flush(SignedPackJob& j) {
     if (!j.pending_bytes) return true;
-    if (!signed_pack_collect(j)) return false;
+    const U32 was = pack_clock(pc_put);
+    const bool collected = signed_pack_collect(j);
+    j.source.settle();                                   // the source's read-ahead, if out (a failure: its next read)
+    pack_clock(was);
+    if (!collected) return false;
+    ++pack_clocks.puts;
     const auto sent = file_client::put_blob_start(j.pending, j.pending_bytes);
     if (sent.outcome) {
         j.io.fail(sent);
@@ -295,7 +360,11 @@ bool signed_pack_flush(SignedPackJob& j) {
 
 bool signed_pack_sink(void* context, const uint8_t* data, U32 count) {
     auto& j = *static_cast<SignedPackJob*>(context);
-    if (!j.hash.update(data, count)) return false;
+    const U32 was = pack_clock(pc_sha);
+    const bool hashed = j.hash.update(data, count);
+    pack_clock(was);
+    if (!hashed) return false;
+    pack_clocks.bytes += count;
     while (count) {
         const U32 room = sizeof(j.pending) - j.pending_bytes;
         const U32 n = count < room ? count : room;
@@ -313,21 +382,29 @@ U32 signed_pack_member(SignedPackJob& j) {
         if (sp::archive_parent(member.name) || !member.name[j.layout.relative_at]) return P::s_ok;
         char folder[file_engine::max_path];
         if (!join(folder, j.staging, "/", member.name + j.layout.relative_at)) return P::s_refused;
+        const U32 was = pack_clock(pc_member);
         for (char* p = folder + text_bytes(j.staging) + 1; *p; ++p) {
             if (*p != '/') continue;
             *p = 0;
-            if (j.io.mkdir(folder)) return j.io.lost() ? P::s_link : P::s_storage;
+            const int made = j.io.mkdir(folder);
+            if (made) {
+                pack_clock(was);
+                return j.io.lost() ? P::s_link : P::s_storage;
+            }
             *p = '/';
         }
+        pack_clock(was);
         return P::s_ok;
     }
     // The member goes straight into a sealed file (mode 0444) that B writes itself, hashing what it sends: the blob
     // phase then publishes that file as the blob, with no copy and no read-back.
     char path[file_engine::max_path];
     if (!join(path, j.staging, "/", member.name + j.layout.relative_at)) return P::s_refused;
+    const U32 was = pack_clock(pc_member);
     auto opened = file_client::create_blob(path);
     if (!opened.outcome && opened.value == P::s_storage && file_client::make_folders(path, mounted) == P::s_ok)
         opened = file_client::create_blob(path); // its folders first (mkdir -p), as open_write
+    pack_clock(was);
     if (opened.outcome || opened.value) {
         if (opened.outcome) j.io.fail(opened);
         const U32 why = opened.outcome ? 0x8000u | opened.outcome : 0x4000u | (opened.value & 0xfffu);
@@ -339,12 +416,18 @@ U32 signed_pack_member(SignedPackJob& j) {
     j.writing = true;
     j.pending_bytes = 0;
     j.hash.reset();
+    ++pack_clocks.members;
     zip::Extraction result;
+    U32 clock = pack_clock(pc_inflate);
     const auto status = zip::extract(j.archive, j.member - 1, j.inflate, {&j, signed_pack_sink}, result, &j.work);
+    pack_clock(clock);
     const bool flushed = status == zip::Status::ok && signed_pack_flush(j);
     if (status != zip::Status::ok)
         pack_fail(U32(ps_extract) << 8 | site_extract, (j.member - 1) << 16 | U32(status), 0);
-    if (!signed_pack_close(j))
+    clock = pack_clock(pc_member);
+    const bool closed = signed_pack_close(j);
+    pack_clock(clock);
+    if (!closed)
         return pack_fail(U32(ps_extract) << 8 | site_close, (j.member - 1) << 16 | (j.io.lost() ? 0x8000u : 0u),
                          P::s_storage);
     if (!flushed)
@@ -451,9 +534,25 @@ U32 signed_pack_publish(SignedPackJob& j) {
 
 U32 signed_pack_member_index(const SignedPackJob& j) { return j.member << 16 | U32(j.blob_step); }
 
+U32 signed_pack_bucket(SignedStep step) {
+    return step == ps_hash                       ? pc_hash :
+           step == ps_admit || step == ps_window ? pc_admit :
+           step == ps_extract                    ? pc_other :
+                                                   pc_finish;
+}
+void signed_pack_step(SignedPackJob& j);
+// One pass of the menu loop's: the job's steps, then the menu loop (loop while extracting) until the next one.
 void signed_pack_pump() {
     if (!signed_pack_active) return;
     auto& j = signed_pack();
+    pack_clock(signed_pack_bucket(j.step));
+    signed_pack_step(j);
+    pack_clocks.reads = j.source.reads();
+    pack_clock(j.step == ps_extract ? U32(pc_loop) : signed_pack_bucket(j.step));
+}
+// #279: the menu loop's pause is short while members are extracted (usb_service_home.ipp menu_pause_us).
+bool signed_pack_extracting() { return signed_pack_active && signed_pack_phase == pack_staging; }
+void signed_pack_step(SignedPackJob& j) {
     if (j.step == ps_close) {
         if (closing) return;
         if (mounted == file_client::mounted_stale && !signed_pack_error) signed_pack_error = P::s_link;
@@ -499,10 +598,17 @@ void signed_pack_pump() {
         code = signed_pack_window(j);
         j.step = ps_extract;
         break;
-    case ps_extract:
-        if (j.member == j.archive.count) j.step = ps_blob_begin;
-        else code = signed_pack_member(j);
+    case ps_extract: {
+        // #279: members for a slice per pass, as the blobs below (a large one takes its time: its checkpoints turn
+        // USB); the source's read-ahead is collected before the menu loop runs.
+        const U32 start = now();
+        do {
+            if (j.member == j.archive.count) j.step = ps_blob_begin;
+            else code = signed_pack_member(j);
+        } while (!code && j.step == ps_extract && now() - start < job_slice_ms && !j.cancelled);
+        j.source.settle();
         break;
+    }
     case ps_blob_begin:
         code = signed_pack_begin_blobs(j);
         j.step = ps_blobs;
@@ -590,8 +696,8 @@ void packs_manage(uint8_t seq, const uint8_t* payload, U32 bytes) {
         while (end < bytes && payload[end]) ++end;
         const char* name = reinterpret_cast<const char*>(payload + 8);
         if (version != 1) code = P::s_unsupported;
-        else if (end + 1 == bytes && op <= pack_trace) {
-            if ((op == pack_status || op == pack_trace) && !*name) code = P::s_ok;
+        else if (end + 1 == bytes && op <= pack_timing) {
+            if ((op == pack_status || op == pack_trace || op == pack_timing) && !*name) code = P::s_ok;
             else if (op == pack_cancel && !*name) {
                 if (!signed_pack_active) code = P::s_state;
                 else {
@@ -602,6 +708,7 @@ void packs_manage(uint8_t seq, const uint8_t* payload, U32 bytes) {
             else if (op == pack_enable || op == pack_disable) code = signed_pack_toggle(name, op == pack_enable);
         }
     }
+    static_assert(4 * pack_timing_words <= sizeof(signed_pack_trace), "the timing fits the reply");
     uint8_t reply[32 + sizeof(signed_pack_trace)];
     P::put32(reply, code);
     P::put32(reply + 4, signed_pack_phase);
@@ -613,6 +720,17 @@ void packs_manage(uint8_t seq, const uint8_t* payload, U32 bytes) {
     P::put32(reply + 28, signed_pack_traced);
     const U32 traced = op == pack_trace ? signed_pack_traced : 0;
     for (U32 i = 0; i != 4 * traced; ++i) P::put32(reply + 32 + 4 * i, signed_pack_trace[i]);
-    send(P::t_packs_manage, seq, reply, code ? 4 : 32 + 16 * traced);
+    U32 extra = 16 * traced;
+    if (op == pack_timing && code == P::s_ok) { // #279: the count, the buckets' units, then the counts
+        U32 words[pack_timing_words] = {pc_count};
+        for (U32 i = 0; i != pc_count; ++i) words[1 + i] = U32(pack_clocks.spent[i] >> 10);
+        words[1 + pc_count] = pack_clocks.reads;
+        words[2 + pc_count] = pack_clocks.puts;
+        words[3 + pc_count] = pack_clocks.members;
+        words[4 + pc_count] = pack_clocks.bytes;
+        for (U32 i = 0; i != pack_timing_words; ++i) P::put32(reply + 32 + 4 * i, words[i]);
+        extra = 4 * pack_timing_words;
+    }
+    send(P::t_packs_manage, seq, reply, code ? 4 : 32 + extra);
 }
 #endif

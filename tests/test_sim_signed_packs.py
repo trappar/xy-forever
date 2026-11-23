@@ -231,9 +231,10 @@ class SignedPackImport(unittest.TestCase):
         self.assertFalse(self.retained.exists())
 
     def test_requests_per_mib_of_members_stay_bounded(self):
-        """Kept: #195's speed. Each 4 KiB of member data costs one source read and one write to A, and nothing else:
-        each member goes straight into its sealed blob file (no copy on A, no read-back). The old seal path took about
-        1,150 requests per MiB; this bound fails it."""
+        """Kept: #195's and #279's speed. Each 4 KiB of member data costs one write to A and half a source read (8 KiB
+        each), and nothing else: each member goes straight into its sealed blob file (no copy on A, no read-back). The
+        old seal path took about 1,150 requests per MiB, 4 KiB reads about 580; this bound fails both. Operation 6
+        returns the import's timing and counts."""
         mib = 4
         noise = random.Random(5).randbytes(mib << 19)  # random bytes: stored as they are, so reads match writes
         data = signed(
@@ -253,5 +254,12 @@ class SignedPackImport(unittest.TestCase):
         self.assertEqual(self.start('big.tfw')[0], ids.S_OK)
         self.assertEqual(self.finish()[-1], ids.S_OK)
         requests = self.sim.status()['to_a'] - before
-        self.assertLessEqual(requests, 600 * mib, requests)  # 2 x 256 per MiB, plus the fixed steps
+        # #279: 256 writes and 128 source reads per MiB (8 KiB each, read ahead), plus the fixed steps; 4 KiB reads
+        # took about 580 per MiB
+        self.assertLessEqual(requests, 480 * mib, requests)
         self.assertEqual((self.retained / 'samples/b.wav').read_bytes(), noise[::-1])
+        spent, counts = packs.signed_timing(self.dev)  # #279: operation 6, the import's timing
+        self.assertEqual(list(spent), list(packs.TIMING_BUCKETS))
+        self.assertEqual((counts['members'], counts['bytes']), (3, 2 * len(noise) + 20))
+        self.assertEqual(counts['puts'], 2 * (len(noise) >> 12) + 1)
+        self.assertLessEqual(counts['reads'] - 2 * (len(noise) >> 13), 32, counts)

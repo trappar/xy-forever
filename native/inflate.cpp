@@ -16,37 +16,49 @@ struct Bits {
     Bits(const Reader& r, InflateWorkspace& w, U32 offset, U32 length, Work* service)
         : reader(r), workspace(w), work(service), start(offset), size(length), consumed(0), buffered(0), cursor(0),
           value(0), count(0), status(Status::ok) {}
-    bool take(U32 n, U32& result) {
-        while (count < n) {
-            if (consumed == size) {
-                status = Status::truncated;
+    // One more input byte into value (count < 25), refilling the input buffer; false with status set.
+    bool load() {
+        if (consumed == size) {
+            status = Status::truncated;
+            return false;
+        }
+        if (cursor == buffered) {
+            if (!checkpoint(work)) {
+                status = Status::cancelled;
                 return false;
             }
-            if (cursor == buffered) {
-                if (!checkpoint(work)) {
-                    status = Status::cancelled;
-                    return false;
-                }
-                buffered = size - consumed;
-                if (buffered > sizeof(workspace.input)) buffered = sizeof(workspace.input);
-                if (!reader.read(reader.context, start + consumed, workspace.input, buffered)) {
-                    status = cancelled(work) ? Status::cancelled : Status::io;
-                    return false;
-                }
-                cursor = 0;
+            buffered = size - consumed;
+            if (buffered > sizeof(workspace.input)) buffered = sizeof(workspace.input);
+            if (!reader.read(reader.context, start + consumed, workspace.input, buffered)) {
+                status = cancelled(work) ? Status::cancelled : Status::io;
+                return false;
             }
-            value |= static_cast<U32>(workspace.input[cursor++]) << count;
-            ++consumed;
-            count += 8;
+            cursor = 0;
         }
+        value |= static_cast<U32>(workspace.input[cursor++]) << count;
+        ++consumed;
+        count += 8;
+        return true;
+    }
+    bool take(U32 n, U32& result) {
+        while (count < n)
+            if (!load()) return false;
         result = value & ((1u << n) - 1u);
         value >>= n;
         count -= n;
         return true;
     }
-    void align() {
-        value = 0;
-        count = 0;
+    // #279: at least n (<= 16) bits buffered when the input has them; false only for a read failure or a cancel.
+    // Bytes buffered ahead of what was taken are not consumed: used() leaves them out.
+    bool fill(U32 n) {
+        while (count < n && consumed != size)
+            if (!load()) return false;
+        return true;
+    }
+    U32 used() const { return consumed - (count >> 3); }
+    void align() {                                         // the rest of the current byte dropped
+        value >>= count & 7u;
+        count &= ~7u;
     }
 };
 
@@ -80,10 +92,31 @@ bool build(Huffman& tree, const Byte* lengths, U32 symbols, bool allow_empty, bo
     for (U32 i = 0; i != 16; ++i) next[i] = tree.offset[i];
     for (U32 i = 0; i != symbols; ++i)
         if (lengths[i]) tree.symbols[next[lengths[i]]++] = i;
+    // #279: the short codes' table. A code's bits arrive first bit first, so the index is the code reversed.
+    for (U32 i = 0; i != (1u << fast_bits); ++i) tree.fast[i] = 0;
+    for (U32 length = 1; length <= fast_bits; ++length)
+        for (U32 k = 0; k != tree.count[length]; ++k) {
+            const U32 code = tree.first[length] + k;
+            U32 reversed = 0;
+            for (U32 bit = 0; bit != length; ++bit) reversed |= ((code >> bit) & 1u) << (length - 1 - bit);
+            const unsigned short entry =
+                static_cast<unsigned short>(tree.symbols[tree.offset[length] + k] << 4 | length);
+            for (U32 index = reversed; index < (1u << fast_bits); index += 1u << length) tree.fast[index] = entry;
+        }
     return true;
 }
 
 bool symbol(Bits& bits, const Huffman& tree, U32& result) {
+    if (!bits.fill(fast_bits)) return false;
+    if (bits.count >= fast_bits) {                         // #279: a short code in one look-up
+        const U32 entry = tree.fast[bits.value & ((1u << fast_bits) - 1u)];
+        if (entry) {
+            bits.value >>= entry & 15u;
+            bits.count -= entry & 15u;
+            result = entry >> 4;
+            return true;
+        }
+    }
     U32 code = 0;
     for (U32 length = 1; length != 16; ++length) {
         U32 bit;
@@ -111,6 +144,7 @@ struct Output {
             status = Status::cancelled;
             return false;
         }
+        crc = crc32_update(crc, workspace.window, count);  // #279: per chunk, not per byte
         if (count && sink.write && !write_to_sink(sink, workspace.window, count)) {
             status = Status::sink;
             return false;
@@ -123,7 +157,6 @@ struct Output {
             return false;
         }
         workspace.window[produced & 32767u] = value;
-        crc = crc32_update(crc, &value, 1);
         ++produced;
         return (produced & 32767u) || flush(32768);
     }
@@ -336,10 +369,10 @@ Status inflate_raw(const Reader& reader, U32 offset, U32 compressed_size, U32 ex
             if (!compressed(bits, output, workspace)) return bits.status != Status::ok ? bits.status : output.status;
         }
     }
-    if (bits.consumed != compressed_size) return Status::deflate;
+    if (bits.used() != compressed_size) return Status::deflate;
     if (!output.finish()) return output.status;
     if (!checkpoint(work)) return Status::cancelled;
-    result = Extraction{output.produced, output.crc ^ 0xffffffffu, bits.consumed};
+    result = Extraction{output.produced, output.crc ^ 0xffffffffu, bits.used()};
     return Status::ok;
 }
 

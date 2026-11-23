@@ -16,13 +16,17 @@ inline uint32_t ms_from_cycles(uint32_t low, uint32_t high) {
 }
 // Milliseconds for a 32-bit difference of cycles >> 10 (intervals up to ~3 h), without overflow.
 inline uint32_t ms_from_units(uint32_t units) { return (units >> 13) * 21u + (((units & 0x1fffu) * 21u) >> 13); }
-#if defined(__bfin__)
+#if defined(__bfin__) && defined(XYF_HOST_CYCLES)
+uint64_t cycles();   // a host test program's (tests/tfw_import_source_bridge.cpp), which builds target code as B's
+#elif defined(__bfin__)
 // the 64-bit cycle counter (400 MHz); always inlined: a call through a register is refused by the call audit
 __attribute__((always_inline)) inline uint64_t cycles() {
     uint32_t low, high;
     __asm__ volatile("%0 = CYCLES; %1 = CYCLES2;" : "=d"(low), "=d"(high));
     return uint64_t(high) << 32 | low;
 }
+#endif
+#if defined(__bfin__)
 inline uint32_t ms() {
     const uint64_t c = cycles();
     return ms_from_cycles(uint32_t(c), uint32_t(c >> 32));

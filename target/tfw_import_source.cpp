@@ -4,6 +4,7 @@
 #include "tfw_device_check.hpp"
 #include "tfw_hash_rpc.hpp"
 #include "usb_proto.hpp"
+#include "xyf_clock.hpp"
 
 namespace xy_forever { namespace tfw_import {
 namespace {
@@ -25,7 +26,9 @@ bool inbox_path(const char* path) {
 
 Source::Source()
     : path_{}, size_(0), progress_(0), error_(0), operation_(0), position_(0), cached_at_(0), cached_bytes_(0),
-      phase_(SourcePhase::idle), pending_(false), lease_(false), fd_(-1), digest_{} {}
+      half_(0), ahead_at_(0), ahead_bytes_(0), tail_at_(0), reads_(0), waited_(0), cached_(nullptr),
+      phase_(SourcePhase::idle), pending_(false), lease_(false), ahead_(false), ahead_ready_(false), owner_kept_(false),
+      fd_(-1), owner_{}, digest_{}, tail_{} {}
 
 uint32_t Source::file_size(uint32_t& bytes) const {
     uint8_t record[file_client::record_bytes];
@@ -131,13 +134,15 @@ uint32_t Source::open(xyf_core::Work* work) {
         if (!code && uint32_t(r.value) != size_ - 1) code = P::s_storage;
     }
     if (!code && xyf_core::checkpoint(work)) {
-        const auto r = file_client::read(fd_, cache_, 2);
+        uint8_t last[2];
+        const auto r = file_client::read(fd_, last, 2);
         code = read_status(r);
         if (!code && r.value != 1) code = P::s_bad_request;
     }
     if (!code && xyf_core::checkpoint(work)) {
-        cached_at_ = position_ = size_;
-        cached_bytes_ = 0;
+        cached_at_ = position_ = tail_at_ = size_;
+        cached_bytes_ = ahead_bytes_ = 0;
+        ahead_ready_ = false;
         const xyf_core::input::Reader source = {this, size_, read_at};
         xyf_core::Byte header[xyf_core::tfw::header_bytes];
         const auto status = tfw_device_check::authenticate(path_, {source, digest_, archive_, header, work});
@@ -160,6 +165,8 @@ uint32_t Source::close(bool reopen) {
     if (phase_ == SourcePhase::hashing) return P::s_busy;
     reopen = reopen && phase_ == SourcePhase::authenticated;
     archive_.close();
+    finish_ahead();                                                     // the read-ahead's answer first, if out
+    ahead_ready_ = false;
     if (fd_ >= 0) {
         const auto r = file_client::close(fd_);
         const uint32_t code = read_status(r);
@@ -174,35 +181,94 @@ uint32_t Source::close(bool reopen) {
     return P::s_ok;
 }
 
-bool Source::load(uint32_t offset) {
-    const uint32_t at = offset & ~511u;
+// #279: one request reads a half (stream_max, two of A's 0x1000-byte bodies) into the stream buffer, left out, so A
+// reads the next bytes while B decrypts, inflates and hashes these. Sequential reads ask for the next half as soon
+// as they start on one; a jump (the archive's directory, a header) is read on its own, as before.
+const uint32_t half_bytes = file_client::stream_max;
+static_assert(2 * half_bytes <= file_client::stream_capacity && half_bytes % 512 == 0, "two halves");
+
+bool Source::finish_ahead() {
+    if (!ahead_) return true;
+    ahead_ = false;
+    const auto r = file_client::left_poll(true);
+    const uint32_t code = read_status(r);
+    if (code || uint32_t(r.value) != ahead_bytes_) {
+        if (!error_) error_ = code ? code : uint32_t(P::s_bad_request);
+        return false;
+    }
+    ahead_ready_ = true;
+    return true;
+}
+
+bool Source::ask(uint32_t at, uint32_t bytes) {
+    if (file_client::left_out()) {                                      // the owner's write: kept for it
+        owner_ = file_client::left_poll(true);
+        owner_kept_ = true;
+    }
     if (position_ != at) {
         const auto seek = file_client::seek(fd_, int(at));
         error_ = read_status(seek);
         if (!error_ && uint32_t(seek.value) != at) error_ = P::s_storage;
         if (error_) return false;
+        position_ = at;
     }
-    const uint32_t bytes = size_ - at < sizeof(cache_) ? size_ - at : sizeof(cache_);
-    const auto got = file_client::read(fd_, cache_, bytes);
-    error_ = read_status(got);
-    if (!error_ && uint32_t(got.value) != bytes) error_ = P::s_bad_request;
+    ++reads_;
+    const auto r = file_client::read_start(fd_, (half_ ^ 1u) * half_bytes, bytes);
+    error_ = r.outcome ? file_client::status(r.outcome) : 0;
     if (error_) return false;
-    cached_at_ = at;
-    cached_bytes_ = bytes;
     position_ = at + bytes;
+    ahead_ = true;
+    ahead_ready_ = false;
+    ahead_at_ = at;
+    ahead_bytes_ = bytes;
+    return true;
+}
+
+bool Source::load(uint32_t offset) {
+    const uint64_t start = xyf::clock::cycles();
+    const bool ok = load_from(offset);
+    waited_ += xyf::clock::cycles() - start;
+    return ok;
+}
+
+bool Source::load_from(uint32_t offset) {
+    const bool next = ahead_bytes_ && offset >= ahead_at_ && offset - ahead_at_ < ahead_bytes_;
+    if (!next) {                                                        // a jump: the half it is in, read now
+        if (!finish_ahead()) return false;
+        const uint32_t at = offset & ~511u;
+        if (!ask(at, size_ - at < half_bytes ? size_ - at : half_bytes)) return false;
+    }
+    if (!finish_ahead()) return false;
+    if (cached_bytes_ && cached_at_ + cached_bytes_ == ahead_at_ && cached_bytes_ >= 16) {
+        for (uint32_t i = 0; i != 16; ++i) tail_[i] = cached_[cached_bytes_ - 16 + i];
+        tail_at_ = ahead_at_ - 16;
+    } else tail_at_ = size_;
+    half_ ^= 1u;
+    cached_at_ = ahead_at_;
+    cached_bytes_ = ahead_bytes_;
+    cached_ = file_client::stream(half_ * half_bytes, cached_bytes_);   // its cache lines invalidated
+    ahead_bytes_ = 0;
+    ahead_ready_ = false;
+    const uint32_t end = cached_at_ + cached_bytes_;                    // the next half, while B works on this one
+    if (next && end < size_) ask(end, size_ - end < half_bytes ? size_ - end : half_bytes);
+    error_ = 0;                                                         // a failed read-ahead is asked again
     return true;
 }
 
 bool Source::read_at(void* context, xyf_core::U32 offset, xyf_core::Byte* out, xyf_core::U32 count) {
     auto& source = *static_cast<Source*>(context);
     if (source.fd_ < 0 || source.error_ || offset > source.size_ || count > source.size_ - offset) return false;
+    if (offset >= source.tail_at_ && count <= 16 && offset - source.tail_at_ <= 16 - count) {
+        for (uint32_t i = 0; i != count; ++i) out[i] = source.tail_[offset - source.tail_at_ + i];
+        return true;
+    }
     while (count) {
         if ((offset < source.cached_at_ || offset - source.cached_at_ >= source.cached_bytes_) && !source.load(offset))
             return false;
         const uint32_t skip = offset - source.cached_at_;
         const uint32_t available = source.cached_bytes_ - skip;
         const uint32_t n = count < available ? count : available;
-        for (uint32_t i = 0; i != n; ++i) *out++ = source.cache_[skip + i];
+        for (uint32_t i = 0; i != n; ++i) *out++ = source.cached_[skip + i];
         offset += n;
         count -= n;
     }

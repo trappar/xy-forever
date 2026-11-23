@@ -215,6 +215,7 @@ add_custom_command(OUTPUT ${REWRITTEN}
           ${ROOT}/target/tfw_device_check.cpp ${REWRITTEN}
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/generate.py ${ROOT}/xy_forever/sim.py ${ROOT}/target/tfw_device_check.cpp VERBATIM)
 xyf_program(tfw_import_source OPTIONS -O2 ${STRICT} -Wno-unknown-attributes -D__bfin__=1 -DXYF_TFW_CHECK=1
+  -DXYF_HOST_CYCLES=1
   INCLUDES ${ROOT}/target USES target/tfw_device_check.cpp
   SOURCES tests/tfw_import_source_bridge.cpp ${REWRITTEN} target/tfw_import_source.cpp target/file_engine.cpp
           target/boot_services.cpp native/tfw_check.cpp native/tfw.cpp native/tfw_signature.cpp native/p224.cpp
