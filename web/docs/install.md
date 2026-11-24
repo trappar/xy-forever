@@ -17,7 +17,8 @@ page reads where that setup stands over Web Serial (`src/install/finish.ts`: `jo
 while it runs it shows it, a refusal shows the device's own words (removing the entry is advised only when the
 device says it is incomplete), and once the entry is there and the default names a library entry (it, or one with
 mods) the page hands
-the connection to the app and opens **Mods** with a dismissible "XY Forever is installed" notice. The last step tells
+the connection to the app and opens Manage's **Mods** with a dismissible "XY Forever is installed" notice (found
+at the first stage, XY Forever was already there: Manage's Device page, no notice). The last step tells
 the owner once that holding PLAY at power-on opens the XY Forever menu (the plain first start boots OS 1.2.1, so the
 page meets XY Forever there). The pure checks: `src/install/checks.ts`. The choices a stage needs (the computer, the
 file sent, a refusal) are kept in `sessionStorage` for a reload (going Back to the copy step sends the file again);
