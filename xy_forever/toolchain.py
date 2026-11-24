@@ -1,4 +1,5 @@
-"""Standalone compiler/binutils authentication; no SDK imports or downloads."""
+"""The Blackfin toolchain in the build image (xy_forever/container.py): its location there and its authentication
+against toolchains.json; no SDK imports or downloads."""
 
 import hashlib
 import json
@@ -7,7 +8,8 @@ import platform
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN_SHA256 = '5bee34f04b8ae84513ebf2b2c34712a08968ffd7ceaf16a331642f6a27914169'
+IN_IMAGE = '/opt/opxy-toolchain/out/blackfin'  # docker/toolchain.Dockerfile (open-xy's build path)
+PIN_SHA256 = '6d0e2aa9d58d2a49757d276c1cdee1b4eea32a2ae87888dfbfcdcdfc21a65f2e'
 CXX_FLAGS = [
     '-mcpu=bf707',
     '-O2',
@@ -38,11 +40,9 @@ def digest(path):
 
 
 def location(environ=os.environ):
-    """Where the toolchain is looked for: XYF_TOOLCHAIN, else paths.toolchain() (xyf.local.json's "toolchain", else
-    tools/blackfin beside the main checkout: ../tools/blackfin in a plain clone, the same folder from any worktree)."""
-    from . import paths
-
-    return Path(environ['XYF_TOOLCHAIN']) if environ.get('XYF_TOOLCHAIN') else paths.toolchain()
+    """Where the toolchain is: XYF_TOOLCHAIN (the image sets it), else the image's folder. The host has none: a
+    test that needs it skips there and runs in the container (the toolchain marker)."""
+    return Path(environ.get('XYF_TOOLCHAIN') or IN_IMAGE)
 
 
 def authenticate(directory=None):
@@ -58,11 +58,8 @@ def authenticate(directory=None):
         raise ValueError('No authenticated toolchain for ' + host)
     profile = records['hosts'][host]
     found = directory or location()
-    if not directory and not os.environ.get('XYF_TOOLCHAIN') and not found.is_dir():
-        raise ValueError(
-            'No Blackfin toolchain at %s: `mise run setup` installs it there; for another folder, '
-            '`uv run scripts/setup.py init --toolchain DIR` (or XYF_TOOLCHAIN)' % found
-        )
+    if not Path(found).is_dir():
+        raise ValueError('No Blackfin toolchain at %s: firmware builds run in the container (container.py)' % found)
     base = Path(found).expanduser().resolve()
     checked = {}
 

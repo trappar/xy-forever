@@ -22,7 +22,6 @@ per commit.
 import argparse
 import hashlib
 import io
-import os
 import shutil
 import subprocess
 import sys
@@ -32,8 +31,8 @@ from pathlib import Path
 
 import firmware_cache
 
-from xy_forever.paths import PRIVATE_ROOT, SESSIONS
-from xy_forever.toolchain import authenticate
+from xy_forever import container
+from xy_forever.paths import SESSIONS
 from xy_forever.xyf_build import MODES
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,18 +42,14 @@ def git(*args):
     return subprocess.run(['git', *args], cwd=ROOT, check=True, capture_output=True).stdout
 
 
-def build(source, out, env):
-    """Build one mode into out; returns (candidate sha or None, 'ok' or the last error line)."""
+def build(source, out):
+    """Build one mode of source into out, in the build container; returns (candidate sha or None, 'ok' or the last
+    error line)."""
     mode = out.name
     if out.exists():
         shutil.rmtree(out)
-    run = subprocess.run(
-        [sys.executable, '-m', 'xy_forever.xyf_build', '--' + mode, '--out', str(out)],  # cwd: source's package first
-        cwd=source,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
+    argv = ['python', '-m', 'xy_forever.xyf_build', '--' + mode, '--out', container.OUT + '/' + mode]
+    run = container.run(argv, root=source, out=out.parent, capture_output=True, text=True)
     candidate = out / 'candidate.ldr'
     digest = hashlib.sha256(candidate.read_bytes()).hexdigest() if candidate.is_file() else None
     return digest, 'ok' if run.returncode == 0 else (run.stderr.strip().splitlines() or ['failed'])[-1]
@@ -77,13 +72,13 @@ def cached_product():
     return hashlib.sha256(candidate.read_bytes()).hexdigest(), 'ok (the firmware cache)'
 
 
-def build_all(source, base, env, cached=False, known=None):
+def build_all(source, base, cached=False, known=None):
     results = {}
     for mode in MODES:
         out = base / mode
         results[mode] = (known or {}).get(mode) or (cached and result_of(out)) or None
         if results[mode] is None:
-            digest, status = build(source, out, env)
+            digest, status = build(source, out)
             out.mkdir(parents=True, exist_ok=True)  # a build that refused its mode made no folder
             (out / 'neutral.txt').write_text((digest or '-') + '\n' + status)
             results[mode] = (digest or '-', status)
@@ -99,8 +94,6 @@ def main():
     if clean and commit == git('rev-parse', 'HEAD').decode().strip():
         print('neutral: the working tree is clean and REF is HEAD: same, nothing to build')
         return 0
-    compiler, _ = authenticate()
-    env = dict(os.environ, XYF_PRIVATE=str(PRIVATE_ROOT), XYF_TOOLCHAIN=str(compiler['root']))
     work = SESSIONS / 'neutral'
     if ROOT.name != 'xy-forever':  # a separate git worktree gets its own folder
         work = work / ROOT.name
@@ -110,8 +103,8 @@ def main():
             shutil.rmtree(old)
     with tempfile.TemporaryDirectory() as tmp:
         tarfile.open(fileobj=io.BytesIO(git('archive', commit))).extractall(tmp)
-        before = build_all(Path(tmp), work / commit[:12], env, cached=True)
-    after = build_all(ROOT, work / tree, env, cached=clean, known={'xyf-product': cached_product()})
+        before = build_all(Path(tmp), work / commit[:12], cached=True)
+    after = build_all(ROOT, work / tree, cached=clean, known={'xyf-product': cached_product()})
     same = True
     print('%-16s %-14s %-14s %s' % ('mode', args.ref[:14], 'working tree', 'result'))
     for mode in MODES:

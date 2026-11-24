@@ -7,29 +7,28 @@
 
 Turborepo (turbo.json: //#firmware-build, //#firmware-verify) hashes the files the build reads in the checkout
 (its inputs: xyf_build.py own_sources(), which tests/test_firmware_cache.py holds turbo.json to) and, through
-XYF_BUILD_KEY, what it reads outside it: the stock pair's SHA-256, the toolchain (where it is and the pins it must
-match in toolchains.json), the Python that runs the build and the checkout's path (commands.json records it).
-This script computes that key on every run, so nobody has to set it. Same hash: turbo restores build/product and
+XYF_BUILD_KEY, the rest: the stock pair's SHA-256 and the Python dependencies the container installs (uv.lock). The
+build image (the Blackfin tools and the Python that run the build, xy_forever/container.py) is toolchains.json's
+"image", one of the inputs. This script computes the key on every run, so nobody has to set it. The cache stays on
+the host: a hit never starts the container. Same hash: turbo restores build/product and
 replays the logs in about 0.2 s; else it runs the task. A failed task (a build or --verify that exits non-zero)
 is never cached. A hit restores bytes that already passed --verify (a build runs it before it finishes).
 The cache is local only: .turbo/cache (gitignored; remote caching is off in turbo.json and here), as it holds
 Teenage Engineering-derived bytes. --force runs the tasks past the cache; deleting .turbo/ clears it.
 
-run-build and run-verify are the task commands turbo runs (package.json scripts).
+run-build and run-verify are the task commands turbo runs (package.json scripts): xyf-build in the container.
 """
 
 import hashlib
 import json
 import os
-import platform
 import re
 import shutil
 import subprocess
 import sys
-from importlib import metadata
 from pathlib import Path
 
-from xy_forever import dev_tools, paths, toolchain
+from xy_forever import container, dev_tools, paths, toolchain
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -48,21 +47,11 @@ def file_sha(path):
         return 'missing'
 
 
-def host():
-    machine = platform.machine().lower()
-    return platform.system().lower() + '-' + {'aarch64': 'arm64', 'amd64': 'x86_64'}.get(machine, machine)
-
-
-def build_key(environ=os.environ):
-    """A SHA-256 of what the build reads from outside the checkout (the toolchain by its location and pins: the
-    build refuses any other bytes there) and of the interpreter that runs it."""
-    pins = json.loads((ROOT / 'toolchains.json').read_text())['hosts'].get(host())
+def build_key():
+    """A SHA-256 of what the build reads beyond its inputs: the stock pair (outside the checkout) and uv.lock."""
     key = dict(
         stock={name: file_sha(paths.STOCK_121 / name) for name in ('os.ldr', 'bootloader.ldr')},
-        toolchain=dict(root=str(toolchain.location(environ).expanduser().resolve()), host=host(), pins=pins),
-        python=sys.version,
-        pyelftools=metadata.version('pyelftools'),
-        checkout=str(ROOT),
+        python=file_sha(ROOT / 'uv.lock'),
     )
     return hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()
 
@@ -113,7 +102,12 @@ def run_task(task):
         args = ['--xyf-product', '--out', OUT]
     else:
         args = ['--verify', '--out', OUT]
-    return subprocess.run([sys.executable, '-m', 'xy_forever.xyf_build', *map(str, args)], cwd=ROOT).returncode
+    argv = ['python', '-m', 'xy_forever.xyf_build', *(os.path.relpath(a, ROOT) if a == OUT else a for a in args)]
+    try:
+        return container.run(argv).returncode
+    except container.ContainerError as e:
+        print('firmware %s: %s' % (task, e), file=sys.stderr)
+        return 1
 
 
 def main(argv=None):

@@ -14,7 +14,8 @@ The steps, in order, stopping at the first failure:
     with main (or with --js);
   - every tier but the sweeps in one pytest run (-m 'not sweep': tests/conftest.py, which enforces the CPU
     budgets). The tests read this checkout's own build/product (paths.verified_build()), which no other checkout
-    writes; XYF_REQUIRE_BUILD fails a test that finds no usable build instead of skipping it.
+    writes; XYF_REQUIRE_BUILD fails a test that finds no usable build instead of skipping it, and
+    XYF_REQUIRE_CONTAINER one that cannot run the build container (the toolchain tests).
 First, when node_modules is missing or older than pnpm-lock.yaml (a fresh worktree), `pnpm install --frozen-lockfile`
 (Turborepo and the type checks need it).
 Wall time: a step over STEP_WALL_S or the whole over TOTAL_WALL_S is reported, never failed (a busy machine
@@ -164,7 +165,8 @@ def standard_steps(args, root, tree):
     """The gate's steps for this run."""
     py = sys.executable
     js = js_steps(args, root)
-    env = {paths.REQUIRE_BUILD: '1'}  # verify has just made this checkout's build: a test that cannot use it fails
+    # verify has just made this checkout's build in the container: a test that cannot use either fails
+    env = {paths.REQUIRE_BUILD: '1', paths.REQUIRE_CONTAINER: '1'}
     cached = root / 'scripts/firmware_cache.py'
     install = dev_tools.js_install(root)
     return [
