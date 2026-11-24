@@ -106,18 +106,18 @@ class ContentSet(ConfigBase, unittest.TestCase):
         self.assertEqual(self.entry('firmware.version'), b'1.2.1+0\n')
         self.assertFalse((self.root / 'xy-forever/tmp' / ('cset-' + self.base)).exists())
 
-    @pytest.mark.sim
+    @pytest.mark.gate  # a refusal: the simulator core keeps the build
     def test_a_catalog_that_is_not_official_is_refused_at_saving(self):
-        """Kept: config.set names why the build could not happen, before power-on."""
+        """config.set names why the build could not happen, before power-on."""
         (self.root / 'content/op1_factory.json').write_bytes(CATALOG + b' ')
         code, reason = self.set_mods(['alpha'])
         self.assertEqual(code, modconfig.P.ids.S_REFUSED)
         self.assertEqual(reason, "The OP-XY's content is not official OS 1.2.1, and the base has no content set.")
         self.assertIsNone(self.config())
 
-    @pytest.mark.sim
+    @pytest.mark.gate  # a refusal: the simulator core keeps the build
     def test_other_content_that_is_not_official_fails_the_build_before_writing(self):
-        """Kept: only the official set becomes a content set; nothing is written otherwise."""
+        """Only the official set becomes a content set; nothing is written otherwise."""
         sample = self.root / 'content/samples/kick/one.wav'
         sample.write_bytes(sample.read_bytes() + b'!')
         self.assertEqual(self.set_mods(['alpha']), (0, ''))
