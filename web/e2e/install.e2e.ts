@@ -56,7 +56,8 @@ async function open(
       route.fulfill({ contentType: 'application/octet-stream', body: CANARY_IMAGE }),
     );
   }
-  await page.goto(`${base}connect/`);
+  await page.goto(`${base}manage/`); // no install flow yet: it starts with the fakes in place (the Install click below)
+  await page.getByRole('heading', { name: 'Connect your OP-XY' }).waitFor(); // its look done before the fakes
   await page.addScriptTag({
     type: 'module',
     content: `

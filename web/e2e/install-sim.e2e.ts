@@ -1,6 +1,6 @@
 // The Install page's end (#178) in the system Chrome (headless) against the device simulator, which runs XY Forever's own
 // code and command rules: after Track 5, XY Forever sets itself up on the device (it adopts the stock os.ldr as library
-// entry opxy-121, makes it the default, boots it), and the page hands the owner to the Mods page once it finds it.
+// entry opxy-121, makes it the default, boots it), and the page hands the owner to Manage's Mods page once it finds it.
 // te-boot and the dev menu's MTP are the fakes of test/fake-devices.ts; Web Serial is the fake navigator.serial of the
 // client's Web Serial tests (clients/ts/test/fake-serial.ts: Chrome's 255-byte default receive buffer, the chooser,
 // granted ports, a device that goes away and comes back), reaching the simulator through the relay. Each test starts
@@ -109,7 +109,8 @@ async function open(
     route.fulfill({ contentType: 'application/octet-stream', body: bytes }),
   );
   await prepare?.(page);
-  await page.goto(`${base}/connect/`);
+  await page.goto(`${base}/manage/`); // no install flow yet: it starts with the fakes in place (the Install click below)
+  await page.getByRole('heading', { name: 'Connect your OP-XY' }).waitFor(); // its look done before the fakes
   await page.addScriptTag({
     type: 'module',
     content: `
@@ -155,15 +156,23 @@ async function toStart(page: Page, computer: 'Mac' | 'Windows'): Promise<void> {
   expect(await page.locator('[data-stage]').textContent()).toContain('Switch your OP–XY off, then on.');
 }
 
-/** The page handed the owner to the app: the Mods page, connected, the installed notice once. */
+/** The page handed the owner to the app: Manage's Mods page, connected, the installed notice once. */
 async function handedOff(page: Page): Promise<void> {
-  await page.waitForURL((url) => url.pathname === '/mods/');
+  await page.waitForURL((url) => url.pathname === '/manage/mods/');
   expect(await page.getByTestId('installed').isVisible()).toBe(true);
   expect(await page.getByTestId('installed').textContent()).toContain('XY Forever is installed');
   expect(await page.getByTestId('link').textContent()).toMatch(/^Connected/);
   await page.getByRole('heading', { level: 1, name: 'Mods' }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Dismiss' }).click();
   expect(await page.getByTestId('installed').isVisible()).toBe(false);
+}
+
+/** XY Forever was already there: the page switched to Manage's Device page by itself, connected, no installed notice. */
+async function foundInstalled(page: Page): Promise<void> {
+  await page.waitForURL((url) => url.pathname === '/manage/');
+  await page.locator('[data-fact=version]').waitFor();
+  expect(await page.getByTestId('link').textContent()).toMatch(/^Connected/);
+  expect(await page.getByTestId('installed').count()).toBe(0);
 }
 
 /** The entry XY Forever made on the device: the stock os.ldr, byte for byte, beside its manifest.json and files.sha256. */
@@ -238,8 +247,8 @@ async function simulatedTrack5(sim: SimInfo, bytes: Uint8Array): Promise<void> {
   expectActive(sim, bytes);
 }
 
-/** An installed XY Forever with a recorded mod and modded content, an owner's files, the app handed off to its Mods
- * page; the page's link to the device checked on the relay as it passes (interrupted: the first boot write's select
+/** An installed XY Forever with a recorded mod and modded content, an owner's files, the app switched to Manage by
+ * itself; the page's link to the device checked on the relay as it passes (interrupted: the first boot write's select
  * fails). The stock os.ldr's 2.3 MB moves several times in an uninstall (read, staged, the root's restore and
  * read-backs): each uninstall test does one, the tests run in parallel. */
 async function installedWithMods(build: string, interrupted: boolean) {
@@ -341,7 +350,7 @@ async function installedWithMods(build: string, interrupted: boolean) {
           }),
     );
   });
-  await handedOff(page);
+  await foundInstalled(page);
   return {
     sim,
     page,
@@ -366,16 +375,16 @@ test('uninstalls to a verified stock partition, then installs again from the sam
     await nav(page, 'Device').click();
     await press(page, 'Uninstall XY Forever');
     await press(page, 'Uninstall');
-    // The stock os.ldr's 2.3 MB upload (4,600 requests), the boot partition write and the reboot: /connect/, or the error.
+    // The stock os.ldr's 2.3 MB upload (4,600 requests), the boot partition write and the reboot: Install, or the error.
     const failure = page.locator('[data-testid=notice][data-type=error]');
     await Promise.race([
-      page.waitForURL((url) => url.pathname === '/connect/'),
+      page.waitForURL((url) => url.pathname === '/install/boot/'),
       failure.waitFor().then(async () => {
         throw new Error(`uninstall failed: ${await failure.textContent()}`);
       }),
     ]);
     expect(reboot()).toBe(1);
-    expect(await page.getByRole('status').textContent()).toContain('Stock OS 1.2.1 was restored');
+    expect(await page.getByTestId('stock-restored').textContent()).toContain('Stock OS 1.2.1 was restored');
     expect(readdirSync(sim.root).sort()).toEqual([
       'bootloader.dev',
       'content',
@@ -390,8 +399,7 @@ test('uninstalls to a verified stock partition, then installs again from the sam
     expect(commands.some((path) => path.endsWith('/user-alias'))).toBe(false);
     expect((await status(sim))['rw_open']).toBe(0);
 
-    await page.getByRole('link', { name: 'Install XY Forever' }).click();
-    expect(await stage(page)).toBe('boot');
+    expect(await stage(page)).toBe('boot'); // the install starts over
     await toStart(page, 'Mac');
     expect(
       await page.evaluate(() => (window as unknown as { fakes: { usb: { reads: string[] } } }).fakes.usb.reads),
