@@ -74,10 +74,11 @@ main runs the Python suite again. `firmware.yml` builds the product `os.ldr` on 
 toolchain; a Linux build of it gives other bytes) only when the build's inputs change, without stock files, and
 keeps it with its SHA-256 as a workflow artifact.
 
-The product build needs no stock files: it reads what it checks of them (helper and span CRC-32s, loaded
-ranges, sizes, SHA-256s) from `stock_facts.json`, by component and version (`xy_forever/stock_facts.py`). With
-the stock pair present, as in `check`, it first recomputes every fact from the files and fails on a difference;
-the offline modes, which embed the stock OS, still need the files.
+The product build needs no stock files: the only stock values its image holds (the cold descriptor's helper
+CRC-32s) and the pair's sizes and SHA-256s come from `stock_facts.json`, by component and version
+(`xy_forever/stock_facts.py`). With the stock pair present, as in `check`, it first recomputes every fact from
+the files and fails on a difference, and checks the span tables in `target/` (their only home) against the
+bootloader; without it those checks are skipped. The offline modes, which embed the stock OS, still need the files.
 Firmware may also be built into the checkout's gitignored `build/` folder; TE bytes are never committed or
 uploaded.
 

@@ -217,11 +217,13 @@ class UsbServiceTest(unittest.TestCase):
         v5 = struct.pack('<%dI' % len(words), *words)
         self.assertEqual(usb_service([dict(address=0, bytes=len(v5), offset=0)], v5)['build']['image'], 'unknown')
 
-    def test_spans_match_bootloader_and_cover_calls(self):  # its facts (stock_facts.json)
-        from xy_forever import stock_facts
+    def test_spans_match_bootloader_and_cover_calls(self):
+        boot = STOCK_121 / 'bootloader.ldr'
+        if not boot.exists():
+            self.skipTest('private bootloader absent')
         from xy_forever import xyf_build as B
 
-        B.check_usb_spans(stock_facts.Bootloader())
+        B.check_usb_spans(boot.read_bytes())
         for a, _n, _ in B.usb_spans():
             self.assertFalse(0x11A00000 <= a < 0x11A0C000)
         self.assertTrue(B.FORBIDDEN_TARGETS.isdisjoint(B.USB_CALLS))

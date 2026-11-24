@@ -25,14 +25,14 @@ class FactsTest(unittest.TestCase):
         )
         self.assertEqual(probe_report.STOCK121_OS[0], os_facts['bytes'])
 
-    def test_the_build_checks_read_the_facts(self):
-        boot = stock_facts.Bootloader()
-        B.check_boot_reservations(boot)
+    def test_the_build_reads_the_facts_without_the_stock_files(self):
+        B.check_boot_reservations(None)
         B.check_os_facts()
-        B.check_construct_spans(boot)
-        self.assertEqual(len(B.descriptor_words(boot, b'')), 7)
-        with self.assertRaisesRegex(ValueError, 'lacks bootloader 1.2.1 0x00000000\\+0x4$'):
-            boot.crc(0, 4)
+        self.assertEqual(B.descriptor_words(b'')[4:], stock_facts.helper_crcs())
+        moved = copy.deepcopy(FACTS)
+        moved['bootloader']['1.2.1']['helpers'][0]['address'] = '0x88a346a8'
+        with self.assertRaisesRegex(ValueError, 'differ from outer.HELPERS'):
+            stock_facts.helper_crcs(moved)
 
 
 class RecomputeTest(unittest.TestCase):
@@ -43,14 +43,12 @@ class RecomputeTest(unittest.TestCase):
         self.stock, self.boot = (f.read_bytes() for f in files)
 
     def test_every_fact_matches_the_stock_pair(self):
-        boot = stock_facts.recompute(FACTS, self.stock, self.boot)
-        with self.assertRaisesRegex(ValueError, 'CRC-32 0x[0-9a-f]{8}$'):  # a missing range: the value to add
-            boot.crc(0x0803C000, 4)
+        stock_facts.recompute(FACTS, self.stock, self.boot)
 
     def test_a_changed_fact_fails(self):
         for change in (
-            lambda f: f['bootloader']['1.2.1']['crc32'].update({'0x88a346a6+0x176': '0x00000000'}),
-            lambda f: f['bootloader']['1.2.1']['loaded'].pop(),
+            lambda f: f['bootloader']['1.2.1']['helpers'][1].update(crc32='0x00000000'),
+            lambda f: f['bootloader']['1.2.1'].update(bytes=1),
             lambda f: f['os']['1.2.1'].update(bytes=1),
             lambda f: f['os']['1.2.1'].update(sha256='0' * 64),
         ):

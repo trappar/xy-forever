@@ -40,7 +40,7 @@ from xy_forever.otp_audit import (
     referencing_symbols,
     rom_references,
 )
-from xy_forever.outer import ALLOWED, HELPERS, PROTECTED, package, verify_outer
+from xy_forever.outer import ALLOWED, PROTECTED, package, verify_outer
 from xy_forever.paths import STOCK_121, private_output
 from xy_forever.probe_report import report_only_fixture
 from xy_forever.stage2_audit import STAGE2_ENTER, STAGE2_WINDOW, check_stage2_image, stage2_enter_sites
@@ -511,12 +511,13 @@ def client_spans():
 
 
 def check_spans(boot, spans, table, calls=(), covered=None):
-    """Every span matches the bootloader's facts (boot: a stock_facts.Bootloader) and lies outside L1 instruction
-    memory; every call is inside a span."""
+    """Every span lies outside L1 instruction memory and, when the stock bootloader is read (boot: its bytes, else
+    None), matches it; every call is inside a span."""
+    image = Firmware(boot) if boot is not None else None
     for address, length, crc in spans:
         require(not L1_CODE[0] <= address < L1_CODE[1], table + ' span reads L1 instruction memory')
         require(
-            boot.crc(address, length) == crc,
+            image is None or zlib.crc32(image.read(address, length)) == crc,
             table + ' span CRC differs from bootloader at ' + hex(address),
         )
     for call in sorted(calls):
@@ -564,10 +565,12 @@ def check_mtp_spans(boot):
 
 
 def check_construct_spans(boot):
-    source = target_source('cold_storage.cpp')
+    if boot is None:  # no stock bootloader to check against
+        return
+    image, source = Firmware(boot), target_source('cold_storage.cpp')
     for address, length in CONSTRUCT_SPANS + DIRECT_SPANS:
         require(
-            '{0x%08xu, 0x%xu, 0x%08xu}' % (address, length, boot.crc(address, length)) in source,
+            '{0x%08xu, 0x%xu, 0x%08xu}' % (address, length, zlib.crc32(image.read(address, length))) in source,
             'Constructor span CRC differs from bootloader at ' + hex(address),
         )
 
@@ -745,15 +748,22 @@ def check_memory_map():
 
 def check_boot_reservations(boot):
     check_memory_map()
-    for begin, end in ((MODULE, WIDE_STACK_END), STAGE2_WINDOW, (0x8B000000, 0x8B800000), FILE_STAGING, (CARRY, END)):
+    if boot is not None:  # the stock bootloader read: its loaded memory and allocator table
+        mapped = Firmware(boot)
+        for begin, end in (
+            (MODULE, WIDE_STACK_END),
+            STAGE2_WINDOW,
+            (0x8B000000, 0x8B800000),
+            FILE_STAGING,
+            (CARRY, END),
+        ):
+            require(
+                all(hi <= begin or lo >= end for lo, hi, _ in mapped.segments),
+                'Reservation intersects statically loaded old bootloader memory',
+            )
         require(
-            all(hi <= begin or lo >= end for lo, hi in boot.loaded()),
-            'Reservation intersects statically loaded old bootloader memory',
+            mapped.read(0x88A2A4D0, 12) == struct.pack('<3I', 0x88A65BF8, 0x1FFFFFC, 0), 'Old allocator table differs'
         )
-    require(
-        boot.crc(0x88A2A4D0, 12) == zlib.crc32(struct.pack('<3I', 0x88A65BF8, 0x1FFFFFC, 0)),
-        'Old allocator table differs',
-    )
     require((0x88A65BF8, 0x88A65BF8 + 0x1FFFFFC) == RETAINED_ARENA, 'Retained arena differs from the map')
     require(
         0x88A65BF8 + 0x1FFFFFC <= MODULE and 0x88A65BF8 + 0x1FFFFFC < CARRY,
@@ -873,9 +883,9 @@ def source_hashes():
     return {name: sha((SOURCE / name).read_bytes()) for name in own_sources()}
 
 
-def descriptor_words(boot, inner):
-    """The cold descriptor (target/cold.hpp): magic, version, payload size and CRC, stock helper CRCs (boot's facts)."""
-    return [0x584C4348, 1, len(inner), zlib.crc32(inner), *[boot.crc(a, n) for a, n in HELPERS]]
+def descriptor_words(inner):
+    """The cold descriptor (target/cold.hpp): magic, version, payload size and CRC, stock helper CRCs (stock_facts)."""
+    return [0x584C4348, 1, len(inner), zlib.crc32(inner), *stock_facts.helper_crcs()]
 
 
 def verify_elf(out, stem, base, limit):
@@ -912,7 +922,7 @@ def needs_stock(mode, stock):
 
 
 def verify(out, stock, boot):
-    """Re-check a build; stock is the stock os.ldr's bytes or None, boot a stock_facts.Bootloader."""
+    """Re-check a build; stock and boot: the stock pair's bytes, or both None."""
     check_boot_reservations(boot)
     check_os_facts()
     manifest = json.loads((out / 'manifest.json').read_text())
@@ -1255,7 +1265,7 @@ def verify(out, stock, boot):
         'Cold entry stack top differs from the mode layout',
     )
     embedded = b'' if mode in NO_EMBEDDED_MODES else inner
-    descriptor = struct.pack('<7I', *descriptor_words(boot, embedded))
+    descriptor = struct.pack('<7I', *descriptor_words(embedded))
     offset = symbols['xy_forever_cold_descriptor']['value'] - MODULE
     require(module[offset : offset + len(descriptor)] == descriptor, 'Cold descriptor differs')
     candidate = (out / 'candidate.ldr').read_bytes()
@@ -1275,7 +1285,7 @@ def verify(out, stock, boot):
 
 
 def build(out, stock, boot, mode):
-    """Build a mode into out; stock is the stock os.ldr's bytes or None (needs_stock), boot a stock_facts.Bootloader."""
+    """Build a mode into out; stock and boot: the stock pair's bytes, or both None (needs_stock)."""
     require(mode in MODES, 'Unknown build mode')
     needs_stock(mode, stock)
     mode_name, mode = mode, product_kind(mode)  # the MTP USB test build is the product plus its probe
@@ -1539,7 +1549,7 @@ def build(out, stock, boot, mode):
         )
     cpp('cold', SOURCE / 'target/cold.cpp', probe_defines)
     descriptor = out / 'descriptor.cpp'
-    values = descriptor_words(boot, b'' if mode in NO_EMBEDDED_MODES else inner)
+    values = descriptor_words(b'' if mode in NO_EMBEDDED_MODES else inner)
     descriptor.write_text(
         '#include "cold.hpp"\nextern "C" const xy_forever::cold::Descriptor '
         'xy_forever_cold_descriptor = {' + ','.join(hex(v) + 'u' for v in values) + '};\n'
@@ -1716,7 +1726,7 @@ def build(out, stock, boot, mode):
         module_bytes=len(module),
         reporter_bytes=len(reporter),
         stock_sha256=stock_facts.load()['os'][stock_facts.BASE]['sha256'],  # the base (equal when the files are read)
-        bootloader_reference_sha256=boot.facts['sha256'],
+        bootloader_reference_sha256=stock_facts.load()['bootloader'][stock_facts.BASE]['sha256'],
         source_sha256=hashes,
         tool_sha256=compiler['checked'],
         artifact_sha256=artifacts,
@@ -1787,15 +1797,13 @@ def main():
     )
     args = parser.parse_args()
     require(args.verify or args.mode, 'Choose a build mode (normally --xyf-product)')
-    # The stock pair is optional for the product (stock_facts.py): present, every fact is recomputed from it first.
+    # The stock pair is optional for the product (stock_facts.py): present, every fact is recomputed from it first and
+    # the checks that read it run; absent, they are skipped.
     present = [path.is_file() for path in (args.stock, args.bootloader)]
     require(all(present) or not any(present), 'Only one of the stock pair is present: give both or neither')
-    facts = stock_facts.load()
-    if all(present):
-        stock = args.stock.read_bytes()
-        boot = stock_facts.recompute(facts, stock, args.bootloader.read_bytes())
-    else:
-        stock, boot = None, stock_facts.Bootloader(facts)
+    stock, boot = (args.stock.read_bytes(), args.bootloader.read_bytes()) if all(present) else (None, None)
+    if stock is not None:
+        stock_facts.recompute(stock_facts.load(), stock, boot)
     result = verify(args.out, stock, boot) if args.verify else build(args.out, stock, boot, args.mode)
     print(
         json.dumps(
