@@ -15,12 +15,6 @@ function releaseCode(version: string | null): number | null {
 }
 
 /**
- * Channel switches (Stable to Canary, or Canary back to Stable's same version) are offered only once they are
- * qualified on an OP-XY (#301): until then, in development builds only.
- */
-const SWITCHES = import.meta.env.DEV;
-
-/**
  * Whether the connected OP-XY can move to target: 'update' (a newer version, or a newer canary of the same version),
  * 'switch' (a channel switch: from the stable image to a canary, or from another image of stable's version to
  * stable), or null. Builds between releases share a version, so the image tells them apart. Never older versions.
@@ -46,11 +40,9 @@ export function updateOffer(
   return available > installed ? 'update' : 'switch';
 }
 
-/** An update the page may start: switches only where they are enabled. */
-export const updateAvailable = (info: DeviceInfo, target: ReleasePin, stable: ReleasePin | null): boolean => {
-  const offer = updateOffer(info, target, stable);
-  return offer === 'update' || (offer === 'switch' && SWITCHES);
-};
+/** An update or channel switch the page may start (switches qualified on an OP-XY, #301). */
+export const updateAvailable = (info: DeviceInfo, target: ReleasePin, stable: ReleasePin | null): boolean =>
+  updateOffer(info, target, stable) !== null;
 
 type UpdateClient = Pick<Client, 'info' | 'stage' | 'bootInstall' | 'reboot' | 'reconnect'>;
 

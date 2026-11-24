@@ -33,7 +33,7 @@ How a build of `main` becomes a canary (`.github/workflows/firmware.yml`):
 Builds between releases share a version, so the app tells canaries apart by image: an update to a canary is offered
 when the OP-XY runs another image of that version or an older version, and the update ends only when the restarted
 OP-XY reports the chosen image. A channel switch (Stable to Canary, or a canary back to Stable's version) is offered
-only by development builds of the app (`SWITCHES` in `src/update.ts`) until it is qualified on an OP-XY.
+the same way.
 
 ## Preview a release
 
