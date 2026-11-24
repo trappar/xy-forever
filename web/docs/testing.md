@@ -26,7 +26,7 @@ drives the app in the system Chrome, headless, never a downloaded browser:
   with the published 0.0.7 kit from the private fixtures a newer kit's late entry, a transfer and the pinned kit) against the
   simulator, Web Serial off in Chrome. `install` (`e2e/install.e2e.ts`: every
   refusal and guidance branch of the Install page against fake te-boot MIDI and a fake dev-menu MTP device,
-  `test/fake-devices.ts`; `e2e/install-sim.e2e.ts`: the install's end against the simulator, a stock OP-XY just
+  `test/fake-devices.ts`; `e2e/serial-reads.e2e.ts`: 3,000 file reads over the client's Web Serial transport; `e2e/install-sim.e2e.ts`: the install's end against the simulator, a stock OP-XY just
   after Track 5, through the client's fake Web Serial port, `clients/ts/test/fake-serial.ts`), Web Serial and WebUSB
   off. `bounds` (`e2e/hang-bound.e2e.ts`, only in `mise run web-e2e-bounds`: a check of the rig, so CI runs it when
   the rig's files change): a nested run of a planted hung page (`e2e/planted-hang.ts`) must fail, naming that test,
