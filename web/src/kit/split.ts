@@ -1,53 +1,23 @@
 // XY Forever packages from an Open-XY kit in the browser: the twin of xy_forever/modkit.py `split` (its host
-// reference), the same checks and, for the same kit and finished content, the same files byte for byte
-// (tests/test_kit_browser.py compares them). One mod-base package for the kit generation, one mod package per machine
-// and one per extension, as a generation folder: 'base/manifest.json', '<machine>/objects/...', 'ext-<id>/...'.
-// Objects are copied unchanged. The finished content (svg, presets) comes from `finish`: in the app, Open-XY's own
-// builder (assets.ts). Nothing here reaches the network or the device.
+// reference): for the same kit, the same files byte for byte (tests/test_kit_browser.py compares them). One mod-base
+// package for the kit generation, one mod package per machine and one per extension, as a generation folder:
+// 'base/manifest.json', '<machine>/objects/...', 'ext-<id>/...'. Objects are copied unchanged. Open-XY's own builder
+// (core.mjs, of the kit's release: source.ts loads it) checks the kit (openKit), reads its objects and finishes each
+// machine's content (svg, presets); this module refuses only what the packages or the OP-XY cannot carry. Nothing
+// here reaches the network or the device.
+import type { Core, ReadObject } from './core.ts';
 import { KitError, check } from './errors.ts';
-import { objectSummary } from './elf.ts';
-import type { ObjectSummary } from './elf.ts';
 import { pyDumps, pyFloat } from './py-json.ts';
 import type { Json } from './py-json.ts';
 
 const KIT_FORMAT = 'opxy-browser-kit/1';
-const PROFILE_SCHEMA = 1;
-const KIT_KEYS = [
-  'format',
-  'version',
-  'profile',
-  'profileSource',
-  'definitions',
-  'fixed',
-  'machines',
-  'objects',
-  'stockCatalog',
-  'screenTemplate',
-];
-const KIT_OPTIONAL = ['linked', 'notices', 'extensions', 'serviceFallbacks'];
-const OBJECT_KEYS = ['name', 'owner', 'sha256', 'bytes', 'service', 'runtime', 'extension'];
 const EDIT_KINDS = ['heap', 'table', 'text', 'hook', 'startup', 'limit'];
-const EDIT_KEYS = [
-  'kind',
-  'name',
-  'address',
-  'file_offset',
-  'length',
-  'before',
-  'after',
-  'symbol',
-  'call',
-  'service',
-  'profiling',
-  'events',
-];
 const MACHINE_ID = /^[a-z][a-z0-9_]{0,14}$/;
 const EXTENSION_ID = /^[a-z][a-z0-9_]{0,31}$/;
 const RULE_SCALARS = ['engines', 'engine_none', 'pages', 'page_none', 'effect_page'];
 const RULE_LISTS = ['stock_engines', 'sample_pages', 'effects', 'players'];
 const LIMIT_SERVICES = ['long_samples', 'release_floor'];
 const FLOOR_VALUES = Array.from({ length: 47 }, (_, i) => -20 - i);
-const MIB = 1 << 20;
 const MANIFEST_KEYS = [
   'type',
   'name',
@@ -174,6 +144,14 @@ export interface Kit extends Rec {
   extensions?: Extension[];
   serviceFallbacks?: Record<string, Record<string, string>>;
 }
+interface ObjectSummary {
+  readonly exports: ReadonlySet<string>;
+  readonly imports: ReadonlySet<string>;
+  readonly absolute: readonly string[];
+  readonly code: number;
+  readonly data: number;
+  readonly state: number;
+}
 interface Obj extends ObjectSummary {
   order: number;
   name: string;
@@ -190,8 +168,6 @@ interface Model {
   objects: Obj[];
   generation: string;
 }
-/** Each machine's finished content, by machine id: {path: bytes} (core.mjs buildAssets, that machine alone). */
-export type Finished = Record<string, Record<string, Uint8Array>>;
 export interface SplitSet {
   readonly profile: string;
   readonly generation: string;
@@ -216,7 +192,6 @@ const truthy = (v: unknown): boolean =>
     (Array.isArray(v) && !v.length) ||
     (isObject(v) && !keysOf(v).length)
   );
-const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
 const hex = (bytes: Uint8Array): string => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 const hex8 = (n: number): string => `0x${n.toString(16).padStart(8, '0')}`;
 const list = (items: Iterable<string>): string => `[${[...items].map((s) => `'${s}'`).join(', ')}]`;
@@ -226,7 +201,7 @@ async function sha256(data: Uint8Array): Promise<string> {
   return hex(new Uint8Array(await crypto.subtle.digest('SHA-256', data as Uint8Array<ArrayBuffer>)));
 }
 
-export function decode64(text: string): Uint8Array {
+function decode64(text: string): Uint8Array {
   let binary: string;
   try {
     binary = atob(text);
@@ -257,15 +232,6 @@ function concat(parts: readonly Uint8Array[]): Uint8Array {
     at += p.length;
   }
   return out;
-}
-
-function deepEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (Array.isArray(a) || Array.isArray(b))
-    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => deepEqual(x, b[i]));
-  if (!isObject(a) || !isObject(b)) return false;
-  const ka = keysOf(a);
-  return ka.length === keysOf(b).length && ka.every((k) => has(b, k) && deepEqual(a[k], b[k]));
 }
 
 // ---------------------------------------------------------------- edits.bin (the profile's edits in binary form)
@@ -411,147 +377,61 @@ function ownNumberSymbols(m: Machine): string[] {
   return [`${p}_engine_id`, `${p}_page_id`];
 }
 
-/** (opcode, value) of a Blackfin+ Dreg/Preg = imm32 load as core.mjs heapLoad reads it, or null. */
-function heapLoad(text: unknown): [number, number] | null {
-  if (typeof text !== 'string' || !/^[0-9a-f]{16}$/.test(text)) return null;
-  const v = new DataView(fromHex(text).buffer);
-  const [opcode, high, low, zero] = [0, 2, 4, 6].map((at) => v.getUint16(at, true)) as [number, number, number, number];
-  return (opcode & 0xffc0) === 0xda00 && zero === 0 ? [opcode, high * 65536 + low] : null;
-}
-
-/** The module base of the profile's reviewed larger layout (core.mjs offersExpandedMemory, the 4 MiB option), or
- * null when the profile offers none. */
-function expandedBase(profile: Profile): number | null {
-  const x = get<unknown>(profile, 'experimental_memory'),
-    patches = profile.patches ?? [],
-    heaps = patches.filter((p) => p.kind === 'heap');
-  const whole = (...ns: unknown[]): boolean => ns.every((n) => isInt(n) && n % MIB === 0);
-  if (!(isObject(x) && sorted(keysOf(x)).join() === 'heap_after,module_base,reserved_bytes')) return null;
-  const base = x['module_base'],
-    reserved = x['reserved_bytes'],
-    fill = profile.heap_fill_base;
-  if (!(isInt(base) && isInt(reserved))) return null;
-  const end = profile.module_base + profile.reserved_bytes;
-  const after = heapLoad(x['heap_after']);
-  let ok =
-    whole(reserved, profile.reserved_bytes, base - fill, profile.module_base - fill) &&
-    reserved > profile.reserved_bytes &&
-    base + reserved === end &&
-    base > fill &&
-    after !== null &&
-    after[1] === base - fill &&
-    fill + profile.heap_fill_bytes === end &&
-    heaps.length === 2 &&
-    patches.every(
-      (p) =>
-        p.kind !== 'hook' ||
-        ![4, 6].includes(p.length) ||
-        [base, end].every((t) => Math.abs(t - Number(String(p.address))) < 1 << 24),
-    );
-  for (const p of ok ? heaps : []) {
-    const before = heapLoad(p.before),
-      replaced = heapLoad(p.after);
-    ok =
-      ok &&
-      before !== null &&
-      replaced !== null &&
-      before[1] === profile.heap_fill_bytes &&
-      replaced[0] === before[0] &&
-      before[0] === after![0] &&
-      replaced[1] === profile.module_base - fill;
-  }
-  return ok ? base : null;
-}
-
 const servicesFor = (profile: Profile, users: readonly string[]): string[] =>
   Object.entries(profile.services ?? {})
     .filter(([, wanted]) => users.some((u) => wanted.includes(u)))
     .map(([name]) => name);
 
+/** The capabilities and settings the OP-XY applies (openKit has checked their form against the profile). */
 function validateExtensionCapabilities(e: Extension, profile: Profile): void {
-  const capabilities = has(e, 'capabilities') ? e.capabilities : [];
-  const services = profile.services ?? {};
+  const capabilities = e.capabilities ?? [];
   check(
-    Array.isArray(capabilities) &&
-      capabilities.every((c) => typeof c === 'string' && LIMIT_SERVICES.includes(c)) &&
-      new Set(capabilities).size === capabilities.length &&
-      capabilities.every(
-        (c) =>
-          deepEqual(get(services, c), [c]) &&
-          profile.patches.some(
-            (p) => p.service === c && p.kind === 'limit' && !has(p, 'choices') && p.before !== p.after,
-          ),
-      ),
-    'unsupported extension capabilities',
+    capabilities.every((c) => LIMIT_SERVICES.includes(c)),
+    `extension ${e.id}: capabilities ${list(capabilities)} the OP-XY does not apply`,
   );
-  check(!has(e, 'capabilities') || capabilities.length, 'empty extension capabilities');
-  check(!has(e, 'drumline_page') || e.drumline_page === true, 'invalid Drumline page');
+  const settings = e.settings ?? {};
   check(
-    !has(e, 'linked') ||
-      (e.linked === false &&
-        capabilities.length &&
-        !truthy(get(e, 'claims')) &&
-        !truthy(get(e, 'actions')) &&
-        !processorKey(e)),
-    'unsupported settings extension',
+    keysOf(settings).every((k) => k === 'release_floor'),
+    `extension ${e.id}: settings ${list(keysOf(settings))} the OP-XY does not apply`,
   );
-  const settings = has(e, 'settings') ? e.settings : {};
-  check(isObject(settings) && keysOf(settings).every((k) => k === 'release_floor'), 'unsupported extension settings');
-  if (!keysOf(settings).length) return;
-  const key = 'release_floor',
-    setting = settings[key] as Rec;
-  const n = (k: string): number => setting[k] as number;
+  const value = settings['release_floor']?.value;
   check(
-    capabilities.includes(key) &&
-      isObject(setting) &&
-      ['minimum', 'maximum', 'default', 'value'].every((k) => isInt(setting[k])) &&
-      FLOOR_VALUES.at(-1)! <= n('minimum') &&
-      n('minimum') <= n('value') &&
-      n('value') <= n('maximum') &&
-      n('maximum') <= FLOOR_VALUES[0]! &&
-      n('minimum') <= n('default') &&
-      n('default') <= n('maximum') &&
-      ['label', 'unit'].every((k) => typeof setting[k] === 'string') &&
-      profile.patches.some((edit) => edit.setting === key),
+    value === undefined ||
+      (FLOOR_VALUES.includes(value) && profile.patches.some((edit) => edit.setting === 'release_floor')),
     'invalid extension release floor',
   );
 }
 
-/** Every check before anything is written; the parsed kit model. */
-async function analyse(kit: Kit): Promise<Model> {
-  check(isObject(kit), 'kit is not a JSON object');
-  check(kit.format === KIT_FORMAT, `unknown kit format '${String(kit.format)}' (this tool reads ${KIT_FORMAT})`);
-  const unknown = keysOf(kit).filter((k) => !KIT_KEYS.includes(k) && !KIT_OPTIONAL.includes(k));
-  check(!unknown.length, `unknown kit fields ${list(sorted(unknown))}: this kit is newer than this tool`);
-  const missing = KIT_KEYS.filter((k) => !has(kit, k));
-  check(!missing.length, `kit lacks ${list(sorted(missing))}`);
-  check(
-    typeof kit.version === 'string' && /^\d+\.\d+\.\d+$/.test(kit.version),
-    `unknown kit version '${String(kit.version)}'`,
-  );
-  const profileBytes = decode64(kit.profileSource);
-  const profile = kit.profile;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(decoder.decode(profileBytes));
-  } catch {
-    parsed = undefined;
+const SHN_ABS = 0xfff1,
+  STT_FILE = 4;
+
+/** Exports, imports, absolute symbols and code/data/state bytes of one object, from core.mjs readObject's result. */
+function objectSummary(o: ReadObject, name: string): ObjectSummary {
+  const exports = new Set<string>(),
+    imports = new Set<string>(),
+    absolute: string[] = [];
+  for (const s of o.symbols) {
+    if (s.type === STT_FILE || !s.name) continue;
+    if (s.section === SHN_ABS) absolute.push(s.name);
+    if (!s.binding) continue;
+    check(s.binding === 1, `${name}: weak symbol ${s.name} is unsupported`);
+    (s.section ? exports : imports).add(s.name);
   }
-  check(deepEqual(parsed, profile), 'kit profile differs from its profile source');
-  check(get(profile, 'schema') === PROFILE_SCHEMA, `unknown profile schema ${String(get(profile, 'schema'))}`);
+  const sizes = { code: 0, data: 0, state: 0 };
+  for (const s of o.sections)
+    if (s.group) sizes[s.group === 'text' ? 'code' : s.group === 'bss' ? 'state' : 'data'] += s.size;
+  return { exports, imports, absolute, ...sizes };
+}
+
+/** What the packages and the OP-XY need beyond Open-XY's own checks (openKit, done first): edits the device
+ * applies, names usable as package folders and files, and links its linker makes. */
+async function analyse(kit: Kit, opened: readonly (KitObject & ReadObject)[]): Promise<Model> {
+  const profile = kit.profile;
   check(/^[a-z0-9][a-z0-9._-]{0,30}$/.test(String(get(profile, 'id'))), 'invalid profile id');
   const services = keysOf(profile.services ?? {});
   for (const edit of profile.patches) {
-    check(
-      EDIT_KINDS.includes(get(edit, 'kind') as string),
-      `unknown edit kind '${String(get(edit, 'kind'))}': this kit is newer than this tool`,
-    );
-    let extra = keysOf(edit).filter((k) => !EDIT_KEYS.includes(k));
-    if (edit.kind === 'limit') {
-      extra = extra.filter((k) => k !== 'setting' && k !== 'choices');
-      limitChoices(edit, services);
-    }
-    check(!extra.length, `unknown edit fields ${list(sorted(extra))}: this kit is newer than this tool`);
+    check(EDIT_KINDS.includes(get(edit, 'kind') as string), `unknown edit kind '${String(get(edit, 'kind'))}'`);
+    if (edit.kind === 'limit') limitChoices(edit, services);
   }
   const machines = kit.machines,
     extensions = kit.extensions ?? [];
@@ -570,42 +450,22 @@ async function analyse(kit: Kit): Promise<Model> {
   );
   const both = sorted(ids.filter((i) => eids.includes(i)));
   check(!both.length, `ids used by both a machine and an extension: ${list(both)}`);
-  for (const entry of [...machines, ...extensions])
-    for (const key of ['patches', 'edits', 'definitions', 'address'])
-      check(!has(entry, key), `${entry.id} carries ${key}: edits and addresses belong only to the base`);
-  const names = new Set<string>(),
-    objects: Obj[] = [];
-  for (const [index, o] of kit.objects.entries()) {
-    const extra = keysOf(o).filter((k) => !OBJECT_KEYS.includes(k));
-    check(!extra.length, `unknown object fields ${list(sorted(extra))}: this kit is newer than this tool`);
-    check(!names.has(o.name), `duplicate object ${o.name}`);
-    names.add(o.name);
+  const objects: Obj[] = opened.map((o, index) => {
     check(
       typeof o.name === 'string' && /^[A-Za-z0-9_.-]+(\/[A-Za-z0-9_.-]+)*\.o$/.test(o.name) && !o.name.includes('..'),
       `unsafe object name '${o.name}'`,
     );
-    const owner = get<string>(o, 'owner'),
-      extension = get<string>(o, 'extension'),
-      service = get<string>(o, 'service');
-    check(owner === null || ids.includes(owner), `object ${o.name} has an unknown owner`);
-    check(
-      extension === null || (eids.includes(extension) && owner === null),
-      `object ${o.name} names an unknown extension`,
-    );
-    check(service === null || services.includes(service), `object ${o.name} names an unknown service`);
-    const blob = decode64(o.bytes);
-    check((await sha256(blob)) === o.sha256, `object hash mismatch: ${o.name}`);
-    objects.push({
+    return {
       order: index,
       name: o.name,
-      owner,
-      service,
+      owner: get<string>(o, 'owner'),
+      service: get<string>(o, 'service'),
       runtime: truthy(get(o, 'runtime')),
-      extension,
-      blob,
-      ...objectSummary(blob, o.name),
-    });
-  }
+      extension: get<string>(o, 'extension'),
+      blob: decode64(o.bytes),
+      ...objectSummary(o, o.name),
+    };
+  });
   const sdkExports = new Set(baseObjects(objects).flatMap((o) => [...o.exports]));
   for (const m of machines) {
     const own = objects.filter((o) => o.owner === m.id);
@@ -637,7 +497,7 @@ async function analyse(kit: Kit): Promise<Model> {
     check(!bad.length, `extension ${e.id} imports ${list(bad)}, which are not SDK or runtime exports`);
     check(o.exports.has(`sdk_extension_${e.id}_hooks`), `extension ${e.id} lacks its hooks accessor`);
   }
-  return { kit, profile, profileBytes, objects, generation: await generationOf(kit) };
+  return { kit, profile, profileBytes: decode64(kit.profileSource), objects, generation: await generationOf(kit) };
 }
 
 // ---------------------------------------------------------------- writing packages
@@ -766,7 +626,13 @@ const role = (o: Obj): string => (o.runtime ? 'runtime' : o.service ? `service=$
 const sum = (objects: readonly Obj[], key: 'code' | 'data' | 'state'): number =>
   objects.reduce((n, o) => n + o[key], 0);
 
-function writeBase(model: Model, common: Record<string, string>, sdkSource: string | null, profileSha: string) {
+function writeBase(
+  model: Model,
+  common: Record<string, string>,
+  sdkSource: string | null,
+  profileSha: string,
+  expanded: number | null,
+) {
   const { kit, profile } = model;
   const objects = baseObjects(model.objects);
   const files = new Map<string, Uint8Array>([
@@ -903,7 +769,7 @@ function writeBase(model: Model, common: Record<string, string>, sdkSource: stri
     ['heap_fill_bytes', profile.heap_fill_bytes],
     ...(['code', 'data', 'state'] as const).map((k): Field => [`runtime_${k}`, sum(runtime, k)]),
   ];
-  const x = expandedBase(profile);
+  const x = expanded;
   if (x !== null) extra.push(['expanded_module_base', hex8(x)]); // the 4 MiB option: older readers skip the key
   return { files, known, extra };
 }
@@ -1083,39 +949,57 @@ async function writeExtension(model: Model, e: Extension, order: number, common:
   return { files, known, extra };
 }
 
+/** A refusal of Open-XY's own builder, or a fault in it, said as its own. */
+function upstream(what: string, error: unknown): KitError {
+  return new KitError(`${what}: ${error instanceof Error ? error.message : String(error)}`);
+}
+
 /**
- * The base and every mod package of a kit, checked as `modkit split` checks it. finish gives each machine's finished
- * content; sdkSource the base's source= (the Open-XY repository@commit of the kit's SDK, when known).
+ * The base and every mod package of a kit. core: Open-XY's builder of the kit's release (it checks the kit first);
+ * sdkSource: the base's source= (the Open-XY repository@revision of the kit's SDK, when known).
  */
-export async function splitKit(
-  kit: Kit,
-  finish: (kit: Kit) => Promise<Finished>,
-  sdkSource: string | null = null,
-): Promise<SplitSet> {
+export async function splitKit(kit: Kit, core: Core, sdkSource: string | null = null): Promise<SplitSet> {
+  const opened = await core.openKit(kit).catch((error: unknown) => {
+    throw upstream("Open-XY's builder refused the kit", error);
+  });
+  let model: Model;
   try {
-    const model = await analyse(kit);
-    const { profile, generation } = model;
-    const common = { generation, profile: profile.id };
-    const assets = await finish(kit);
-    const packages: [string, { files: Map<string, Uint8Array>; known: Rec; extra: Field[] }][] = [
-      ['base', writeBase(model, common, sdkSource, await sha256(model.profileBytes))],
-    ];
-    const notices = noticeSections(kit.notices ?? '', new Set(kit.machines.map((m) => m.name)));
-    kit.machines.forEach((m, order) => {
-      const own = assets[m.id];
-      check(own, `no finished content for ${m.id}`);
-      packages.push([m.id, writeMachine(model, m, order, common, own, notices.get(m.name))]);
-    });
-    for (const [order, e] of (kit.extensions ?? []).entries())
-      packages.push([`ext-${e.id}`, await writeExtension(model, e, order, common)]);
-    const files = new Map<string, Uint8Array>();
-    for (const [name, { files: own, known, extra }] of packages) {
-      own.set('manifest.json', manifest(known as Record<string, string | number | null>, extra));
-      for (const [path, data] of await withList(own)) files.set(`${name}/${path}`, data);
-    }
-    return { profile: profile.id, generation, files };
+    model = await analyse(kit, opened.objects as (KitObject & ReadObject)[]);
   } catch (error) {
-    if (error instanceof KitError) throw error;
-    throw new KitError(`malformed kit (${error instanceof Error ? error.message : String(error)})`);
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new KitError(
+      `This app cannot package Open-XY's kit ${kit.version} for the OP-XY (${reason}). Check for an XY Forever update.`,
+    );
   }
+  const { profile, generation } = model;
+  const catalog = core.decode64(opened.stockCatalog);
+  const assets: Record<string, Record<string, Uint8Array>> = {};
+  for (const m of opened.machines) {
+    const files = await core
+      .buildAssets(opened, [m.id], catalog, core.assignNumbers(opened, [m.id], null), {}, [])
+      .catch((error: unknown) => {
+        throw upstream(`Open-XY's builder could not finish ${m.id}`, error);
+      });
+    delete files['content/op1_factory.json'];
+    assets[m.id] = files;
+  }
+  const common = { generation, profile: profile.id };
+  const expanded = core.offersExpandedMemory(profile)
+    ? ((profile['experimental_memory'] as Rec)['module_base'] as number)
+    : null;
+  const packages: [string, { files: Map<string, Uint8Array>; known: Rec; extra: Field[] }][] = [
+    ['base', writeBase(model, common, sdkSource, await sha256(model.profileBytes), expanded)],
+  ];
+  const notices = noticeSections(kit.notices ?? '', new Set(kit.machines.map((m) => m.name)));
+  kit.machines.forEach((m, order) => {
+    packages.push([m.id, writeMachine(model, m, order, common, assets[m.id] ?? {}, notices.get(m.name))]);
+  });
+  for (const [order, e] of (kit.extensions ?? []).entries())
+    packages.push([`ext-${e.id}`, await writeExtension(model, e, order, common)]);
+  const files = new Map<string, Uint8Array>();
+  for (const [name, { files: own, known, extra }] of packages) {
+    own.set('manifest.json', manifest(known as Record<string, string | number | null>, extra));
+    for (const [path, data] of await withList(own)) files.set(`${name}/${path}`, data);
+  }
+  return { profile: profile.id, generation, files };
 }

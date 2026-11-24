@@ -26,7 +26,7 @@ On the device a set lives in `mods/<generation>/` as a flat store, every file 4 
 `DIR/mods/<profile>/<generation>/`.
 
 Written on the host by `uv run -m xy_forever.modkit split` from an open-xy kit, and the same bytes by the web app from
-Open-XY's published kit (`web/src/kit/split.ts`; `tests/test_kit_browser.py` compares them); local index + archives,
+Open-XY's published kit with its release's builder (`web/src/kit/split.ts`; `tests/test_kit_browser.py` compares them); local index + archives,
 `mods fetch`: `xy_forever/modindex.py`;
 read by the device linker `native/mod_link` (B runs the assembly job). One flat folder per package: `base/`, `<machine id>/`,
 `ext-<extension id>/` (`-` is not valid in an id, so names cannot collide). Each holds an

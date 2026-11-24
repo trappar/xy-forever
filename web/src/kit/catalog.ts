@@ -1,10 +1,9 @@
-// Open-XY's catalog for the Mods page: the published kit downloaded (source.ts), split into XY Forever packages here
-// (split.ts, the finished content from Open-XY's own builder: assets.ts). A kit this app cannot read is refused with
-// the reason; a transfer checks the chosen packages again before it sends anything (pushPackages reads localSet).
+// Open-XY's catalog for the Mods page: the published kit and its release's builder downloaded (source.ts), and the
+// kit split into XY Forever packages here (split.ts). A kit this app cannot read is refused with the reason; a
+// transfer checks the chosen packages again before it sends anything (pushPackages reads localSet).
 import { PackageError, infoValues } from 'xy-forever-client';
 import type { HeldPackage, PackageSource } from 'xy-forever-client';
-import { CORE_RELEASE, finishedContent } from './assets.ts';
-import { fetchKit } from './source.ts';
+import { fetchKit, loadCore } from './source.ts';
 import { splitKit } from './split.ts';
 import type { Kit } from './split.ts';
 
@@ -32,8 +31,8 @@ export function memorySource(files: ReadonlyMap<string, Uint8Array>): PackageSou
 
 export async function loadCatalog(): Promise<Catalog> {
   const read = (await fetchKit()) as Kit;
-  const release = typeof read?.version === 'string' && read.version === CORE_RELEASE.version;
-  const set = await splitKit(read, finishedContent, release ? CORE_RELEASE.source : null);
+  const core = await loadCore((read as Partial<Kit> | null)?.version);
+  const set = await splitKit(read, core, `https://github.com/etcetc000/open-xy@v${read.version}`);
   const byPackage = new Map<string, Uint8Array[]>();
   for (const [path, data] of set.files) {
     const name = path.slice(0, path.indexOf('/'));

@@ -1,12 +1,13 @@
 """The web app's kit split (web/src/kit/split.ts, run under Node by web/scripts/kit-split.ts) against its host
-reference, xy_forever/modkit.py split: the same packages byte for byte and the same refusals.
+reference, xy_forever/modkit.py split: the same packages byte for byte, and the refusals of what the packages or the
+OP-XY cannot carry (Open-XY's own checks are its builder's, openKit).
 
 The synthetic kits of tests/test_modkit.py and tests/test_modpatch.py (capability edits, settings extensions) run in
-the gate tier with the hosts' stand-in content. The published Open-XY 0.0.7 kit (private fixtures) runs, when present
-with its SDK in the open-xy upstream clone, with each side's own Open-XY builder: the host's from the upstream release
-commit, the app's vendored copy (checked unchanged against that commit). It also shows a newer kit offering its new
-entry (the same code reads whatever kit it is given; the app fetches it at run time), and the 0.0.6 kit, made for
-another firmware profile, refused."""
+the gate tier with the hosts' stand-in content and the kit taken as it is. The published Open-XY 0.0.7 kit (private
+fixtures) runs, when present with its SDK in the open-xy upstream clone, with Open-XY's builder of that release: the
+host's from the upstream commit, the script's the vendored copy (checked unchanged against that commit; the app loads
+it from Open-XY). It also shows a newer kit offering its new entry (the same code reads whatever kit it is given; the
+app fetches it at run time), and the 0.0.6 kit refused by the 0.0.7 builder (another firmware profile)."""
 
 import base64
 import copy
@@ -72,19 +73,12 @@ def with_profile(kit, change):
 def refusals():
     """(name, kit, the message both sides give)."""
     out = [
-        ('format', dict(TK.synthetic_kit(), format='opxy-browser-kit/2'), 'unknown kit format'),
-        ('field', dict(TK.synthetic_kit(), future=1), 'newer than this tool'),
         (
             'edit kind',
             with_profile(TK.synthetic_kit(), lambda p: p['patches'][0].update(kind='relocate')),
             'unknown edit kind',
         ),
-        ('schema', TK.synthetic_kit(), 'profile differs from its profile source'),
     ]
-    out[-1][1]['profile']['schema'] = 2
-    kit = TK.synthetic_kit()
-    kit['objects'][0]['sha256'] = '0' * 64
-    out.append(('hash', kit, 'object hash mismatch'))
     kit = TK.synthetic_kit()
     o = next(o for o in kit['objects'] if o['name'] == 'alpha/voice.o')
     o.update(TK.entry(o['name'], TK.obj(['alpha_register'], ['beta_register']), owner=o['owner']))
@@ -179,7 +173,7 @@ class PublishedKit(unittest.TestCase):
             self.assertNotIn(late, {p.name for p in Path(earlier['root']).iterdir()})
             self.assertIn(late, {p.name for p in Path(result['root']).iterdir()})
             for refused in other:
-                self.assertRegex(refused.get('error', ''), 'made for another firmware profile', refused)
+                self.assertRegex(refused.get('error', ''), 'builder refused the kit: Firmware edit profile', refused)
 
 
 if __name__ == '__main__':

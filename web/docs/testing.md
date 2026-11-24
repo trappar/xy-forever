@@ -21,7 +21,8 @@ drives the app in the system Chrome, headless, never a downloaded browser:
 - **One dev server per run.** `playwright.config.ts` starts Vite once (`webServer`, a free port passed to the
   workers); the specs share it, so a cold dependency cache is optimized once.
 - **Projects.** `app` (`e2e/app.e2e.ts`: the switch from Install to Manage, the Device page, Files, an update that restarts into the menu, the
-  offline bug report; `e2e/open-xy.e2e.ts`: Open-XY's catalog, the kit served by the test: a failed download, and
+  offline bug report; `e2e/open-xy.e2e.ts`: Open-XY's catalog, the kit and the vendored builder served by the test: a failed
+  download, a builder that cannot be loaded, and
   with the published 0.0.7 kit from the private fixtures a newer kit's late entry and a transfer) against the
   simulator, Web Serial off in Chrome. `install` (`e2e/install.e2e.ts`: every
   refusal and guidance branch of the Install page against fake te-boot MIDI and a fake dev-menu MTP device,

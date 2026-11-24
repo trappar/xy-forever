@@ -1,9 +1,10 @@
-// Open-XY's catalog on the Mods page against the device simulator, the kit served by the test (never the network):
-// a download that fails says what to do; with the published 0.0.7 kit (private fixtures; skipped without it), an older
-// kit and then the newer one offer the newer kit's late entry, and two mods and an extension are sent.
+// Open-XY's catalog on the Mods page against the device simulator, the kit and its release's builder served by the test
+// (the builder: the vendored v0.0.7 copy; never the network): a download that fails, and a builder that cannot be
+// loaded, say what to do; with the published 0.0.7 kit (private fixtures; skipped without it), an older kit and then
+// the newer one offer the newer kit's late entry, and two mods and an extension are sent.
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { dirname, join } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 import { expect, test } from './cpu.ts';
 import type { Browser, Page } from '@playwright/test';
 import { findSimulator, startAll } from 'xy-forever-client/test/simulators.ts';
@@ -11,6 +12,7 @@ import { findSimulator, startAll } from 'xy-forever-client/test/simulators.ts';
 const found = findSimulator();
 const state = join(found.sessions, `web-e2e-open-xy-${process.pid}`);
 const kitPath = join(dirname(found.sessions), 'fixtures', 'open-xy-kit-0.0.7.json.gz');
+const vendored = new URL('../src/vendor/open-xy/', import.meta.url);
 let stopSim: (() => Promise<void>) | undefined;
 let simPort = 0;
 let browser: Browser | undefined;
@@ -28,12 +30,20 @@ test.afterAll(async () => {
   if (!found.why) rmSync(state, { recursive: true, force: true });
 });
 
-/** The Mods page of a connected app whose kit downloads answer with serve(). */
-async function modsPage(serve: () => Buffer | null): Promise<Page> {
+/** The Mods page of a connected app whose kit downloads answer with serve(); builder: Open-XY 0.0.7's is served. */
+async function modsPage(serve: () => Buffer | null, builder = true): Promise<Page> {
   const page = await browser!.newPage();
   await page.route('**/kit.json.gz', (route) => {
     const body = serve();
     return body ? route.fulfill({ body }) : route.abort('internetdisconnected');
+  });
+  await page.route(/\/sdk\/|cdn\.jsdelivr\.net/, (route) => {
+    const path = /\/sdk\/0\.0\.7\/(builder\/core\.mjs|sdk\/browser\/graphics\.mjs|tooling\/default_preset\.json)$/.exec(
+      new URL(route.request().url()).pathname,
+    )?.[1];
+    if (!builder || !path) return route.abort('internetdisconnected');
+    const contentType = extname(path) === '.json' ? 'application/json' : 'text/javascript';
+    return route.fulfill({ body: readFileSync(new URL(path, vendored)), contentType });
   });
   await page.goto(`${process.env['XYF_E2E_URL']!}?sim=${simPort}`);
   await page.getByRole('button', { name: 'Connect' }).click();
@@ -49,6 +59,14 @@ test('says what to do when the catalog cannot be downloaded', async () => {
   await expect(page.locator('#open-xy-status')).toHaveText(
     /could not be downloaded \(no answer from open-xy\.com\)\. Check the internet connection and try again/,
   );
+  await page.close();
+});
+
+test("says what to do when Open-XY's builder cannot be loaded", async () => {
+  test.skip(found.why !== null, `skipped: ${found.why}`);
+  const page = await modsPage(() => Buffer.from('{"version": "0.0.7"}'), false);
+  await page.getByRole('button', { name: 'Show the catalog' }).click();
+  await expect(page.locator('#open-xy-status')).toHaveText(/Open-XY 0\.0\.7's builder could not be loaded\)\. Check/);
   await page.close();
 });
 

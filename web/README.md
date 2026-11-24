@@ -48,10 +48,13 @@ after **Disconnect** (beside the link status) nothing reconnects without a click
   downloads and verifies the release, installs and reads it back, then restarts straight into the XY Forever menu
   and checks the running image. USB control uses the usual device trust prompt.
 - **Mods**: **Open-XY mods**: Open-XY's published kit (`https://open-xy.com/kit.json.gz`, read fresh each time, so
-  a newer kit's entries show without a new deployment; in development the dev server proxies it), split into packages
-  in the browser exactly as `modkit split` does (`src/kit/`, Open-XY's own v0.0.7 builder vendored in
-  `src/vendor/open-xy/` for the finished content); choose mods, send the base and the chosen packages, and save the
-  selection (`config.set`). A kit it cannot read is refused with the reason, a failed download says what to do.
+  a newer kit's entries show without a new deployment) and its release's builder (`core.mjs` from
+  `https://open-xy.com/sdk/<version>/builder/`, with its imports beside it in the repository's layout), both loaded at
+  run time (`src/kit/source.ts`; in development the dev server proxies them, the builder falling back to the release
+  tag on jsDelivr). The builder checks the kit and finishes each machine's content; the app splits it into packages
+  exactly as `modkit split` does (`src/kit/`); choose mods, send the base and the chosen packages, and save the
+  selection (`config.set`). A kit it cannot package is refused with the reason, a failed download says what to do.
+  The vendored v0.0.7 builder (`src/vendor/open-xy/builder/`) is only the tests' reference.
   Packages on the device grouped by kind (synths, drums, samplers, effects, players, extensions) with their
   saved on/off state; add packages from a folder (a `modkit split` generation folder); remove a package or a whole set;
   **Mods on the OP-XY**: the mods it runs and Mod memory, saved as the device's Mods menu does

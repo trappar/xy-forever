@@ -41,8 +41,9 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     proxy: {
-      // Give local browsers a same-origin URL for the live kit.
+      // Give local browsers same-origin URLs for the live kit and its release's builder (src/kit/source.ts).
       '^/kit\\.json\\.gz(?:\\?|$)': { target: 'https://open-xy.com', changeOrigin: true },
+      '^/sdk/': { target: 'https://open-xy.com', changeOrigin: true },
     },
   },
   resolve: { alias },
