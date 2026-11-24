@@ -16,6 +16,8 @@
 //                          code, live: both (default), MTP (every serial request but hello answers serial_off: no host
 //                          tool, no web app) or Serial (MTP operations answer Access_Denied): usb_service_settings.ipp.
 //                          usb=mtp (written before MTP alone existed) reads as mtp_serial; anything else: the default.
+//   saver=1|2|5|10|off     Screen saver (#315): minutes without a key, knob or USB activity before the menu gives way
+//                          to the bouncing mark (xyf_saver.hpp), or off; default 1. Anything else: the default.
 // (The demo "knob=normal|reversed" left; a record that still has it reads as before, the key ignored.)
 // format: 1 (or none: a record before the key) reads; a higher number is a newer XY Forever's record: it reads as
 // the defaults with newer set (the page says so and changes nothing); anything else: the defaults.
@@ -33,14 +35,22 @@ static const char part_path[] = "/yaffs2/xy-forever/settings.txt.part";
 static const uint32_t max_text = 256, version = 1;
 enum PowerOn : uint32_t { power_play = 0, power_always = 1 };
 enum Usb : uint32_t { usb_mtp_serial = 0, usb_mtp_only = 1, usb_serial = 2, usb_modes };
+// #315: the screen saver's start, an option index (saver_options; saver_values the record's words, saver_ms the time).
+enum Saver : uint32_t { saver_1 = 0, saver_2, saver_5, saver_10, saver_off, saver_modes };
 struct Record {
-    uint32_t confirm, power_on, usb, newer;
+    uint32_t confirm, power_on, usb, newer, saver;
 };
 static inline void defaults(Record& r) {
     r.confirm = 1;
     r.power_on = power_play;
     r.usb = usb_mtp_serial;
     r.newer = 0;
+    r.saver = saver_1;
+}
+static const char* const saver_values[saver_modes] = {"1", "2", "5", "10", "off"};
+// The idle time before the screen saver starts, 0: never (off).
+static inline uint32_t saver_ms(uint32_t s) {
+    return s == saver_2 ? 120000u : s == saver_5 ? 300000u : s == saver_10 ? 600000u : s == saver_off ? 0u : 60000u;
 }
 static inline bool equal(const char* v, uint32_t n, const char* s) {
     uint32_t i = 0;
@@ -90,6 +100,9 @@ static inline void parse(const char* t, uint32_t length, Record& r) {
     v = value(t, length, "usb", n);
     if (v && equal(v, n, "serial")) r.usb = usb_serial;
     else if (v && equal(v, n, "mtp_only")) r.usb = usb_mtp_only;
+    v = value(t, length, "saver", n);
+    for (uint32_t s = 0; v && s != saver_modes; ++s)
+        if (equal(v, n, saver_values[s])) r.saver = s;
 }
 static inline const char* usb_value(uint32_t u) {
     return u == usb_serial ? "serial" : u == usb_mtp_only ? "mtp_only" : "mtp_serial";
@@ -102,6 +115,8 @@ static inline uint32_t format(char* out, uint32_t capacity, const Record& r) {
                            r.power_on == power_always ? "always" : "play",
                            "\nusb=",
                            usb_value(r.usb),
+                           "\nsaver=",
+                           saver_values[r.saver < saver_modes ? r.saver : saver_1],
                            "\n"};
     uint32_t n = 0;
     for (uint32_t p = 0; p != sizeof(parts) / sizeof(parts[0]); ++p)
@@ -125,22 +140,33 @@ static inline uint32_t format(char* out, uint32_t capacity, const Record& r) {
 // way as the Mods page's toggles (#197, xyf_mods_io pick_step), and built at the next boot (Continue, or a power-on:
 // the fingerprint hashes memory=). xyf_mods_io says what the row shows (menu::State memory, memory_pending: not saved yet).
 #if !defined(XYF_SMALL_CRC)
-enum Row : uint32_t { row_memory = 0, row_power_on, row_usb, row_confirm, row_about, rows, row_packs = rows };
-static const char* const labels[rows] = {"Mod memory", "Menu at power-on", "USB mode", "Ask before USB control",
-                                         "About"};
+enum Row : uint32_t {
+    row_memory = 0,
+    row_power_on,
+    row_usb,
+    row_confirm,
+    row_saver,
+    row_about,
+    rows,
+    row_packs = rows
+};
+static const char* const labels[rows] = {
+    "Mod memory", "Menu at power-on", "USB mode", "Ask before USB control", "Screen saver", "About"};
 #else
 enum Row : uint32_t { row_memory = 0, row_power_on, row_usb, row_about, rows, row_packs = rows };
 static const char* const labels[rows] = {"Mod memory", "Menu at power-on", "USB mode", "About"};
 #endif
 enum Memory : uint32_t { memory_reading = 0, memory_unavailable, memory_standard, memory_expanded };
 static inline const char* label(uint32_t row) { return row < rows ? labels[row] : ""; }
-// The options, in value order (Memory - memory_standard; PowerOn; Usb; confirm 0 off, 1 on).
+// The options, in value order (Memory - memory_standard; PowerOn; Usb; confirm 0 off, 1 on; Saver).
 // Mod memory: the base's reserved region, 2 MiB (reserved_bytes 0x200000, mod_known_bases.inc), or its 4 MiB layout.
 static const char* const memory_options[] = {"2 MiB", "4 MiB (experimental)"};
 static const char* const power_on_options[] = {"PLAY held", "Always"};
 static const char* const usb_options[usb_modes] = {"MTP + Serial", "MTP", "Serial"};
 static const char* const confirm_options[] = {"Off", "On"};
-static const uint32_t power_on_option_count = 2, usb_option_count = usb_modes, confirm_option_count = 2;
+static const char* const saver_options[saver_modes] = {"1 minute", "2 minutes", "5 minutes", "10 minutes", "Off"};
+static const uint32_t power_on_option_count = 2, usb_option_count = usb_modes, confirm_option_count = 2,
+                      saver_option_count = saver_modes;
 // The row's value (short: the page draws it at the label's size); pending: the Mods page's mark (": applied when
 // you boot"; the simulator's log; the page marks the value instead).
 static inline const char* memory_text(uint32_t memory, bool pending) {
@@ -156,6 +182,7 @@ static inline const char* usb_text(uint32_t u) {
     return u == usb_mtp_only ? "MTP (no web app)" : usb_options[u == usb_serial ? 2 : 0];
 }
 static inline const char* confirm_text(uint32_t c) { return confirm_options[c ? 1 : 0]; }
+static inline const char* saver_text(uint32_t s) { return saver_options[s < saver_modes ? s : saver_1]; }
 // The page's notes, and the lines about a save (#191: quiet_ms after the last pick, as xyf_mods_io.hpp quiet_ms).
 static const uint32_t quiet_ms = 1000;
 static const char note_newer[] = "settings.txt is from a newer XY Forever: kept unchanged.";

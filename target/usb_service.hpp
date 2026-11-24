@@ -312,7 +312,7 @@ const char* job_target();
 bool settings_load();
 xyf::settings::Record& settings();
 uint32_t settings_store();
-// #21: settings_open, PLAY on a settings.txt row (xyf_settings.hpp Row: Menu at power-on, USB mode, Ask before USB control): its option
+// #21: settings_open, PLAY on a settings.txt row (xyf_settings.hpp Row: Menu at power-on, USB mode, Ask before USB control, Screen saver): its option
 // list opened (menu::open_options; 0), or the page's note why not (still reading, a newer record: never changed).
 // settings_pick, the list's PLAY: B's copy takes the option at once (#191; the row marked until written).
 // settings_view, each menu pass: settings_load, the rows' values and marks into the menu state; a pick's write of the

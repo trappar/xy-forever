@@ -99,7 +99,7 @@ TEST_CASE("menu state machine") {
     press(s, menu::key_track1 + 3);       // TRACK4: Settings
     REQUIRE((s.main_selected == menu::item_settings && press(s, menu::key_play) == Action::redraw &&
              s.screen == Screen::settings));
-    REQUIRE((settings::rows == 5 && !strcmp(settings::label(settings::row_power_on), "Menu at power-on") &&
+    REQUIRE((settings::rows == 6 && !strcmp(settings::label(settings::row_power_on), "Menu at power-on") &&
              !strcmp(settings::label(settings::row_usb), "USB mode") &&
              !strcmp(settings::label(settings::row_about), "About")));
     REQUIRE((press(s, menu::key_play) == Action::change_setting && s.entry == settings::row_memory));
@@ -109,6 +109,8 @@ TEST_CASE("menu state machine") {
     REQUIRE((press(s, menu::key_play) == Action::change_setting && s.entry == settings::row_usb));
     press(s, menu::key_plus);
     REQUIRE((press(s, menu::key_play) == Action::change_setting && s.entry == settings::row_confirm));
+    press(s, menu::key_plus);
+    REQUIRE((press(s, menu::key_play) == Action::change_setting && s.entry == settings::row_saver));   // #315
     press(s, menu::key_plus);
     REQUIRE((press(s, menu::key_play) == Action::redraw && s.screen == Screen::info));       // About
     REQUIRE((press(s, menu::key_play) == Action::redraw && s.screen == Screen::settings));
@@ -120,6 +122,7 @@ TEST_CASE("menu state machine") {
     {
         static const char* const three[] = {"One", "Two", "Three"};
         press(s, menu::key_play);                                       // Settings (still the row), on About
+        press(s, menu::key_minus);
         press(s, menu::key_minus);
         press(s, menu::key_minus);
         press(s, menu::key_minus);

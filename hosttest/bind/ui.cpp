@@ -197,6 +197,7 @@ void bind_flow(nb::module_ m) {
         flow_state.power_on_text = settings::power_on_text(power_on);
         flow_state.usb_text = settings::usb_text(usb);
         flow_state.confirm_text = settings::confirm_text(usb & 1);           // #65: On / Off
+        flow_state.saver_text = settings::saver_text(power_on * 2 + usb);    // #315: each of its five values
         if (newer) flow_state.settings_note = settings::note_newer;
     });
     // #21: the rows' marks (settings_view: not saved yet; bit per settings::Row) and the option list key_ui opens
@@ -204,13 +205,16 @@ void bind_flow(nb::module_ m) {
     m.def("flow_settings_marked", [](unsigned marks) { flow_state.settings_marked = marks; });
     m.def("flow_options", [](unsigned current) {
         const unsigned row = flow_state.settings_selected;
-        const bool memory = row == settings::row_memory, power_on = row == settings::row_power_on;
+        const bool memory = row == settings::row_memory, power_on = row == settings::row_power_on,
+                   saver = row == settings::row_saver;
         menu::open_options(flow_state,
                            memory   ? settings::memory_options :
                            power_on ? settings::power_on_options :
+                           saver    ? settings::saver_options :
                                       settings::usb_options,
                            memory   ? 2 :
                            power_on ? settings::power_on_option_count :
+                           saver    ? settings::saver_option_count :
                                       settings::usb_option_count,
                            current);
     });

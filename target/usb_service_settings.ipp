@@ -4,12 +4,13 @@
 namespace xs = xyf::settings;
 #include "usb_service_pack_list.ipp"
 #include "usb_service_pack_change.ipp"
-xs::Record settings_record __attribute__((section(".data"))) = {1, xs::power_play, xs::usb_mtp_serial, 0};
+xs::Record settings_record __attribute__((section(".data"))) = {1, xs::power_play, xs::usb_mtp_serial, 0, xs::saver_1};
 U32 settings_loaded __attribute__((section(".data"))) = 0;
 // #21: what settings.txt holds (as read or last saved): the page marks a row whose value differs from it.
 U32 stored_power_on __attribute__((section(".data"))) = xs::power_play;
 U32 stored_usb __attribute__((section(".data"))) = xs::usb_mtp_serial;
 U32 stored_confirm __attribute__((section(".data"))) = 1;
+U32 stored_saver __attribute__((section(".data"))) = xs::saver_1;
 bool settings_load() {
     if (settings_loaded) return true;
     if (!menu_link::usb_idle()) return false;                           // 191: not while A's catalog is on its way
@@ -28,6 +29,7 @@ bool settings_load() {
     stored_power_on = settings_record.power_on;
     stored_usb = settings_record.usb;   // nothing marked
     stored_confirm = settings_record.confirm;
+    stored_saver = settings_record.saver;
     settings_loaded = 1;                                                // one try: bounded
     return true;
 }
@@ -48,7 +50,7 @@ U32 settings_due __attribute__((section(".data"))) = 0;
 U32 settings_since __attribute__((section(".data"))) = 0;
 U32 settings_job __attribute__((section(".data"))) = 0;
 U32 settings_left __attribute__((section(".data"))) = 0;
-xs::Record settings_written __attribute__((section(".data"))) = {1, xs::power_play, xs::usb_mtp_serial, 0};
+xs::Record settings_written __attribute__((section(".data"))) = {1, xs::power_play, xs::usb_mtp_serial, 0, xs::saver_1};
 uint32_t settings_store() {
     char text[xs::max_text];
     const U32 n = xs::format(text, sizeof(text), settings_record);
@@ -59,7 +61,8 @@ uint32_t settings_store() {
 U32 settings_marks() {
     const xs::Record& r = settings_record;
     return (r.power_on != stored_power_on ? 1u << xs::row_power_on : 0u) |
-           (r.usb != stored_usb ? 1u << xs::row_usb : 0u) | (r.confirm != stored_confirm ? 1u << xs::row_confirm : 0u);
+           (r.usb != stored_usb ? 1u << xs::row_usb : 0u) | (r.confirm != stored_confirm ? 1u << xs::row_confirm : 0u) |
+           (r.saver != stored_saver ? 1u << xs::row_saver : 0u);
 }
 // #191: USB mode as B's copy holds it: a pick applies at once (usb_service.hpp serial_off, mtp_off).
 bool serial_off() { return settings_record.usb == xs::usb_mtp_only; }
@@ -83,6 +86,7 @@ const char* settings_open(xyf::menu::State& s, uint32_t row) {
     else if (row == xs::row_usb) xyf::menu::open_options(s, xs::usb_options, xs::usb_option_count, r.usb);
     else if (row == xs::row_confirm)
         xyf::menu::open_options(s, xs::confirm_options, xs::confirm_option_count, r.confirm);
+    else if (row == xs::row_saver) xyf::menu::open_options(s, xs::saver_options, xs::saver_option_count, r.saver);
     return 0;
 }
 void settings_pick(const xyf::menu::State& s) {
@@ -91,6 +95,7 @@ void settings_pick(const xyf::menu::State& s) {
     if (s.entry == xs::row_power_on) r.power_on = s.option_selected;
     else if (s.entry == xs::row_usb) r.usb = s.option_selected;
     else if (s.entry == xs::row_confirm && !key_from_host) r.confirm = s.option_selected;
+    else if (s.entry == xs::row_saver) r.saver = s.option_selected;   // #315: key_ui's next pass uses it
     else return;
     settings_due = 1;
     settings_since = now();                           // saved once quiet
@@ -110,6 +115,7 @@ const char* settings_step(bool now_due) {
         stored_power_on = settings_written.power_on;
         stored_usb = settings_written.usb;
         stored_confirm = settings_written.confirm;
+        stored_saver = settings_written.saver;
         return xs::note_saved;
     }
     if (!settings_due) return 0;
@@ -137,6 +143,7 @@ bool settings_view(xyf::menu::State& s, const char*& line) {
     const char* const power_on = xs::power_on_text(r.power_on);
     const char* const usb = xs::usb_text(r.usb);
     const char* const confirm = xs::confirm_text(r.confirm);
+    const char* const saver = xs::saver_text(r.saver);
     bool changed = false;
     if (!s.pack_names) {
         s.pack_names = packs.names;
@@ -160,11 +167,13 @@ bool settings_view(xyf::menu::State& s, const char*& line) {
         if (note != xs::note_saved && s.screen == Screen::settings) s.settings_note = note; // on the page too
     }
     const U32 marks = settings_marks();
-    if (s.power_on_text != power_on || s.usb_text != usb || s.confirm_text != confirm || s.settings_marked != marks)
+    if (s.power_on_text != power_on || s.usb_text != usb || s.confirm_text != confirm || s.saver_text != saver ||
+        s.settings_marked != marks)
         changed = true;
     s.power_on_text = power_on;
     s.usb_text = usb;
     s.confirm_text = confirm;
+    s.saver_text = saver;
     s.settings_marked = marks;
     return changed;
 }
