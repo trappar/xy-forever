@@ -10,7 +10,7 @@ name: Firmware
 
 on:
   pull_request:
-    paths: &inputs
+    paths:
       - 'target/**'
       - 'native/**'
       - 'xy_forever/**'
@@ -24,7 +24,18 @@ on:
       - '!**/*.md'
   push:
     branches: [main]
-    paths: *inputs
+    paths:
+      - 'target/**'
+      - 'native/**'
+      - 'xy_forever/**'
+      - 'third_party/**'
+      - 'toolchains.json'
+      - 'stock.json'
+      - 'stock_facts.json'
+      - 'scripts/setup.py'
+      - '.github/workflows/firmware.yml'
+      - '.github/actions/**'
+      - '!**/*.md'
   workflow_dispatch:
 
 permissions:
@@ -41,8 +52,6 @@ jobs:
     timeout-minutes: 15
     env:
       UV_NO_SYNC: "1"   # uv run keeps the sync below: no hosttest build
-      XYF_PRIVATE: ${{ runner.temp }}/private   # empty: no stock files
-      XYF_TOOLCHAIN: ${{ runner.temp }}/tools/blackfin
     steps:
       - uses: actions/checkout@v7
         with:
@@ -55,8 +64,13 @@ jobs:
           path: ${{ runner.temp }}/tools/blackfin
           key: blackfin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('stock.json', 'toolchains.json') }}
       - name: Blackfin toolchain (open-xy's public release, checked against toolchains.json)
+        env:
+          XYF_TOOLCHAIN: ${{ runner.temp }}/tools/blackfin
         run: uv run scripts/setup.py toolchain
       - name: Build the product (xyf-build verifies it before it finishes)
+        env:
+          XYF_PRIVATE: ${{ runner.temp }}/private   # empty: no stock files
+          XYF_TOOLCHAIN: ${{ runner.temp }}/tools/blackfin
         run: mkdir -p "$XYF_PRIVATE" && uv run xyf-build --xyf-product --out build/product
       - id: image
         name: os.ldr and its SHA-256
