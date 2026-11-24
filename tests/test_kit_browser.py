@@ -22,13 +22,14 @@ from pathlib import Path
 import pytest
 import test_modkit as TK
 import test_modpatch as TP
+import web_open_xy
 
 from xy_forever import modkit as M
 from xy_forever import paths
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = 'web/scripts/kit-split.ts'
-USES = ('web/scripts/kit-split.ts', 'web/src/kit/', 'web/src/vendor/open-xy/')
+USES = ('web/scripts/kit-split.ts', 'web/src/kit/', 'web/src/vendor/open-xy/', 'scripts/web_open_xy.py')
 SOURCE = 'https://github.com/example/sdk@abc'
 KIT_007 = paths.FIXTURES / 'open-xy-kit-0.0.7.json.gz'  # https://open-xy.com/kit.json.gz on 2026-11-23
 KIT_007_SHA256 = 'e971adfaf1a541b1e500cb40cd3abca38e74f0a40c9d3b7c8fedd7388c83c354'
@@ -41,9 +42,10 @@ VENDORED = {
 }
 
 
-def node_split(kits, out, assets=(), sdk_source=SOURCE):
-    """One line per kit from the script: {generation, root} or {error}."""
+def node_split(kits, out, assets=(), sdk_source=SOURCE, refill=()):
+    """One line per kit from the script: {generation, root} or {error}. refill: (profile, catalog) files."""
     cmd = ['node', SCRIPT, '--out', str(out), '--sdk-source', sdk_source]
+    cmd += ['--profile', str(refill[0]), '--catalog', str(refill[1])] if refill else []
     cmd += [a for kit in kits for a in ('--kit', str(kit))] + [a for f in assets for a in ('--assets', str(f))]
     run = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     assert run.returncode == 0, run.stderr[-2000:]
@@ -174,6 +176,21 @@ class PublishedKit(unittest.TestCase):
             self.assertIn(late, {p.name for p in Path(result['root']).iterdir()})
             for refused in other:
                 self.assertRegex(refused.get('error', ''), 'builder refused the kit: Firmware edit profile', refused)
+            # #183: the site's pinned kit (teenage engineering's parts stripped), refilled as the app refills it from
+            # Open-XY's repository (the published kit's own profile and catalog: the same bytes, by SHA-256)
+            published = json.loads(gzip.decompress(KIT_007.read_bytes()))
+            stripped = work / 'stripped.json'
+            stripped.write_bytes(web_open_xy.strip(gzip.decompress(KIT_007.read_bytes())))
+            profile = work / 'profile.json'
+            profile.write_bytes(base64.b64decode(published['profileSource']))
+            catalog = work / 'op1_factory.json'
+            catalog.write_bytes(base64.b64decode(published['stockCatalog']))
+            self.assertEqual(web_open_xy.sha256(profile.read_bytes()), web_open_xy.PROFILE[1])
+            self.assertEqual(web_open_xy.sha256(catalog.read_bytes()), web_open_xy.CATALOG[1])
+            (pinned,) = node_split([stripped], work / 'pinned', (), SOURCE_007, (profile, catalog))
+            self.assertEqual(pinned.get('generation'), ref.name, pinned)
+            self.assertEqual(tree(pinned['root']), tree(ref))
+            self.assertEqual(len([p for p in Path(pinned['root']).iterdir() if p.is_dir()]), 102)
 
 
 if __name__ == '__main__':
