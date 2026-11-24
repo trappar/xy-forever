@@ -147,6 +147,7 @@ struct Sizes {
 }; // linkKit's sizes
 static const U32 detail_bytes = 33;
 static const U32 zero_slice = 128u * 1024u; // module bytes one zero step clears
+static const U32 release_floor_min = 20, release_floor_max = 66; // magnitude in dB (Open-XY v0.0.7)
 // linkKit's return value. module = the caller's buffer, sizes.initialized bytes; globals,
 // aliases, objects, numbers and service names are read with the functions below (segments are
 // not kept). A refusal is `status` plus `detail` (<= 32 bytes: the name, id or number core.mjs
@@ -160,6 +161,7 @@ struct Result {
     Sizes sizes;
     U32 services; // bit i: services.txt row i is active (linkKit services)
     U32 extensions; // bit i: extensions.txt row i is linked (linkKit extensions)
+    U32 release_floor; // selected release-floor magnitude, or zero for the profile default
     U32 objects, numbers, globals, aliases; // counts
     U32 object_bytes; // object bytes passed to step(), both passes
 };

@@ -2,8 +2,9 @@
 #include "mod_patch.hpp"
 namespace xyf_core { namespace mod_patch {
 namespace {
-enum Kind { heap = 1, table, text, hook, startup };
-enum Flag { call = 1, profiling_off = 2, has_after = 4 };
+enum Kind { heap = 1, table, text, hook, startup, limit };
+enum Flag { call = 1, profiling_off = 2, has_after = 4, has_choices = 8 }; // has_choices is internal
+const U32 floor_choices = mod_link::release_floor_max - mod_link::release_floor_min + 1;
 enum Phase { check_stock, wait_module, resolve, apply, check_image, inspect_image, done, failed };
 const Byte no_service = 0xff;
 const unsigned short no_symbol = 0xffff;
@@ -98,9 +99,10 @@ Status parse_edits(Patcher& p) {
     const Byte* data = p.edits;
     const U32 size = p.edits_bytes;
     p.edit_count = p.service_count = 0;
-    if (size < 12 || size > max_edits_file || data[0] != 'X' || data[1] != 'Y' || data[2] != 'F' || data[3] != 'E' ||
-        le16(data + 4) != 1)
+    if (size < 12 || size > max_edits_file || data[0] != 'X' || data[1] != 'Y' || data[2] != 'F' || data[3] != 'E')
         return refuse(p, Status::edits, "header");
+    const U32 version = le16(data + 4);
+    if (version != 1 && version != 2) return refuse(p, Status::edits, "header");
     const U32 count = le16(data + 6), services = le16(data + 8), string_bytes = le16(data + 10);
     if (count > p.limit_edits || services > max_services || 12 + 2 * services > size ||
         string_bytes > size - 12 - 2 * services)
@@ -128,14 +130,30 @@ Status parse_edits(Patcher& p) {
         e.offset = le32(r + 8);
         e.length = (unsigned short)le16(r + 12);
         e.symbol = (unsigned short)le16(r + 14);
-        const bool fixed = e.kind == heap || e.kind == table || e.kind == text;
-        if (r[3] || e.kind < heap || e.kind > startup || (e.flags & ~7u) || !e.length || e.length > max_edit_bytes ||
-            (e.service != no_service && e.service >= services) || (e.symbol != no_symbol && e.symbol >= string_bytes) ||
-            fixed != bool(e.flags & has_after) || ((e.flags & (call | profiling_off)) && e.kind != hook) ||
-            (e.service != no_service && e.kind != hook && e.kind != text))
+        const U32 choices = r[3];
+        const bool fixed = e.kind == heap || e.kind == table || e.kind == text || e.kind == limit;
+        if (e.kind < heap || e.kind > (version == 1 ? startup : limit) || (e.flags & ~7u) || !e.length ||
+            e.length > max_edit_bytes || (e.service != no_service && e.service >= services) ||
+            (e.symbol != no_symbol && e.symbol >= string_bytes) || fixed != bool(e.flags & has_after) ||
+            ((e.flags & (call | profiling_off)) && e.kind != hook) ||
+            (e.service != no_service && e.kind != hook && e.kind != text && e.kind != limit))
             return refuse(p, Status::edits, "edit", i);
+        if (e.kind == limit) {
+            if (e.service == no_service || e.symbol != no_symbol) return refuse(p, Status::edits, "limit", i);
+            const U32 name = p.service_names[e.service];
+            const bool samples = string_bytes - name >= 13 &&
+                                 same_bytes(strings + name, reinterpret_cast<const Byte*>("long_samples"), 13);
+            const bool floor = string_bytes - name >= 14 &&
+                               same_bytes(strings + name, reinterpret_cast<const Byte*>("release_floor"), 14);
+            if (!((samples && e.length == 8 && !choices) ||
+                  (floor && ((e.length == 8 && choices == floor_choices) || (e.length == 2 && !choices)))))
+                return refuse(p, Status::edits, "limit", i);
+            if (choices) e.flags |= has_choices;
+        } else if (choices) {
+            return refuse(p, Status::edits, "edit", i);
+        }
         at += 16;
-        const U32 stored = (e.flags & has_after) ? 2u * e.length : e.length;
+        const U32 stored = (1u + bool(e.flags & has_after) + choices) * e.length;
         if (size - at < stored) return refuse(p, Status::edits, "edit", i);
         e.before = at;
         e.after = (e.flags & has_after) ? at + e.length : 0;
@@ -445,11 +463,19 @@ bool service_active(const Patcher& p, U32 name) {
 Status resolve_edits(Patcher& p) {
     const Profile& f = *p.profile;
     const Byte* strings = p.edits + p.strings;
+    const U32 floor = p.linked->release_floor;
+    bool floor_used = false;
     for (U32 i = 0; i != p.edit_count; ++i) {
         Edit& e = p.table[i];
         bool active = !((e.flags & profiling_off) && p.profiling);
         if (e.service != no_service) active = active && service_active(p, p.service_names[e.service]);
         e.active = active;
+        if (active && (e.flags & has_choices) && floor) {
+            if (floor < mod_link::release_floor_min || floor > mod_link::release_floor_max)
+                return refuse(p, Status::edits, "release floor", i);
+            e.after += e.length * (1 + floor - mod_link::release_floor_min);
+            floor_used = true;
+        }
         if (active && (e.kind == hook || e.kind == startup)) {
             // linked.globals.get(symbol): edits.bin's strings are NUL-terminated (parse_edits)
             U32 destination = 0;
@@ -467,6 +493,7 @@ Status resolve_edits(Patcher& p) {
                 break;
             }
     }
+    if (floor && !floor_used) return refuse(p, Status::edits, "release floor");
     return Status::ok;
 }
 

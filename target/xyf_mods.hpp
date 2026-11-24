@@ -10,7 +10,7 @@
 // the memory estimate, the job request and the result line. Reading the packages and running the job
 // is xyf_mods_io (processor B only); drawing is xyf_mods_view. No stock calls, no division, no BSS.
 namespace xyf { namespace mods {
-static const uint32_t max_packages = 96, pool_bytes = 3072, max_services = 16, name_chars = 22;
+static const uint32_t max_packages = 104, pool_bytes = 3072, max_services = 16, name_chars = 22;
 static const uint32_t max_machines = 64, max_extensions = 8;    // mods.apply's bounds (usb_service)
 // Page::selected: no row (nothing listed). The list holds only packages; the status, filter and all rows of
 // earlier versions left it (the status joined the memory line, the filter the title bar; SHIFT + keys act on them).

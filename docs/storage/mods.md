@@ -42,8 +42,8 @@ separated by one space, `-` for none.
   the reader allows 32). Files: `edits.bin`; `objects/sdk/…` unchanged with `objects.txt` (`<order> <role> <path>`, role `core`, `service=<name>` or `runtime`;
   link order is ascending `order` across all packages); `definitions.txt`; `fixed.txt`; `fallbacks.txt`; `services.txt` (users and the bytes the service adds);
   `machines.txt` and `absent.txt` (the whole collection: kind, prefix, requested numbers, features, origin, source, fallbacks); `extensions.txt` (link order,
-  services, claims, `labels=` one per claim: percent-encoded UTF-8, only `A-Za-z0-9_.-~` kept, empty = none, `-` without claims; accessors, processor);
-  `identities.txt` (`profile.identities`: `<rule> <value>`, each of `engines engine_none pages page_none effect_page` and the lists `stock_engines sample_pages
+  services, claims, `labels=` one per claim: percent-encoded UTF-8, only `A-Za-z0-9_.-~` kept, empty = none, `-` without claims; accessors, processor).
+  The base also has `identities.txt` (`profile.identities`: `<rule> <value>`, each of `engines engine_none pages page_none effect_page` and the lists `stock_engines sample_pages
   effects players` once, comma-separated, `-` = empty); `linked.txt`; host-only `profile.json` (verbatim), `screen.svg`, `notices.txt`.
 - **machine** (`type=mod`, `machine=<kind>`, `name`, `version` = catalog tag, `source` =
   `<repository>@<commit>`, `licence`: `unknown` unless the kit's notices carry one). Extra keys:
@@ -56,11 +56,18 @@ separated by one space, `-` for none.
 - **extension** (`machine=extension`). Extra keys: `id`, `order`, `link`, `services`, `claims`,
   `accessors`, `processor`, `state_id`, `asset`, sizes. Files: its object, `content/display/<asset>`
   (a master processor's artwork), host-only `extension.json`.
-- **`edits.bin`** (little-endian): `XYFE`, u16 version (1), u16 edits, u16 services, u16 string
+  Open-XY v0.0.7 adds optional `drumline_page=1` and `capabilities=` to `extensions.txt`. A selected extension
+  activates these users. The capabilities list contains `long_samples`, `release_floor`, or both in that order.
+  `link=-` marks an extension that links no object. One chosen extension can set `release_floor=` to a magnitude
+  in dB (20–66).
+- **`edits.bin`** (little-endian): `XYFE`, u16 version (1 or 2), u16 edits, u16 services, u16 string
   bytes; one u16 string offset per service; the NUL-terminated strings; per edit u8 kind (1 heap,
   2 table, 3 text, 4 hook, 5 startup), u8 flags (1 call, 2 profiling-off hook, 4 has `after`), u8
-  service (`0xff` none), u8 0, u32 address, u32 file offset, u16 length, u16 symbol string offset
-  (`0xffff` none), `before`, then `after` when flagged. Edit names and `events` are not kept.
+  service (`0xff` none), u8 choice count, u32 address, u32 file offset, u16 length, u16 symbol string offset
+  (`0xffff` none), `before`, then `after` when flagged. The choice count is zero in v1.
+  V2 adds kind 6 (`limit`), gated by `long_samples` or `release_floor`. The 8-byte release-floor edit has
+  47 choices following `after`, each 8 bytes, ordered from −20 to −66 dB. An active edit with no selected
+  setting writes `after`. An inactive edit preserves `before`. Edit names and `events` are not kept.
 - **The linker** asks for whole files in this order: the base's metadata view, `services.txt`,
   `machines.txt`, `extensions.txt`, `fixed.txt`, `absent.txt`, `fallbacks.txt`, `definitions.txt`,
   `objects.txt`, `identities.txt`; each chosen package's metadata view and `objects.txt`; every object (pass 1, kit

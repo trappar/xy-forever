@@ -449,6 +449,19 @@ class SyntheticPage(Base, unittest.TestCase):
         self.assertGreater(c(b'1.2.3-abd', b'1.2.3-abc'), 0)
         self.assertGreater(c(b'1.2.3.1-a', b'1.2.3-a'), 0)
 
+    def test_list_can_select_the_last_of_101_packages(self):
+        lib = self.lib
+        lib.mods_reset()
+        self.assertTrue(lib.mods_base(metadata_view(self.gen / 'base')))
+        self.assertTrue(lib.mods_services((self.gen / 'base/services.txt').read_bytes()))
+        metadata = metadata_view(self.gen / 'alpha')
+        for n in range(101):
+            self.assertTrue(lib.mods_package(lib.mods_add(('mod%03d' % n).encode()), metadata))
+        lib.mods_ready(b'opxy-test', self.gen.name.encode())
+        self.assertEqual(lib.mods_shown(), 101)
+        toggle(lib, ['mod100'])
+        self.assertEqual(lib.mods_list_on(lib.mods_position()), 1)
+
     def test_status_row_previews(self):
         """The status row: saved, a flip being saved (#197), a selection that cannot be built."""
         lib = self.lib
