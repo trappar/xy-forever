@@ -70,7 +70,14 @@ once; the working tree's product build comes through the firmware cache, its oth
 tree, REF's per commit. CI (`.github/workflows/checks.yml`, on Linux, one job whose steps run by what changed: lint; the web and
 client suites; `mise run test-all` without private files or the Blackfin toolchain, whose tests only `check` or a
 manual macOS run cover; `e2e.yml`: the browser tests when the web app changes) is the merge check; a merge to
-main runs the Python suite again.
+main runs the Python suite again. `firmware.yml` builds the product `os.ldr` on macOS (open-xy's darwin-arm64
+toolchain; a Linux build of it gives other bytes) only when the build's inputs change, without stock files, and
+keeps it with its SHA-256 as a workflow artifact.
+
+The product build needs no stock files: it reads what it checks of them (helper and span CRC-32s, loaded
+ranges, sizes, SHA-256s) from `stock_facts.json`, by component and version (`xy_forever/stock_facts.py`). With
+the stock pair present, as in `check`, it first recomputes every fact from the files and fails on a difference;
+the offline modes, which embed the stock OS, still need the files.
 Firmware may also be built into the checkout's gitignored `build/` folder; TE bytes are never committed or
 uploaded.
 

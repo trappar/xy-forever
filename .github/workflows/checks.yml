@@ -1,8 +1,8 @@
 # The merge check every pull request runs, on Linux (#229: macOS minutes bill at ten times Linux's). No Teenage
 # Engineering bytes ever reach CI: the private folder is an empty temporary one, so the tests that need the stock
-# os.ldr, the decrypted packages or a device report skip, and the firmware build modes (all of them read the stock
-# os.ldr) are left to `mise run check` on a contributor's machine. open-xy publishes no Linux Blackfin toolchain,
-# so the tests that need one (the freestanding and stack checks) skip here too: `mise run check` runs them, and a
+# os.ldr, the decrypted packages or a device report skip. firmware.yml builds the product firmware (on macOS);
+# `mise run check` on a contributor's machine builds it with the stock files. open-xy publishes no Linux Blackfin
+# toolchain, so the tests that need one (the freestanding and stack checks) skip here too: `mise run check` runs them, and a
 # manual run with `macos` checked runs the suite on macOS with open-xy's public toolchain-1 release.
 #
 # Cost: a job bills whole minutes, so the checks are one job whose steps run by what changed (a paths-filter step,
