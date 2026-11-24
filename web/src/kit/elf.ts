@@ -3,7 +3,7 @@
 import { KitError, check } from './errors.ts';
 
 const RELOCATIONS = new Set([6, 7, 10, 13, 18]); // LUIMM16, HUIMM16, PCREL24, PCREL24_JUMP_L, BYTE4_DATA
-export const SHN_ABS = 0xfff1;
+const SHN_ABS = 0xfff1;
 const STT_FILE = 4;
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 

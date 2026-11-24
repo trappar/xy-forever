@@ -59,7 +59,7 @@ export default defineConfig({
   projects: planted
     ? [{ name: 'planted', testMatch: 'planted-hang.ts', timeout: 2_000, use: chrome('Serial,WebUSB') }]
     : [
-        { name: 'app', testMatch: 'app.e2e.ts', use: chrome('Serial') },
+        { name: 'app', testMatch: ['app.e2e.ts', 'open-xy.e2e.ts'], use: chrome('Serial') },
         { name: 'install', testMatch: ['install.e2e.ts', 'install-sim.e2e.ts'], use: chrome('Serial,WebUSB') },
         { name: 'bounds', testMatch: 'hang-bound.e2e.ts' },
       ],

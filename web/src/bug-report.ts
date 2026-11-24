@@ -15,6 +15,8 @@ const ACTIONS = [
   'send_packages',
   'remove_packages',
   'save_mods',
+  'load_catalog',
+  'install_mods',
   'browse_files',
   'download_file',
   'upload_files',

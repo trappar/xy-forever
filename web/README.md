@@ -47,7 +47,12 @@ after **Disconnect** (beside the link status) nothing reconnects without a click
   canary, the page offers a choice of Stable or Canary (experimental; kept in this browser). Clicking Update
   downloads and verifies the release, installs and reads it back, then restarts straight into the XY Forever menu
   and checks the running image. USB control uses the usual device trust prompt.
-- **Mods**: packages on the device grouped by kind (synths, drums, samplers, effects, players, extensions) with their
+- **Mods**: **Open-XY mods**: Open-XY's published kit (`https://open-xy.com/kit.json.gz`, read fresh each time, so
+  a newer kit's entries show without a new deployment; in development the dev server proxies it), split into packages
+  in the browser exactly as `modkit split` does (`src/kit/`, Open-XY's own v0.0.7 builder vendored in
+  `src/vendor/open-xy/` for the finished content); choose mods, send the base and the chosen packages, and save the
+  selection (`config.set`). A kit it cannot read is refused with the reason, a failed download says what to do.
+  Packages on the device grouped by kind (synths, drums, samplers, effects, players, extensions) with their
   saved on/off state; add packages from a folder (a `modkit split` generation folder); remove a package or a whole set;
   **Mods on the OP-XY**: the mods it runs and Mod memory, saved as the device's Mods menu does
   (`config.set`: checked and kept, or refused with the reason; built the next time XY Forever starts).

@@ -10,7 +10,7 @@ import type { ObjectSummary } from './elf.ts';
 import { pyDumps, pyFloat } from './py-json.ts';
 import type { Json } from './py-json.ts';
 
-export const KIT_FORMAT = 'opxy-browser-kit/1';
+const KIT_FORMAT = 'opxy-browser-kit/1';
 const PROFILE_SCHEMA = 1;
 const KIT_KEYS = [
   'format',
@@ -76,7 +76,7 @@ const OPTIONAL_NUMBERS = new Set(['engine', 'effect', 'player', 'page']);
 const LISTS = new Set(['services', 'features', 'claims', 'accessors']);
 
 type Rec = Record<string, unknown>;
-export interface Edit extends Rec {
+interface Edit extends Rec {
   kind: string;
   address: string;
   file_offset: string;
@@ -112,7 +112,7 @@ interface Source extends Rec {
   commit: string;
   maintainer: string;
 }
-export interface Machine extends Rec {
+interface Machine extends Rec {
   id: string;
   name: string;
   kind: string;
@@ -136,7 +136,7 @@ interface Processor extends Rec {
 interface Setting extends Rec {
   value: number;
 }
-export interface Extension extends Rec {
+interface Extension extends Rec {
   id: string;
   name: string;
   origin: string;
@@ -222,7 +222,7 @@ const hex8 = (n: number): string => `0x${n.toString(16).padStart(8, '0')}`;
 const list = (items: Iterable<string>): string => `[${[...items].map((s) => `'${s}'`).join(', ')}]`;
 const sorted = (items: Iterable<string>): string[] => [...items].sort();
 
-export async function sha256(data: Uint8Array): Promise<string> {
+async function sha256(data: Uint8Array): Promise<string> {
   return hex(new Uint8Array(await crypto.subtle.digest('SHA-256', data as Uint8Array<ArrayBuffer>)));
 }
 
@@ -304,7 +304,7 @@ function limitChoices(edit: Edit, services: readonly string[]): Uint8Array {
 }
 
 /** The profile's edits as the device reads them (docs/storage/mods.md, "Mod packages"). */
-export function encodeEdits(profile: Profile): Uint8Array {
+function encodeEdits(profile: Profile): Uint8Array {
   const services = keysOf(profile.services ?? {});
   const strings: number[] = [],
     offsets = new Map<string, number>();
