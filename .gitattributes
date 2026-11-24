@@ -1,0 +1,13 @@
+# Every text file is LF in every checkout, Windows included (#321): toolchains.json is checked by its SHA-256, and
+# scripts and sources reach the build container (Linux) as they are.
+* text=auto eol=lf
+# CRLF on purpose: tests/test_xyf_manifest.py reads it as a legacy manifest.
+tests/manifests/legacy-crlf.txt -text
+# Binary, should any be added (git's own guess covers the rest).
+*.bin binary
+*.ico binary
+*.jpg binary
+*.ldr binary
+*.png binary
+*.woff2 binary
+*.zip binary
