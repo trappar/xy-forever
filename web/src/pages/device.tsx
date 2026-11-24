@@ -40,7 +40,6 @@ async function loadDevice() {
     content: contentText(content, old),
   };
 }
-type DeviceData = Awaited<ReturnType<typeof loadDevice>>;
 
 export default function DevicePage() {
   const { data, refetch, isFetching } = useQuery({
@@ -142,22 +141,23 @@ function UpdateCard({ info }: { info: DeviceInfo }) {
     } finally {
       stored(() => sessionStorage, PENDING, null);
     }
-    queryClient.setQueryData<DeviceData>(
-      ['device'],
-      (d) => d && { ...d, info: { ...d.info, version: release.version, image: release.image } },
-    );
+    // the restarted OP-XY's own answers: what the card offers next comes from its image, never from this action
+    await queryClient.invalidateQueries({ queryKey: ['device'] });
     setProgress(`${releaseName(release)} is running in the menu.`);
   });
   useEffect(() => {
     if (!update.isPending) stored(() => sessionStorage, PENDING, null); // confirmed above
   }, [update.isPending]);
   if (!stable || !target) return null;
+  // what to offer: the chosen channel's image against the running one (info, re-read after an update)
   const offer = updateOffer(info, target, stable);
   const allowed = updateAvailable(info, target, stable);
-  if (!canary && !allowed && !update.isSuccess && !progress) return null;
+  if (!canary && !allowed && !progress) return null;
   const choose = (next: Channel): void => {
     setChannel(next);
     stored(() => localStorage, CHANNEL, next);
+    update.reset(); // a new choice: the last update's outcome and progress no longer apply
+    setProgress('');
   };
   return (
     <Card>
@@ -167,7 +167,7 @@ function UpdateCard({ info }: { info: DeviceInfo }) {
       )}
       {allowed && <ReleaseIdentity release={target} />}
       {allowed && target.notes && <p>{target.notes}</p>}
-      {!allowed && !update.isPending && !update.isSuccess && (
+      {!allowed && !update.isPending && (
         <p data-testid="update-none" className="text-muted-foreground">
           {info.image === target.image
             ? `Your OP-XY runs ${releaseName(target)}.`
@@ -176,7 +176,7 @@ function UpdateCard({ info }: { info: DeviceInfo }) {
               : `${releaseName(target)} is not an update for your OP-XY.`}
         </p>
       )}
-      {allowed && !update.isSuccess && (
+      {allowed && (
         <div>
           <Button variant="default" disabled={update.isPending} onClick={() => update.mutate(target)}>
             Update to {channelOf(target) === 'canary' ? releaseName(target) : target.version}
