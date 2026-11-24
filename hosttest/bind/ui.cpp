@@ -13,6 +13,7 @@
 #include "target/ui_screens.hpp"
 #include "target/xyf_menu_view.hpp"
 #include "target/xyf_mods_view.hpp"
+#include "target/xyf_saver.hpp"
 #include "target/xyf_settings.hpp"
 
 namespace nb = nanobind;
@@ -157,6 +158,23 @@ void bind_screens(nb::module_ m) {
     });
     // #21: one row, always selected
     m.def("ui_render_home", [](nb::handle fb, unsigned) { ui::draw_home_empty(Frame(fb), &bridge_chrome); });
+    // #315: the screen saver's frame after `frames` frames from its start (key_ui draw_screen); its mark's box.
+    // then: more frames after that one, each drawn as key_ui does (only the mark's old and new boxes), the last
+    // frame's touched columns returned too.
+    m.def("ui_render_saver", [](nb::handle fb, unsigned frames, unsigned then) {
+        saver::State s;
+        saver::start(s, 0);
+        saver::pass(s, 60000, 60000, false);
+        uint32_t now = 60000;
+        for (unsigned i = 0; i != frames; ++i) saver::pass(s, now += saver::frame_ms, 60000, false);
+        saver::Span span = saver::draw(Frame(fb), s, false);
+        for (unsigned i = 0; i != then; ++i) {
+            saver::pass(s, now += saver::frame_ms, 60000, false);
+            span = saver::draw(Frame(fb), s, false);
+        }
+        return nb::make_tuple(int(s.x), int(s.y), saver::mark_w, saver::mark_h, unsigned(saver::colors[s.color]),
+                              span.from, span.to);
+    });
     m.def("ui_scale", [](uint32_t a, uint32_t b, uint32_t c) { return ui::scale(a, b, c); });
     m.def("ui_list_first", [](unsigned count, unsigned selected) { return unsigned(ui::list_first(count, selected)); });
 }
@@ -197,6 +215,7 @@ void bind_flow(nb::module_ m) {
         flow_state.power_on_text = settings::power_on_text(power_on);
         flow_state.usb_text = settings::usb_text(usb);
         flow_state.confirm_text = settings::confirm_text(usb & 1);           // #65: On / Off
+        flow_state.saver_text = settings::saver_text(power_on * 2 + usb);    // #315: each of its five values
         if (newer) flow_state.settings_note = settings::note_newer;
     });
     // #21: the rows' marks (settings_view: not saved yet; bit per settings::Row) and the option list key_ui opens
@@ -204,13 +223,16 @@ void bind_flow(nb::module_ m) {
     m.def("flow_settings_marked", [](unsigned marks) { flow_state.settings_marked = marks; });
     m.def("flow_options", [](unsigned current) {
         const unsigned row = flow_state.settings_selected;
-        const bool memory = row == settings::row_memory, power_on = row == settings::row_power_on;
+        const bool memory = row == settings::row_memory, power_on = row == settings::row_power_on,
+                   saver = row == settings::row_saver;
         menu::open_options(flow_state,
                            memory   ? settings::memory_options :
                            power_on ? settings::power_on_options :
+                           saver    ? settings::saver_options :
                                       settings::usb_options,
                            memory   ? 2 :
                            power_on ? settings::power_on_option_count :
+                           saver    ? settings::saver_option_count :
                                       settings::usb_option_count,
                            current);
     });

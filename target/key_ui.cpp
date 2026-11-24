@@ -12,6 +12,7 @@
 #include "knob_input.hpp"        // knob turns move the selection
 #include "usb_service.hpp"
 #include "crash_screen.hpp"      // the crash screen's lines (key_ui_crash.ipp)
+#include "xyf_saver.hpp"         // #315: the screen saver
 // B's exception vector while the menu has the screen (key_ui_crash.ipp, asm).
 extern "C" void xyf_crash_vector() __asm__("xyf_crash_vector");
 #if defined(XYF_STAGE2)
@@ -129,6 +130,10 @@ volatile uint32_t mods_shown __attribute__((section(".data"))) = 0;   // the Mod
 xyf::mods::Frame mods_frame __attribute__((section(".data"))) = {};    // what the framebuffer holds of it
 #endif
 xyf::key_repeat::Held held __attribute__((section(".data"))) = {xyf::key_repeat::none, 0};
+#if defined(XYF_SETTINGS)
+// #315 (xyf_saver.hpp): the screen saver, on xyf::clock::ms() (wrap-safe across days of idle menu).
+xyf::saver::State saver __attribute__((section(".data"))) = {};
+#endif
 #if defined(XYF_STAGE2)
 // Key events for stage 2 (filled by on_key while stage 2 runs).
 const uint32_t stage2_queue = 8;
@@ -170,6 +175,10 @@ void on_key(uint32_t key, uint32_t pressed) {
         else if (!(play_released || ms > link_ms + 1000u)) return;
     }
 #if defined(XYF_SETTINGS)
+    if (xyf::saver::input(saver, key, pressed != 0, xyf::clock::ms())) {   // #315: it woke the menu: nothing else
+        dirty = 1;
+        return;
+    }
     if (xy_forever::usb_service::confirm_key(key, pressed, key_injected != 0)) {   // a prompt has the keys
         if (!pressed) xyf::key_repeat::event(held, key, false, ms);              // a held - / + stops repeating
         return;
@@ -206,7 +215,17 @@ void turn_knobs(uint32_t now_ms) {
 #else
     const bool page = false, job = false;
 #endif
+    const uint32_t frames = xy_forever::knob_input::result.frames;
     const int32_t rows = xy_forever::knob_input::pass(now_ms, !job);
+#if defined(XYF_SETTINGS)
+    if (xy_forever::knob_input::result.frames != frames &&   // #315: a turn is activity; one that wakes moves nothing
+        xyf::saver::input(saver, xyf::saver::none, true, xyf::clock::ms())) {
+        dirty = 1;
+        return;
+    }
+#else
+    (void)frames;
+#endif
     const uint32_t step = (rows > 0 ? xyf::menu::key_plus : xyf::menu::key_minus) | (page ? xyf::menu::key_turn : 0u);
     for (int32_t i = rows < 0 ? -rows : rows; i; --i) dispatch(step, 1);   // the Mods page knows a turn
 }
@@ -323,6 +342,9 @@ extern "C" void xy_forever_key_ui() {
 #endif
             show(0, status);
             xy_forever::knob_input::start(!r.identity_mismatch && (r.stages & stage_identity));
+#if defined(XYF_SETTINGS)
+            xyf::saver::start(saver, xyf::clock::ms());
+#endif
 #if defined(XYF_ONE_SESSION)
             menu_screen = 1;                             // key_ui::host_view may redraw from here
             bool shown_lost = false;                     // the status line already shows the lost link
@@ -510,6 +532,24 @@ extern "C" void xy_forever_key_ui() {
 #if defined(XYF_ONE_SESSION)
                 if (usb_view_changed()) dirty = 1; // the USB mark, the activity line or the Info page's image changed
 #endif
+#if defined(XYF_SETTINGS)
+                // #315: the saver's start, frames and end; while it has the screen, nothing else redraws (one full
+                // redraw on the wake shows the menu as it is then).
+                {
+                    // A screen that stays, USB work, a build or a content change: it ends, idle starts again.
+#if defined(XYF_MODS_PAGE)
+                    const bool build = xy_forever::usb_service::page_busy() || xy_forever::mods_io::converging();
+#else
+                    const bool build = false;
+#endif
+                    const bool frame = xyf::saver::pass(
+                        saver, xyf::clock::ms(), xyf::settings::saver_ms(xy_forever::usb_service::settings().saver),
+                        xyf::saver::holds(app, xy_forever::usb_service::trust_prompt()) || build ||
+                            xy_forever::usb_service::host_activity() != 0);
+                    if (saver.on) dirty = frame;
+                    else if (frame) dirty = 1;
+                }
+#endif
                 if (dirty) {
                     dirty = 0;
                     show(0, status);
@@ -624,6 +664,9 @@ void refresh_catalog() {
     dirty = 1;
 }
 void host_view() {
+#if defined(XYF_SETTINGS)
+    if (saver.on) return; // #315: the wake redraws
+#endif
     if (menu_screen && usb_view_changed()) present();
 }
 #endif

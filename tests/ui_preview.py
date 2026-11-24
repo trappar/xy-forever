@@ -83,7 +83,8 @@ def main():
         lib.mods_progress(1200)
         lib.mods_draw(fb)
         png(out / 'flow-3b-safe-mode-running.png', pixels(fb))
-        # #21: the Settings page (Mod memory, Menu at power-on, USB mode, About) and the About page.
+        # #21: the Settings page (Mod memory, Menu at power-on, USB mode, Ask before USB control, Screen saver, About)
+        # and the About page.
         lib.flow_start(1)
         lib.flow_settings(2, 0, b'')
         lib.flow_settings_rows(1, 0, 0)
@@ -92,15 +93,16 @@ def main():
         lib.flow_key(54)
         lib.flow_draw(fb, b'')
         png(out / 'flow-4-settings.png', pixels(fb))
-        lib.flow_key(54)
-        lib.flow_key(54)
+        for _ in range(4):
+            lib.flow_key(54)
         lib.flow_key(51)
         lib.flow_draw(fb, b'')
         png(out / 'flow-5-about.png', pixels(fb))
         # #21: USB mode's option list (PLAY on the row), then the page with that row picked, saving (#191: marked until
         # its write at the quiet moment), and Mod memory's pick likewise.
         lib.flow_key(52)
-        lib.flow_key(53)
+        for _ in range(3):
+            lib.flow_key(53)
         lib.flow_key(51)
         lib.flow_options(0)
         lib.flow_key(54)
@@ -118,6 +120,21 @@ def main():
         lib.flow_key(53)
         lib.flow_draw(fb, b'')
         png(out / 'flow-8-memory-pending.png', pixels(fb))
+        # #315: the Screen saver row, its option list, and the saver itself (its start, and later after bounces).
+        lib.flow_settings(2, 0, b'')
+        for _ in range(4):
+            lib.flow_key(54)
+        lib.flow_draw(fb, b'')
+        png(out / 'flow-9-screen-saver.png', pixels(fb))
+        lib.flow_key(51)
+        lib.flow_options(0)
+        lib.flow_draw(fb, b'')
+        png(out / 'flow-10-saver-options.png', pixels(fb))
+        lib.flow_key(52)
+        lib.ui_render_saver(fb, 0, 0)
+        png(out / 'saver-1-start.png', pixels(fb))
+        lib.ui_render_saver(fb, 450, 0)
+        png(out / 'saver-2-later.png', pixels(fb))
         stage2_previews(tmp, out / 'stage2')
     print('\n'.join(str(p) for p in sorted(out.glob('**/*.png'))))
 

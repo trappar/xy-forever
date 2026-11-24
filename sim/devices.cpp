@@ -21,6 +21,7 @@
 #include "key_repeat.hpp"
 #include "knob_input.hpp"
 #include "xyf_crc32.hpp"
+#include "xyf_saver.hpp"
 
 namespace xyf_sim {
 const char* stock_path = 0;
@@ -168,6 +169,10 @@ xyf::menu::State sim_app;
 bool sim_menu = false, sim_mods = false, sim_leave = false;   // sim_leave: Continue / Discard boots
 xyf::key_repeat::Held sim_held = {xyf::key_repeat::none, 0};        // as key_ui
 int sim_pending = -1;                                               // logged on a change
+// #315: the screen saver as key_ui's (xyf_saver.hpp); no screen here: its start and end are logged, with the
+// frames it drew ("saver: on at T ms", "saver: off at T ms: woken by ... after N frames").
+xyf::saver::State sim_saver;
+uint32_t sim_saver_frames = 0;
 #include "settings_page.ipp"
 uint32_t device_ms() { return uint32_t(xyf_sim::device_cycles() / 400000u); }   // B's clock (advance included)
 #if defined(XYF_MODS_PAGE)
@@ -273,6 +278,13 @@ bool knob_identity() {
 void key_event(uint32_t key, uint32_t pressed, bool injected) {
     xy_forever::knob_input::log_key(key, pressed != 0, injected, device_ms()); // as key_ui's on_key
 #if defined(XYF_SETTINGS)
+    const bool on = sim_saver.on != 0;
+    if (xyf::saver::input(sim_saver, key, pressed != 0, device_ms())) { // as key_ui: nothing else
+        if (on)
+            xyf_sim::log("saver: off at %u ms: woken by key %u after %u frames", device_ms(), key, sim_saver_frames);
+        else xyf_sim::log("saver: key %u released: goes nowhere", key);
+        return;
+    }
     if (xy_forever::usb_service::confirm_key(key, pressed, injected)) { // #65: the question has the keys
         xyf_sim::log("trust: key %u %s (%s)", key, pressed ? "pressed" : "released", injected ? "injected" : "real");
         return;
@@ -390,6 +402,7 @@ extern "C" void xy_forever_key_ui() {
     sim_usb_line = 0; // nothing drawn yet
     knob_input::start(knob_identity()); // as key_ui.cpp
     xyf_sim::log("knob: reader state %u", knob_input::result.state);
+    xyf::saver::start(sim_saver, device_ms()); // as key_ui.cpp
     bool noted = false;
 #if defined(XYF_SETTINGS)
     bool settings_logged = false;
@@ -409,9 +422,14 @@ extern "C" void xy_forever_key_ui() {
             const bool job = false;
 #endif
             const int32_t rows = knob_input::pass(device_ms(), !job);
+            const bool woke = k.frames != before[0] && // as key_ui turn_knobs (#315): a turn that wakes moves nothing
+                              xyf::saver::input(sim_saver, xyf::saver::none, true, device_ms());
+            if (woke)
+                xyf_sim::log("saver: off at %u ms: woken by a knob turn after %u frames", device_ms(),
+                             sim_saver_frames);
             const uint32_t step =
                 (rows > 0 ? xyf::menu::key_plus : xyf::menu::key_minus) | (sim_mods && !job ? xyf::menu::key_turn : 0u);
-            for (int32_t i = rows < 0 ? -rows : rows; i; --i)
+            for (int32_t i = woke ? 0 : rows < 0 ? -rows : rows; i; --i)
                 dispatch(step, 1); // as key_ui (the Mods page knows a turn)
             const uint32_t after[] = {k.frames, k.dropped, k.resyncs, k.idle, k.pass_read, k.max_read};
             if (rows || memcmp(before, after, sizeof(before)))
@@ -503,6 +521,27 @@ extern "C" void xy_forever_key_ui() {
             break;
         }
         usb_view(); // as key_ui.cpp (before its redraw)
+#if defined(XYF_SETTINGS)
+        { // as key_ui.cpp (#315)
+            const bool was = sim_saver.on != 0;
+            const uint32_t timeout = xyf::settings::saver_ms(usb_service::settings().saver);
+#if defined(XYF_MODS_PAGE)
+            const bool build = usb_service::page_busy() || mods_io::converging();
+#else
+            const bool build = false;
+#endif
+            if (xyf::saver::pass(sim_saver, device_ms(), timeout,
+                                 xyf::saver::holds(sim_app, usb_service::trust_prompt()) || build ||
+                                     usb_service::host_activity() != 0)) {
+                if (!was) {
+                    sim_saver_frames = 0;
+                    xyf_sim::log("saver: on at %u ms (after %u ms)", device_ms(), timeout);
+                } else if (!sim_saver.on)
+                    xyf_sim::log("saver: off at %u ms: busy after %u frames", device_ms(), sim_saver_frames);
+                else ++sim_saver_frames;
+            }
+        }
+#endif
         if (xyf_boot::link_lost() && !usb_service::home_usb()) {
             xyf_sim::log("menu: storage link lost");
             break;

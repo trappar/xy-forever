@@ -89,9 +89,9 @@ struct State {
     bool memory_pending;
 #if defined(XYF_SETTING_OPTIONS)
     // #21: the settings.txt rows' values, set by the caller every pass (usb_service settings_view; xyf_settings.hpp
-    // power_on_text, usb_text, confirm_text); 0: blank. Texts, not values: the offline stage-2 modes have no
-    // settings.txt and no room for its texts. (A newer record's line is settings_note, set there too.)
-    const char *power_on_text, *usb_text, *confirm_text;
+    // power_on_text, usb_text, confirm_text, saver_text); 0: blank. Texts, not values: the offline stage-2 modes have
+    // no settings.txt and no room for its texts. (A newer record's line is settings_note, set there too.)
+    const char *power_on_text, *usb_text, *confirm_text, *saver_text;
     // #21: rows marked (a bit per xyf_settings.hpp Row; the value in accent): a settings.txt row changed and not saved
     // yet (#191: saved on its own at a quiet moment), Mod memory likewise (memory_pending). Set by the caller.
     uint32_t settings_marked;

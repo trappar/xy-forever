@@ -18,8 +18,18 @@ void fill(uint16_t* fb, int x, int y, int w, int h, Color color);
 // Built-in 5x7 font (ASCII 32..126), cell 6x8 per scale unit. Returns end x.
 int text(uint16_t* fb, int x, int y, const char* s, Color color, int scale);
 int text_width(const char* s, int scale);
-// XY Forever mark: two interlocked rings (an infinity sign) with "XY" and
-// "FOREVER" beside it, logo_height px tall from y, left edge at x. Returns the logo width in pixels.
+// An anti-aliased shape: w x h px, a byte a pixel, 0x40 | alpha (0..15), rows top to bottom (0x40: no 32-bit word of
+// it looks like an address to the build's data audits). draw_mask puts it at (x, y) in color blended against black
+// (16 levels; alpha 0 leaves the pixel as it is).
+// The infinity mark's (#315: a smooth lemniscate, scripts/mark_mask.py): logo_mark here, the saver's in xyf_saver.hpp.
+struct Mask {
+    int w, h;
+    const uint8_t* alpha;
+};
+void draw_mask(uint16_t* fb, int x, int y, const Mask& mask, Color color);
+extern const Mask logo_mark;
+// XY Forever mark: the infinity mark (logo_mark) with "XY" and "FOREVER" beside it, logo_height px tall from y,
+// left edge at x. Returns the logo width in pixels.
 static const int logo_height = 35, logo_gap = 10;
 int logo(uint16_t* fb, int x, int y, Color mark, Color word);
 }}

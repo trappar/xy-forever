@@ -43,7 +43,7 @@ TEST_CASE("record, page and gate") {
     defaults(w);
     w.confirm = 0;
     uint32_t n = format(out, sizeof(out), w);
-    CHECK((n == 48 && std::memcmp(out, "format=1\nconfirm=0\npower_on=play\nusb=mtp_serial\n", n) == 0));
+    CHECK((n == 56 && std::memcmp(out, "format=1\nconfirm=0\npower_on=play\nusb=mtp_serial\nsaver=1\n", n) == 0));
     Record back;
     parse(out, n, back);
     CHECK((back.confirm == 0 && back.power_on == power_play && back.usb == usb_mtp_serial));   // round trip
@@ -68,7 +68,7 @@ TEST_CASE("record, page and gate") {
     CHECK((std::strcmp(usb_text(usb_mtp_serial), "MTP + Serial") == 0 &&
            std::strcmp(usb_text(usb_serial), "Serial") == 0));
     CHECK(std::strcmp(usb_text(usb_mtp_only), "MTP (no web app)") == 0);
-    CHECK((rows == 5 && std::strcmp(label(row_memory), "Mod memory") == 0 &&
+    CHECK((rows == 6 && std::strcmp(label(row_memory), "Mod memory") == 0 &&
            std::strcmp(label(row_about), "About") == 0));
     CHECK((std::strcmp(label(row_confirm), "Ask before USB control") == 0 && confirm_option_count == 2));   // #65
     CHECK((std::strcmp(confirm_options[0], "Off") == 0 && std::strcmp(confirm_options[1], "On") == 0));

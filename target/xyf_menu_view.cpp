@@ -39,14 +39,16 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
 #if defined(XYF_SETTING_OPTIONS)
         static ui::ListRow rows[settings::rows + 1] XYF_DATA = {
             // xyf_settings.hpp Row, labels (+ row_packs)
-            {"Mod memory", 0, false}, {"Menu at power-on", 0, false},
-            {"USB mode", 0, false},   {"Ask before USB control", 0, false},
-            {"About", 0, false},      {"Content packs", 0, false}};
+            {"Mod memory", 0, false},   {"Menu at power-on", 0, false},
+            {"USB mode", 0, false},     {"Ask before USB control", 0, false},
+            {"Screen saver", 0, false}, {"About", 0, false},
+            {"Content packs", 0, false}};
         if (s.pack_names) ++count;
         rows[settings::row_memory].detail = settings::memory_text(s.memory, false);   // pending: marked
         rows[settings::row_power_on].detail = s.power_on_text;     // #21: 0 (blank) without settings.txt
         rows[settings::row_usb].detail = s.usb_text;               // (About: none; its page has the version)
         rows[settings::row_confirm].detail = s.confirm_text;       // #65
+        rows[settings::row_saver].detail = s.saver_text;           // #315
         const uint32_t marked = s.settings_marked | (s.memory_pending ? 1u << settings::row_memory : 0u);
         for (uint32_t i = 0; i != settings::rows; ++i) rows[i].marked = marked >> i & 1u;
         // The line: a note, else what a marked value (accent) means: #191, a pick not written yet (saved on its own).

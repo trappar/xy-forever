@@ -43,17 +43,24 @@ inline void put(uint16_t* fb, int x, int y, Color color) {
     fb[(width - 1 - x) * column_stride + y] = color;
 }
 
-// Thick ring: pixels with inner^2 <= d^2 <= outer^2 around (cx, cy).
-void ring(uint16_t* fb, int cx, int cy, int outer, int inner, Color color, int skip_from_x, int skip_to_x) {
-    for (int dy = -outer; dy <= outer; ++dy)
-        for (int dx = -outer; dx <= outer; ++dx) {
-            const int d = dx * dx + dy * dy;
-            const int x = cx + dx;
-            if (d > outer * outer || d < inner * inner) continue;
-            if (x >= skip_from_x && x < skip_to_x && dy > 0) continue;   // under-crossing gap
-            put(fb, x, cy + dy, color);
-        }
+#include "ui_mark_logo.ipp"
+// A colour channel at alpha / 15 (x * a * 273 / 4096, rounded: exact at 0 and 15, no divide).
+inline uint32_t faded(uint32_t x, uint32_t a) { return (x * a * 273u + 2048u) >> 12; }
 }
+
+const Mask logo_mark = {63, 35, mark_logo_alpha};
+static_assert(sizeof(mark_logo_alpha) == 63 * 35, "logo mask size");
+
+void draw_mask(uint16_t* fb, int x, int y, const Mask& mask, Color color) {
+    Color shade[16];
+    const uint32_t r = color >> 11, g = color >> 5 & 63u, b = color & 31u;
+    for (uint32_t a = 0; a != 16; ++a) shade[a] = Color(faded(r, a) << 11 | faded(g, a) << 5 | faded(b, a));
+    const uint8_t* alpha = mask.alpha;
+    for (int j = 0; j != mask.h; ++j)
+        for (int i = 0; i != mask.w; ++i) {
+            const uint32_t a = *alpha++ & 15u;
+            if (a) put(fb, x + i, y + j, shade[a]);
+        }
 }
 
 void clear(uint16_t* fb, Color color) {
@@ -86,14 +93,11 @@ int text(uint16_t* fb, int x, int y, const char* s, Color color, int scale) {
 }
 
 int logo(uint16_t* fb, int x, int y, Color mark, Color word) {
-    // One 35 px band from y: the infinity mark (two rings, 35 px tall, stroke 5 px as the letters'),
-    // "XY" (scale 5, cap height 35) and "FOREVER" (scale 2) on the same baseline (y + 34), the mark's left
-    // edge at x and logo_gap px between the three parts. The right ring passes under the left one at the
-    // bottom crossing for an interlocked look.
-    const int outer = 17, inner = 13, cy = y + outer, left = x + outer, right = left + 2 * outer - 6;
-    ring(fb, right, cy, outer, inner, mark, left, left + outer + 1);
-    ring(fb, left, cy, outer, inner, mark, 0, 0);
-    const int text_x = right + outer + 1 + logo_gap;
+    // One 35 px band from y: the infinity mark (35 px tall, stroke 5 px as the letters'), "XY" (scale 5, cap
+    // height 35) and "FOREVER" (scale 2) on the same baseline (y + 34), the mark's left edge at x and logo_gap
+    // px between the three parts.
+    draw_mask(fb, x, y, logo_mark, mark);
+    const int text_x = x + logo_mark.w + logo_gap;
     text(fb, text_x, y, "XY", word, 5);
     const int forever_x = text_x + text_width("XY", 5) + logo_gap;
     text(fb, forever_x, y + 35 - 14, "FOREVER", mark, 2);
