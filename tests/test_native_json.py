@@ -1,13 +1,13 @@
 """Shared native/Python/browser schema cases, source preservation and freestanding budgets."""
 
 import json
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
 import pytest
 import xyf_hosttest
+from conftest import blackfin
 
 from xy_forever import native_json as J
 from xy_forever import toolchain
@@ -158,32 +158,17 @@ class NativeJson(unittest.TestCase):
             with self.assertRaises(J.RecordError):
                 J.package_text(source)
 
+    @pytest.mark.toolchain
     def test_blackfin_code_stack_and_workspace(self):
-        if not (toolchain.location() / 'bin/bfin-elf-g++').exists():
-            self.skipTest('Blackfin toolchain absent')
-        compiler, tools = toolchain.authenticate()
-        asm, obj = self.work / 'json.s', self.work / 'json.o'
-        subprocess.run(
-            [
-                str(compiler['cxx']),
-                *toolchain.CXX_FLAGS,
-                '-fstack-usage',
-                '-S',
-                str(ROOT / 'native/json.cpp'),
-                '-o',
-                str(asm),
-            ],
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run([str(tools['as']), '-mcpu=bf707', '-o', str(obj), str(asm)], check=True, capture_output=True)
-        symbols = subprocess.run(
-            [str(tools['objdump']), '-t', str(obj)], check=True, capture_output=True, text=True
-        ).stdout
+        asm = self.work / 'json.s'
+        commands = [
+            ['g++', *toolchain.CXX_FLAGS, '-fstack-usage', '-S', ROOT / 'native/json.cpp', '-o', asm],
+            ['as', '-mcpu=bf707', '-o', 'json.o', asm],
+            ['objdump', '-t', 'json.o'],
+            ['objdump', '-h', 'json.o'],
+        ]
+        _, _, (_, symbols, _), (_, sections, _) = blackfin(self, commands, self.work)
         self.assertNotIn('*UND*', symbols)
-        sections = subprocess.run(
-            [str(tools['objdump']), '-h', str(obj)], check=True, capture_output=True, text=True
-        ).stdout
         self.assertNotRegex(sections, r'\.(?:data|bss)\s+0*[1-9a-f]')
         frames = [int(line.split('\t')[1]) for line in asm.with_suffix('.su').read_text().splitlines()]
         self.assertLessEqual(max(frames), 256)

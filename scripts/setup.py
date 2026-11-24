@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """Set up a workspace for XY Forever development (Python 3.14+).
 
-    mise run setup [--workspace DIR] [--dry-run] [--toolchain-archive ZIP]   (setup.py bootstrap)
+    mise run setup [--workspace DIR] [--dry-run]   (setup.py bootstrap)
                                                    all that needs no OP-XY: the pinned tools (mise install),
                                                    uv sync, pnpm install, the git hook, the private layout, your
-                                                   status notes (private xy-forever/status/), the toolchain
-                                                   (open-xy's toolchain-1 release, or ZIP already downloaded)
-                                                   and the fixtures; safe to rerun
-    uv run scripts/setup.py init [--private DIR] [--toolchain DIR]
-                                                   create the private layout; --private and --toolchain record
-                                                   folders outside the standard layout in xyf.local.json
-                                                   (gitignored; XYF_PRIVATE and XYF_TOOLCHAIN win)
+                                                   status notes (private xy-forever/status/), the firmware build
+                                                   image (Docker: xy_forever/container.py) and the fixtures; safe
+                                                   to rerun
+    uv run scripts/setup.py init [--private DIR]   create the private layout; --private records a folder outside
+                                                   the standard layout in xyf.local.json (gitignored;
+                                                   XYF_PRIVATE wins)
     uv run scripts/setup.py import-stock DIR       copy the stock 1.2.1 os.ldr + bootloader.ldr from DIR
                                                    (the two files, or a copied /upgrade/ tree), and the
                                                    stock catalog op1_factory.json if beside them or in DIR/content/
@@ -18,7 +17,6 @@
                                                    the same, read off the OP-XY in the dev menu's MTP mode
                                                    into private/incoming/ (read only: xy_forever/mtp_read.py)
     uv run scripts/setup.py fixtures               what tests need from the stock pair + public open-xy
-    uv run scripts/setup.py toolchain              only the pinned Blackfin toolchain (CI)
     mise run doctor                                what is set up, what is missing, what will skip
 
 Bootstrap starts on mise's Python, before the project environment exists: it installs the tools and `uv sync`s
@@ -29,7 +27,7 @@ The stock pair comes from your own OP-XY on stock 1.2.1, in the stock dev menu's
 /upgrade/firmware/blackfin/bin/os.ldr and bootloader.ldr, and /content/op1_factory.json (fixtures takes it from
 public open-xy only when no stock copy is present); by hand, copy the same files (or the whole /upgrade/ folder).
 Pins: stock.json. Network: fixtures clones public open-xy and fetches its published kit; bootstrap
-downloads the toolchain archive.
+pulls the build image (toolchains.json).
 """
 
 import argparse
@@ -37,14 +35,12 @@ import hashlib
 import importlib.util
 import json
 import os
-import platform
 import shutil
 import subprocess
 import sys
 import tempfile
 import urllib.error
 import urllib.request
-import zipfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -159,23 +155,9 @@ def make_layout():
         getattr(paths, name).mkdir(parents=True, exist_ok=True)
 
 
-def record_toolchain(folder, config=paths.LOCAL_CONFIG):
-    """Record the toolchain folder in xyf.local.json, after checking it against its pins (toolchains.json)."""
-    folder = Path(folder).expanduser().resolve()
-    problem = toolchain_problem(folder)
-    if problem:
-        raise SetupError('%s fails the toolchain pins (toolchains.json): %s' % (folder, problem))
-    values = read_config(config)
-    values['toolchain'] = str(folder)
-    Path(config).write_text(json.dumps(values, indent=2) + '\n')
-    return folder
-
-
 def cmd_init(args):
     global paths
     require_python()
-    if args.toolchain:
-        print('toolchain: %s (recorded in %s)' % (record_toolchain(args.toolchain), paths.LOCAL_CONFIG.name))
     if args.private:
         chosen = Path(args.private).expanduser().resolve()
         env = os.environ.get('XYF_PRIVATE')
@@ -453,31 +435,23 @@ def fixture_mods():
     print('mod package set: %s' % paths.PUBLISHED_MODS)
 
 
-def toolchain_problem(directory=None):
-    """None, or why the toolchain (XYF_TOOLCHAIN, ../tools/blackfin, or directory) fails its pins."""
-    from xy_forever import toolchain
-
-    try:
-        toolchain.authenticate(directory)
-    except (ValueError, OSError) as e:
-        return str(e)
-    return None
-
-
 def fixture_build():
     found = verified_build()
     if found:
         print('verified product build: %s' % found.name)
         return
-    problem = toolchain_problem()
+    from xy_forever import container
+
+    problem = container.problem()
     if problem:
-        print('verified product build: skipped (toolchain: %s; see doctor)' % problem)
+        print('verified product build: skipped (build image: %s; see doctor)' % problem)
         return
-    out = paths.BUILDS / 'setup-build'
-    print('building and verifying the product (under a minute)')
-    run([sys.executable, '-m', 'xy_forever.xyf_build', '--xyf-product', '--out', str(out)])
-    run([sys.executable, '-m', 'xy_forever.xyf_build', '--verify', '--out', str(out)])
-    out = paths.name_by_image(out)  # builds/<image>
+    print('building and verifying the product in the build container (under a minute)')
+    for step in ('--xyf-product', '--verify'):
+        argv = ['python', '-m', 'xy_forever.xyf_build', step, '--out', container.OUT + '/setup-build']
+        if container.run(argv, out=paths.BUILDS).returncode:
+            raise SetupError('the product build failed (above)')
+    out = paths.name_by_image(paths.BUILDS / 'setup-build')  # builds/<image>
     if verified_build() != out:
         raise SetupError('%s did not verify' % out)
     print('verified product build: %s' % out.name)
@@ -502,14 +476,6 @@ def cmd_fixtures(args):
 # doctor
 
 
-def toolchain_hint():
-    return [
-        "`mise run setup` downloads open-xy's toolchain-1 release into %s (darwin-arm64, windows-x86_64); "
-        'linux-x86_64: build it (open-xy docs/build.md "On Linux"), then put it there or record its folder: '
-        '`uv run scripts/setup.py init --toolchain DIR`.' % paths.toolchain()
-    ]
-
-
 def doctor():
     """[(label, ok, detail)] plus the list of what will skip."""
     from xy_forever import sim
@@ -518,10 +484,14 @@ def doctor():
     problem = python_problem()
     rows.append(('python', problem is None, problem or '%d.%d.%d' % tuple(sys.version_info[:3])))
     rows.append(('private folder', paths.PRIVATE_ROOT.is_dir(), '%s (%s)' % (paths.PRIVATE_ROOT, private_source())))
-    problem = toolchain_problem()
-    rows.append(('toolchain', problem is None, problem or 'authenticated against toolchains.json'))
+    from xy_forever import container
+
+    problem = container.problem()
+    rows.append(('build image', problem is None, problem or container.image()))
     if problem:
-        rows += [('', False, line) for line in toolchain_hint()]
+        rows.append(
+            ('', False, 'Docker runs every firmware build: docs/operating/dev-tools.md says what each OS needs')
+        )
     for name in PAIR:
         path = paths.STOCK_121 / name
         version = identify(name, sha256(path)) if path.is_file() else None
@@ -592,13 +562,12 @@ def cmd_doctor(args):
         print('     ' + s)
     # must pass: mise run setup fixes them. The stock pair needs the OP-XY (docs/operating/first-install.md):
     # without it the firmware build and the tests that need it skip.
-    essential = {'python', 'private folder', 'toolchain', 'mise', 'tools', 'python deps', 'js deps', 'git hook'}
+    essential = {'python', 'private folder', 'build image', 'mise', 'tools', 'python deps', 'js deps', 'git hook'}
     return 0 if all(ok for label, ok, _ in rows if label in essential) else 1
 
 
 # bootstrap
 
-TOOLCHAIN_DIR = 'tools/blackfin'  # <workspace>/tools/blackfin: open-xy's toolchain-1 release, unpacked
 OLD_STATUS = 'docs/status'  # where the status notes lived in the main checkout before #237 (moved once)
 
 
@@ -626,7 +595,6 @@ This folder is an XY Forever development workspace, set up by `mise run setup` i
 |---|---|
 | `%(repo)s/` | the XY Forever repository (git). **Read `%(repo)s/AGENTS.md` first and follow it: all its rules apply.** |
 | `%(private)s/` | stock firmware, keys, builds, device reports: local only, never committed |
-| `tools/` | the Blackfin toolchain (`tools/blackfin`): local only, never committed |
 
 "Continue development" works from here: treat `%(repo)s/` as the repository for every command (run
 them there, as its docs show), and keep everything else in this folder out of git. Extra git worktrees (a
@@ -635,71 +603,19 @@ an editor opened on this folder watches every checkout inside it.
 """
 
 
-def host_name():
-    """This host as toolchains.json names it (as xy_forever/toolchain.py does)."""
-    machine = platform.machine().lower()
-    return platform.system().lower() + '-' + {'aarch64': 'arm64', 'amd64': 'x86_64'}.get(machine, machine)
+def image_problem():
+    from xy_forever import container
+
+    return container.problem()
 
 
-def download(url, path):
-    """url into path (GitHub wants a User-Agent)."""
-    request = urllib.request.Request(url, headers={'User-Agent': 'xy-forever-setup'})
-    with urllib.request.urlopen(request, timeout=120) as response, Path(path).open('wb') as handle:
-        shutil.copyfileobj(response, handle, 1 << 20)
+def pull_image():
+    from xy_forever import container
 
-
-def unpack(archive, folder, destination):
-    """folder/* of the zip archive into destination, every entry inside it, executable bits kept (zipfile drops
-    them: they are in the high 16 bits of external_attr)."""
-    with zipfile.ZipFile(str(archive)) as files:
-        for info in files.infolist():
-            parts = info.filename.split('/')
-            if parts[0] != folder or '..' in parts or '\\' in info.filename or info.filename.startswith('/'):
-                raise SetupError('unexpected entry in the toolchain archive: %s' % info.filename)
-            if info.is_dir() or len([p for p in parts if p]) == 1:
-                continue
-            target = destination.joinpath(*parts[1:])
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with files.open(info) as source, target.open('wb') as handle:
-                shutil.copyfileobj(source, handle, 1 << 20)
-            if (info.external_attr >> 16) & 0o111:
-                target.chmod(0o755)
-
-
-def install_toolchain(record, destination, archive=None):
-    """Download record's archive (or use archive), check its SHA-256, unpack it next to destination, check every
-    file against toolchains.json, then move it into place. Nothing is left behind on a failure."""
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='.blackfin-', dir=str(destination.parent)) as tmp:
-        if archive is None:
-            archive = Path(tmp) / 'archive.zip'
-            try:
-                download(record['url'], archive)
-            except (urllib.error.URLError, OSError) as e:
-                note = (
-                    ' (macOS: run "Install Certificates.command" in the Python folder in Applications)'
-                    if 'CERTIFICATE_VERIFY_FAILED' in str(e)
-                    else ''
-                )
-                raise SetupError(
-                    'could not download %s (%s)%s. Download it in a browser, then run '
-                    '`mise run setup --toolchain-archive <the zip>`' % (record['url'], e, note)
-                )
-        got = sha256(archive)
-        if got != record['sha256']:
-            raise SetupError(
-                'toolchain archive hash mismatch: %s is %s, the pin (stock.json) is %s: not the '
-                'toolchain-1 release for this host' % (archive, got, record['sha256'])
-            )
-        staged = Path(tmp) / 'blackfin'
-        try:
-            unpack(archive, record['folder'], staged)
-        except zipfile.BadZipFile as e:
-            raise SetupError('%s is not a readable zip (%s)' % (archive, e))
-        problem = toolchain_problem(staged)
-        if problem:
-            raise SetupError('the unpacked toolchain fails its pins (toolchains.json): %s' % problem)
-        os.replace(str(staged), str(destination))
+    try:
+        container.ensure_image()
+    except container.ContainerError as e:
+        raise SetupError(str(e))
 
 
 def fixtures_missing():
@@ -712,7 +628,7 @@ def fixtures_missing():
             ('stock catalog', paths.CATALOG_121.is_file() and sha256(paths.CATALOG_121) == ox['catalog_sha256']),
             ('published kit', paths.PUBLISHED_KIT.is_file()),
             ('mod package set', mod_packages()),
-            ('verified build', bool(verified_build()) or toolchain_problem() is not None),
+            ('verified build', bool(verified_build()) or image_problem() is not None),
         )
         if not ok
     ]
@@ -728,9 +644,7 @@ class Bootstrap:
         config=None,
         dry_run=False,
         environ=os.environ,
-        toolchain_archive=None,
         private=None,
-        toolchain=None,
     ):
         self.repo = Path(repo).resolve()
         self.main = paths.main_checkout(self.repo)
@@ -738,10 +652,8 @@ class Bootstrap:
         self.config = Path(config) if config else self.main / paths.LOCAL_CONFIG.name
         self.dry_run, self.environ, self.actions = dry_run, environ, []
         self.private_root = None
-        self.toolchain_archive = Path(toolchain_archive).expanduser().resolve() if toolchain_archive else None
-        # init's --private and --toolchain: recorded in xyf.local.json before the steps that read it
+        # init's --private: recorded in xyf.local.json before the steps that read it
         self.chosen_private = Path(private).expanduser().resolve() if private else None
-        self.chosen_toolchain = Path(toolchain).expanduser().resolve() if toolchain else None
 
     def do(self, what, action, *args, **kw):
         self.actions.append(what)
@@ -763,7 +675,7 @@ class Bootstrap:
                 return self.continue_under_uv()
         print('bootstrap: workspace %s%s' % (self.workspace, ' (dry run: nothing changes)' if self.dry_run else ''))
         self.chosen()
-        for step in (self.private, self.local_files, self.workspace_guide, self.tools, self.toolchain, self.fixtures):
+        for step in (self.private, self.local_files, self.workspace_guide, self.tools, self.image, self.fixtures):
             step()
         if not self.actions:
             print('nothing to do: the workspace is already set up; nothing changed')
@@ -777,7 +689,7 @@ class Bootstrap:
         return 0
 
     def chosen(self):
-        """--private and --toolchain, as init records them (once: a rerun finds them recorded)."""
+        """--private, as init records it (once: a rerun finds it recorded)."""
         settings = self.settings()
         if self.chosen_private and settings.get('private') != str(self.chosen_private):
             env = self.environ.get('XYF_PRIVATE')
@@ -791,21 +703,12 @@ class Bootstrap:
                 self.record_private,
                 self.chosen_private,
             )
-        if self.chosen_toolchain and settings.get('toolchain') != str(self.chosen_toolchain):
-            self.do(
-                'record the toolchain %s in %s' % (self.chosen_toolchain, self.config.name),
-                record_toolchain,
-                self.chosen_toolchain,
-                self.config,
-            )
 
     def continue_under_uv(self):
         """Run bootstrap again under `uv run` (the project environment), with the same arguments."""
         argv = ['bootstrap', '--workspace', str(self.workspace)]
         argv += ['--dry-run'] if self.dry_run else []
-        argv += ['--toolchain-archive', str(self.toolchain_archive)] if self.toolchain_archive else []
         argv += ['--private', str(self.chosen_private)] if self.chosen_private else []
-        argv += ['--toolchain', str(self.chosen_toolchain)] if self.chosen_toolchain else []
         cmd = dev_tools.tool('uv') + ['run', '--no-sync', 'python', str(self.repo / 'scripts/setup.py')] + argv
         return subprocess.run(cmd, cwd=self.repo, env=dev_tools.env(self.environ)).returncode
 
@@ -862,46 +765,14 @@ class Bootstrap:
         if leaks is None:
             self.do('add an empty "leak_patterns" list to %s' % self.config.name, ensure_leak_patterns, self.config)
 
-    def toolchain(self):
-        folder = Path(self.settings().get('toolchain') or self.workspace / TOOLCHAIN_DIR)
-        if toolchain_problem() is None:
-            print('toolchain: ok (authenticated against toolchains.json)')
-            return
-        if (folder.exists() or folder.is_symlink()) and toolchain_problem(folder) is None:
-            print('toolchain: ok at %s' % folder)
-            return self.toolchain_note(folder)
-        if folder.exists() or folder.is_symlink():
-            raise SetupError(
-                '%s exists but fails its pins (%s): move it aside, then rerun bootstrap (it never deletes)'
-                % (folder, toolchain_problem(folder))
-            )
-        host = host_name()
-        record = PINS['toolchain']['archives'].get(host)
-        if host == 'linux-x86_64':
-            print(
-                'toolchain: missing; open-xy publishes no download for linux-x86_64: build it with Docker '
-                '(open-xy docs/build.md, "On Linux"), then put it at %s or record its folder: '
-                '`uv run scripts/setup.py init --toolchain DIR`' % folder
-            )
-            return
-        if not record:
-            print(
-                'toolchain: no pinned toolchain for %s (stock.json): use macOS arm64, Windows x86_64 or '
-                'Linux x86_64' % host
-            )
-            return
-        if self.toolchain_archive and not self.toolchain_archive.is_file():
-            raise SetupError('--toolchain-archive %s: no such file' % self.toolchain_archive)
-        print("toolchain: missing; open-xy's toolchain-1 release for %s goes into %s" % (host, folder))
-        source = ('%s (given)' % self.toolchain_archive) if self.toolchain_archive else 'download %s' % record['url']
-        self.do(
-            '%s, check its SHA-256, unpack it, check every file against toolchains.json' % source,
-            install_toolchain,
-            record,
-            folder,
-            self.toolchain_archive,
-        )
-        self.toolchain_note(folder)
+    def image(self):
+        """The firmware build image (toolchains.json): pulled once; Docker itself is the developer's to install."""
+        problem = image_problem()
+        print('build image: %s' % (problem or 'ok'))
+        if problem and problem.startswith('not pulled'):
+            self.do('pull the build image (once)', pull_image)
+        elif problem:
+            print('  Docker runs every firmware build: docs/operating/dev-tools.md says what each OS needs')
 
     def workspace_guide(self):
         if self.workspace not in self.main.parents:
@@ -923,18 +794,6 @@ class Bootstrap:
             else:
                 print('workspace %s: missing' % name)
                 self.do('write %s (the workspace guide for agents)' % path, path.write_text, text)
-
-    def toolchain_note(self, link):
-        if self.environ.get('XYF_TOOLCHAIN'):
-            print(
-                '  note: XYF_TOOLCHAIN=%s is set and fails its pins; it wins over %s: unset it'
-                % (self.environ['XYF_TOOLCHAIN'], link)
-            )
-        elif self.workspace != self.main.parent:
-            print(
-                '  note: this clone is not in %s: record the toolchain with `uv run scripts/setup.py init '
-                '--toolchain %s`' % (self.workspace, link)
-            )
 
     def tools(self):
         dev_tools.bootstrap_steps(self.do, run, self.repo)
@@ -981,30 +840,8 @@ class Bootstrap:
             print('  %d. %s' % (n, step))
 
 
-def cmd_toolchain(args):
-    """Only the pinned Blackfin toolchain, into XYF_TOOLCHAIN (else ../tools/blackfin): CI's step. One that
-    passes its pins stays."""
-    from xy_forever import toolchain
-
-    destination = toolchain.location(os.environ).expanduser()
-    if destination.is_dir() and toolchain_problem(destination) is None:
-        print('toolchain: %s passes its pins' % destination)
-        return 0
-    if destination.exists():
-        raise SetupError('%s exists and fails its pins: move it aside' % destination)
-    install_toolchain(PINS['toolchain']['archives'][host_name()], destination, archive=args.archive)
-    print('toolchain: installed into %s' % destination)
-    return 0
-
-
 def cmd_bootstrap(args):
-    return Bootstrap(
-        args.workspace,
-        dry_run=args.dry_run,
-        toolchain_archive=args.toolchain_archive,
-        private=args.private,
-        toolchain=args.toolchain,
-    ).run()
+    return Bootstrap(args.workspace, dry_run=args.dry_run, private=args.private).run()
 
 
 def main(argv=None):
@@ -1012,9 +849,6 @@ def main(argv=None):
     sub = p.add_subparsers(dest='command', required=True)
     i = sub.add_parser('init', help='create the private layout')
     i.add_argument('--private', help='private folder for this clone (recorded in xyf.local.json)')
-    i.add_argument(
-        '--toolchain', help='Blackfin toolchain folder outside ../tools/blackfin (recorded in xyf.local.json)'
-    )
     s = sub.add_parser('import-stock', help='copy the stock 1.2.1 pair')
     s.add_argument('dir', nargs='?', help='folder holding the copied files')
     s.add_argument(
@@ -1024,20 +858,10 @@ def main(argv=None):
     )
     sub.add_parser('fixtures', help='make test inputs from the stock pair and public open-xy')
     sub.add_parser('doctor', help='summary')
-    t = sub.add_parser('toolchain', help='only the pinned Blackfin toolchain (XYF_TOOLCHAIN or ../tools/blackfin)')
-    t.add_argument('--archive', metavar='ZIP', type=Path, help="open-xy's toolchain-1 release zip, already downloaded")
     b = sub.add_parser('bootstrap', help='set up this workspace (all that needs no OP-XY); safe to rerun')
-    b.add_argument(
-        '--workspace', help="the folder that holds this clone, private/ and tools/ (default: the clone's parent)"
-    )
+    b.add_argument('--workspace', help="the folder that holds this clone and private/ (default: the clone's parent)")
     b.add_argument('--dry-run', action='store_true', help='print every action without doing it')
-    b.add_argument(
-        '--toolchain-archive',
-        metavar='ZIP',
-        help="open-xy's toolchain-1 release zip for this host, already downloaded (default: bootstrap downloads it)",
-    )
     b.add_argument('--private', help='private folder for this clone, as init records it (default ../private)')
-    b.add_argument('--toolchain', help='an installed Blackfin toolchain folder, as init records it (checked first)')
     args = p.parse_args(argv)
     try:
         return {
@@ -1045,7 +869,6 @@ def main(argv=None):
             'import-stock': cmd_import_stock,
             'fixtures': cmd_fixtures,
             'doctor': cmd_doctor,
-            'toolchain': cmd_toolchain,
             'bootstrap': cmd_bootstrap,
         }[args.command](args) or 0
     except SetupError as e:

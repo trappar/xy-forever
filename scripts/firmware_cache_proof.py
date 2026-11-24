@@ -6,8 +6,8 @@
 The cases, in order: a fresh build misses; unchanged, a hit restores the same bytes; one source changed misses and
 rebuilds, and a hit then restores that build; a --verify failure is not cached (it misses again); reverted, a hit
 restores the first build's bytes; a comment outside the sources hits; changed stock files miss (the build refuses
-them, and that failure is not cached either); a moved toolchain or changed pins miss. It needs the stock pair, the
-toolchain and pnpm's store (`pnpm install` here). The worktree and its files go in
+them, and that failure is not cached either); changed Python dependencies, image or pins miss. It needs the stock
+pair, Docker (the build container) and pnpm's store (`pnpm install` here). The worktree and its files go in
 <private>/xy-forever/sessions/<date>-cache-proof/, removed after (--keep leaves them).
 """
 
@@ -189,13 +189,11 @@ def main(argv=None):
                 fails=True,
                 env=dict(XYF_PRIVATE=str(private)),
             )
-        proof.record(
-            'toolchain moved: miss (dry run)',
-            proof.dry_status(dict(XYF_TOOLCHAIN=str(private / 'tc'))) == 'MISS',
-            'XYF_TOOLCHAIN elsewhere',
-        )
+        original = edit(tree / 'uv.lock', '\n')
+        proof.record('Python dependencies changed: miss (dry run)', proof.dry_status({}) == 'MISS', 'uv.lock')
+        (tree / 'uv.lock').write_bytes(original)
         original = edit(tree / 'toolchains.json', '\n')
-        proof.record('toolchain pins changed: miss (dry run)', proof.dry_status({}) == 'MISS', 'toolchains.json')
+        proof.record('image or pins changed: miss (dry run)', proof.dry_status({}) == 'MISS', 'toolchains.json')
         (tree / 'toolchains.json').write_bytes(original)
         proof.record('restored tree: hit (dry run)', proof.dry_status({}) == 'HIT', 'as at the start')
     finally:

@@ -1,9 +1,9 @@
 # The merge check every pull request runs, on Linux (#229: macOS minutes bill at ten times Linux's). No Teenage
 # Engineering bytes ever reach CI: the private folder is an empty temporary one, so the tests that need the stock
-# os.ldr, the decrypted packages or a device report skip. firmware.yml builds the product firmware (on macOS);
-# `mise run check` on a contributor's machine builds it with the stock files. open-xy publishes no Linux Blackfin
-# toolchain, so the tests that need one (the freestanding and stack checks) skip here too: `mise run check` runs them, and a
-# manual run with `macos` checked runs the suite on macOS with open-xy's public toolchain-1 release.
+# os.ldr, the decrypted packages or a device report skip. firmware.yml builds the product firmware; `mise run check`
+# on a contributor's machine builds it with the stock files. The tests that need the Blackfin toolchain (the
+# freestanding and stack checks) run it in the pinned build image (#321), as everywhere: XYF_REQUIRE_CONTAINER fails
+# them if it cannot run.
 #
 # Cost: a job bills whole minutes, so the checks are one job whose steps run by what changed (a paths-filter step,
 # no job of its own): a docs-only change (docs/, Markdown) runs lint, the doc budgets and the leak scan; the web
@@ -21,11 +21,6 @@ on:
     branches: [main]
     paths-ignore: ['docs/**', '**/*.md']
   workflow_dispatch:
-    inputs:
-      macos:
-        description: Run the Python suite on macOS (with the Blackfin toolchain), at ten times the cost
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -37,11 +32,12 @@ concurrency:
 jobs:
   checks:
     name: Lint, web app, client, Python suite
-    runs-on: ${{ inputs.macos && 'macos-15' || 'ubuntu-24.04' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
       pull-requests: read   # the paths-filter step lists the pull request's files
+      packages: read   # the build image (GHCR)
     env:
       CC: clang   # the host C++ build (hosttest/) with clang, as on a Mac, through ccache
       CXX: clang++
@@ -97,20 +93,16 @@ jobs:
       - name: Web build
         if: env.WEB == 'true'
         run: pnpm --filter xy-forever-web run build
-      - name: Blackfin toolchain cache
-        if: runner.os == 'macOS'
-        uses: actions/cache@v6
-        with:
-          path: ${{ runner.temp }}/tools/blackfin
-          key: blackfin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('stock.json', 'toolchains.json') }}
-      - name: Blackfin toolchain (open-xy's public release, checked against toolchains.json)
-        if: runner.os == 'macOS'
+      - name: The build image (GHCR), for the tests that run the Blackfin toolchain
+        if: env.CODE == 'true'
         env:
-          XYF_TOOLCHAIN: ${{ runner.temp }}/tools/blackfin
-        run: uv run scripts/setup.py toolchain
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          uv run -m xy_forever.container run true   # pulls it and syncs its venv once
       - name: The suite, every tier but the sweeps (mise run test-all; CPU budgets enforced, wall time reported)
         if: env.CODE == 'true'
         env:
           XYF_PRIVATE: ${{ runner.temp }}/private   # empty: every test that needs private files skips
-          XYF_TOOLCHAIN: ${{ runner.temp }}/tools/blackfin
+          XYF_REQUIRE_CONTAINER: "1"
         run: mkdir -p "$XYF_PRIVATE" && mise run test-all

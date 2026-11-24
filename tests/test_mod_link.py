@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 import test_modkit as TK
+from conftest import blackfin
 
 from xy_forever import modkit as M
 from xy_forever import modlink as L
@@ -1230,18 +1231,14 @@ class NumbersFixture(unittest.TestCase):
 
 
 @pytest.mark.gate
+@pytest.mark.toolchain
 class BlackfinCompile(unittest.TestCase):
     """The linker compiles for the device with the firmware's flags: no library calls, no BSS or data,
     small frames (compile only; nothing is linked into a build)."""
 
     def test_freestanding(self):
-        from xy_forever import toolchain
-
-        tools = toolchain.location() / 'bin/bfin-elf-g++'
-        if not tools.exists():
-            self.skipTest('Blackfin toolchain absent')
         with tempfile.TemporaryDirectory(prefix='mod-link-cross-') as tmp:
-            report = L.cross(tmp)
+            report = L.cross(tmp, lambda commands, work: blackfin(self, commands, work))
         for name, r in report['sources'].items():
             with self.subTest(name):
                 self.assertEqual(r['calls'], [])

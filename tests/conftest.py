@@ -32,7 +32,7 @@ import pytest
 import xyf_bounds
 import xyf_select
 
-from xy_forever import bounds, no_device, paths
+from xy_forever import bounds, container, no_device, paths
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -66,6 +66,20 @@ def verified_build(test):
     return build
 
 
+def blackfin(test, commands, work):
+    """container.blackfin(commands, work), every command passing (the toolchain is in the build image). Without
+    Docker or the image the test is skipped naming why, or failed when XYF_REQUIRE_CONTAINER is set (mise run check
+    and CI set it)."""
+    try:
+        results = container.blackfin(commands, work)
+    except container.ContainerError as e:
+        (test.fail if os.environ.get(paths.REQUIRE_CONTAINER) else test.skipTest)(str(e))
+    for command, (status, _, err) in zip(commands, results):
+        if status:
+            test.fail('%s: exit %d\n%s' % (' '.join(map(str, command)), status, err))
+    return results
+
+
 def tier_of(item):
     return next((m.name for m in item.iter_markers() if m.name in TIERS), 'fast')
 
@@ -77,6 +91,7 @@ def pytest_configure(config):  # a conftest's runs before pytest-timeout's, whic
     config.addinivalue_line('markers', 'gate: the gate tier: run by mise run check, not mise run test')
     config.addinivalue_line('markers', 'sim: the simulator core (#233): mise run test-all and CI')
     config.addinivalue_line('markers', 'sweep: a long simulator sweep, in no shared run: mise run test-sweeps')
+    config.addinivalue_line('markers', 'toolchain: runs Blackfin tools in the build container (conftest.blackfin)')
     config.pluginmanager.register(xyf_bounds, 'xyf-bounds')
     xyf_select.register(config)
     config.pluginmanager.register(CpuClock(), 'xyf-cpu')

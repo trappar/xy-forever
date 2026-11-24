@@ -1,0 +1,91 @@
+# The firmware build image (#321): docker/toolchain.Dockerfile, built natively for linux/amd64 and linux/arm64 and
+# published to GHCR as one multi-platform image, ghcr.io/trappar/xy-forever-toolchain:<commit>. It runs only when the
+# Dockerfile (or this file) changes. Each platform's tools are checked against toolchains.json before the image is
+# assembled; the repository then pins the image's digest ("image" in toolchains.json), so nothing uses a new image
+# until a commit says so. The package is private: CI pulls it with GITHUB_TOKEN, developers with their gh login
+# (docs/operating/dev-tools.md).
+name: Toolchain image
+
+on:
+  push:
+    paths:
+      - 'docker/toolchain.Dockerfile'
+      - '.github/workflows/toolchain-image.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/trappar/xy-forever-toolchain
+
+jobs:
+  platform:
+    name: Image (${{ matrix.platform }})
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Build and push by digest
+        run: |
+          docker buildx create --use --driver docker-container
+          docker buildx build --platform "${{ matrix.platform }}" -f docker/toolchain.Dockerfile \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --output "type=image,name=$IMAGE,push-by-digest=true,name-canonical=true,push=true" \
+            --metadata-file "$RUNNER_TEMP/meta.json" docker
+          digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/meta.json")
+          echo "DIGEST=$digest" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/digests" && touch "$RUNNER_TEMP/digests/${digest#sha256:}"
+      - name: Its tools match toolchains.json
+        run: |
+          docker run --rm -v "$PWD:/src:ro" "$IMAGE@$DIGEST" uv run --no-project python -I -c \
+            "import sys; sys.path.insert(0, '/src'); from xy_forever import toolchain; toolchain.authenticate(); print('pins ok')"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digest-${{ matrix.runner }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+
+  image:
+    name: Multi-platform image
+    needs: platform
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: digest-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/digests
+      - name: Assemble and name it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker buildx imagetools create -t "$IMAGE:$GITHUB_SHA" $(printf "$IMAGE@sha256:%s " *)
+          digest=$(docker buildx imagetools inspect "$IMAGE:$GITHUB_SHA" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "Pin in toolchains.json: \`\"image\": \"$IMAGE@$digest\"\`" | tee -a "$GITHUB_STEP_SUMMARY"

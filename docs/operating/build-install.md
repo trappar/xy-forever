@@ -7,12 +7,12 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 ## Build, verify, install (every build)
 
 ```sh
-cd xy-forever        # toolchain: ../tools/blackfin (elsewhere: docs/operating/dev-tools.md)
+cd xy-forever        # firmware builds run in the build container (docs/operating/dev-tools.md#docker)
 mise run doctor                  # stock pair + fixtures in place? (first: operating/first-install.md)
 mise run check                   # the PR gate (checks.md): the verified build lands in builds/<image>
 mise run check --confirm         # this commit's check receipt, with its image
-uv run xyf-build --xyf-product --out ../private/xy-forever/builds/repeat   # by hand: same candidate SHA
-uv run xyf-build --verify --out ../private/xy-forever/builds/repeat        # {"passed": true}
+uv run -m xy_forever.container run xyf-build --xyf-product --out build/repeat   # by hand: same candidate SHA
+uv run -m xy_forever.container run xyf-build --verify --out build/repeat        # {"passed": true}
 uv run scripts/device_pass.py --plan --install ../private/xy-forever/builds/IMAGE  # inspect the qualification plan
 ```
 

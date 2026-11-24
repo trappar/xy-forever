@@ -7,7 +7,6 @@ import ctypes as C
 import re
 import shutil
 import struct
-import subprocess
 import tempfile
 import unittest
 import zlib
@@ -15,6 +14,7 @@ from pathlib import Path
 
 import pytest
 import xyf_hosttest
+from conftest import blackfin
 
 from xy_forever import xyf_build as builder
 from xy_forever import xyf_stage2 as S
@@ -230,15 +230,12 @@ class Stage1DecisionTest(unittest.TestCase):
 
 
 class Stage2MenuRulesTest(unittest.TestCase):
+    @pytest.mark.gate
+    @pytest.mark.toolchain
     def test_device_layout_32_bit(self):
-        from xy_forever import toolchain
-
-        gxx = toolchain.location() / 'bin/bfin-elf-g++'
-        if not gxx.exists():
-            self.skipTest('Blackfin toolchain absent')
+        flags = ['-mcpu=bf707', '-std=gnu++11', '-ffreestanding', '-fsyntax-only', '-I', ROOT / 'target']
         with tempfile.TemporaryDirectory() as tmp:
-            src = Path(tmp) / 'layout.cpp'
-            src.write_text(
+            (Path(tmp) / 'menu.cpp').write_text(
                 '#include <stddef.h>\n#include "xyf_stage2.hpp"\nusing namespace xyf::stage2;\n'
                 'static_assert(sizeof(Abi) == 32 && sizeof(Abi2) == 48, "size");\n'
                 'static_assert(offsetof(Abi2, v1) == 0 && offsetof(Abi2, catalog) == 32 && '
@@ -247,39 +244,11 @@ class Stage2MenuRulesTest(unittest.TestCase):
                 'static_assert(offsetof(Abi, services) == 28 && offsetof(Services, now_ms) == 16, "v1");\n'
                 'static_assert(abi == 2 && this_stage1 == 2, "menu stage 1");\n'
             )
-            subprocess.run(
-                [
-                    str(gxx),
-                    '-mcpu=bf707',
-                    '-std=gnu++11',
-                    '-ffreestanding',
-                    '-fsyntax-only',
-                    '-DXYF_STAGE2_MENU=1',
-                    '-I',
-                    str(ROOT / 'target'),
-                    str(src),
-                ],
-                check=True,
-                capture_output=True,
-            )
-            src.write_text(
+            (Path(tmp) / 'hello.cpp').write_text(
                 '#include "xyf_stage2.hpp"\nstatic_assert(xyf::stage2::abi == 1 && '
                 'xyf::stage2::this_stage1 == 1, "hello stage 1");\n'
             )
-            subprocess.run(
-                [
-                    str(gxx),
-                    '-mcpu=bf707',
-                    '-std=gnu++11',
-                    '-ffreestanding',
-                    '-fsyntax-only',
-                    '-I',
-                    str(ROOT / 'target'),
-                    str(src),
-                ],
-                check=True,
-                capture_output=True,
-            )
+            blackfin(self, [['g++', *flags, '-DXYF_STAGE2_MENU=1', 'menu.cpp'], ['g++', *flags, 'hello.cpp']], tmp)
 
     def test_stage1_runner_rules(self):
         menu = KEY_UI[KEY_UI.index('#if defined(XYF_STAGE2_MENU)\n// ABI 2') : KEY_UI.index('#else\n// Runs a loaded')]

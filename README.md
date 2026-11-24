@@ -51,10 +51,10 @@ tool). For mod writers: [docs/MODS-DEV.md](docs/MODS-DEV.md).
 ## Layout and requirements
 
 Where code lives: [docs/architecture/code-map.md](docs/architecture/code-map.md). Supported hosts and
-everything setup installs: [ONBOARDING.md](ONBOARDING.md). Firmware builds need the Blackfin toolchain
-(Open-XY's `toolchain-1` release, which `mise run setup` installs and checks against `toolchains.json`) and
-private inputs outside the repository: the stock 1.2.1 `os.ldr` and `bootloader.ldr` from your own OP-XY,
-which are not distributed. Tests that need them skip when they are absent.
+everything setup installs: [ONBOARDING.md](ONBOARDING.md). Firmware builds run in a pinned Linux container
+(Docker, on every OS: Open-XY's Blackfin toolchain built from its source, `toolchains.json`), so a tree builds the
+same `os.ldr` everywhere. The checks also read private inputs outside the repository: the stock 1.2.1 `os.ldr`
+and `bootloader.ldr` from your own OP-XY, which are not distributed. Tests that need them skip when they are absent.
 
 ## Build and verify after the first device install
 

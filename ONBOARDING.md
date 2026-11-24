@@ -9,16 +9,18 @@ Two parts: **setup without a device** (below; enough for host code, the web app,
 
 ## Setup without a device
 
-A macOS host on Apple silicon with Homebrew: the tested one (CI runs the suite on Linux, ubuntu-24.04, and on macOS
-only in a manual run). The Blackfin toolchain is pinned for Windows x86_64 (downloaded) and Linux x86_64 (built with
-Docker) too; the rest of the setup is untested there (install mise as https://mise.jdx.dev/installing-mise.html shows). Start in the workspace folder, where the
-coding agent was opened:
+A macOS host on Apple silicon with Homebrew: the tested one (CI runs on Linux, ubuntu-24.04). Every firmware build
+runs in a pinned Linux container, so Docker is needed on every OS: Docker Desktop on macOS, Docker Engine on Linux,
+Docker Desktop with WSL2 on Windows, with the clone and every command inside WSL2
+([dev tools](docs/operating/dev-tools.md#docker)). Linux and WSL2 are untested beyond CI (install mise as
+https://mise.jdx.dev/installing-mise.html shows). Start in the workspace folder, where the coding agent was opened:
 
 ```sh
 xcode-select --install                 # git and clang++ (host tests)
 brew install mise libusb               # mise (then `mise activate` in your shell profile); libusb for USB tools
+brew install --cask docker             # Docker Desktop: start it once
 git clone https://github.com/trappar/xy-forever.git && cd xy-forever && mise trust && mise install
-mise run setup                         # private folder, toolchain, Python and JS dependencies (rerun: safe)
+mise run setup                         # private folder, build image, Python and JS dependencies (rerun: safe)
 gh auth login                          # once: issues and pull requests
 ```
 
@@ -33,11 +35,8 @@ acts only on what is missing and never deletes:
   --private DIR` first (recorded in `xyf.local.json`), or `XYF_PRIVATE`.
 - **Workspace guide** (`AGENTS.md`, `CLAUDE.md` beside the clone; never overwritten). The workspace is the
   clone's parent folder; another: `mise run setup --workspace DIR`.
-- **Toolchain:** Open-XY's `toolchain-1` release for this host, checked against `stock.json` and every file
-  against `toolchains.json`, into `../tools/blackfin`. No download (proxy, certificates): get the zip from the
-  release page in a browser, then `mise run setup --toolchain-archive <zip>`. Linux: build it with Docker
-  (open-xy `docs/build.md`, "On Linux"). Elsewhere: `uv run scripts/setup.py init --toolchain DIR` (recorded in
-  `xyf.local.json`). Never edit the pins.
+- **Build image:** pulls the image `toolchains.json` pins (Open-XY's Blackfin toolchain, built from its source)
+  once; Docker itself is yours to install and start.
 - **Dependencies:** `uv sync`, `pnpm install`, the git hook. Setup starts on mise's Python and continues under
   `uv run` once `uv sync` is done.
 - It ends with `doctor` and a "Next:" list (the leak patterns, below, until you add them).

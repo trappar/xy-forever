@@ -1,11 +1,11 @@
 """Where XY Forever's private inputs and outputs live (outside every checkout).
 
 The private root is, in order: XYF_PRIVATE; "private" in the main checkout's gitignored xyf.local.json
-(written by `scripts/setup.py init --private DIR`); ../private next to the main checkout. The toolchain likewise:
-XYF_TOOLCHAIN; "toolchain" (`init --toolchain DIR`); ../tools/blackfin. Firmware, keys,
+(written by `scripts/setup.py init --private DIR`); ../private next to the main checkout. Firmware, keys,
 builds and device reports never enter git. The main checkout is this checkout in a plain clone; in a
 `git worktree` it is the checkout that holds the shared .git (main_checkout), so a worktree anywhere finds
-the same private root, toolchain and xyf.local.json as the main checkout.
+the same private root and xyf.local.json as the main checkout. The Blackfin toolchain is in the build image
+(xy_forever/container.py).
 """
 
 import json
@@ -35,7 +35,7 @@ def main_checkout(repo=REPO):
 
 
 MAIN = main_checkout()  # REPO in a plain clone
-LOCAL_CONFIG = MAIN / 'xyf.local.json'  # the main checkout's settings (gitignored): {"private": DIR, "toolchain": DIR}
+LOCAL_CONFIG = MAIN / 'xyf.local.json'  # the main checkout's settings (gitignored): {"private": DIR}
 
 
 def configured(key, config=None):
@@ -46,12 +46,6 @@ def configured(key, config=None):
     except FileNotFoundError:
         return None
     return Path(value).expanduser().resolve() if value else None
-
-
-def toolchain():
-    """The Blackfin toolchain unless XYF_TOOLCHAIN (toolchain.location): the local config's "toolchain", else
-    tools/blackfin beside the main checkout. Read on each call: setup records it, then its doctor reads it."""
-    return configured('toolchain') or MAIN.parent / 'tools/blackfin'
 
 
 def private_root(environ=os.environ, config=LOCAL_CONFIG, main=MAIN):
@@ -123,6 +117,9 @@ def private_output(path):
 IMAGE_NAME = re.compile(r'[0-9a-f]{8}')  # a build folder's name: its image (hello image=)
 PRODUCT = BUILD / 'product'  # this checkout's own product build and --verify (scripts/firmware_cache.py: cached)
 REQUIRE_BUILD = 'XYF_REQUIRE_BUILD'  # set (check.py's suite): a test that needs a verified build fails without one
+REQUIRE_CONTAINER = (
+    'XYF_REQUIRE_CONTAINER'  # set (check.py, CI): a test that needs the build container fails without it
+)
 
 
 def verified(folder):
