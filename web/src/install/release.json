@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "version": "0.1.0",
-  "image": "bd484a11",
-  "sha256": "bd484a11c43ca6c00d8dd60a3f86f2fef57cde65d53badffe1dbadf1780ee16b",
-  "bytes": 339180,
-  "notes": "Build and manage mods on the OP-XY, and manage files over USB."
+  "image": "efb07ddc",
+  "sha256": "efb07ddc0a6dfa34893fb2700a0914decb29cfb1ffedcfba50f3e64ceaa936b8",
+  "bytes": 396024,
+  "notes": "First preview: hold PLAY at power-on to choose which firmware boots and turn mods on and off, and manage mods and files from this site over USB."
 }
