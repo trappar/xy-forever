@@ -69,12 +69,26 @@ In the GitHub repository, open **Settings → Secrets and variables → Actions*
 **repository variable**. Give the [API token](https://developers.cloudflare.com/pages/how-to/use-direct-upload-with-continuous-integration/)
 the **Account → Cloudflare Pages → Edit** permission scoped to the account that owns the Pages project.
 
+## When the site deploys
+
+The site follows `main`. **Deploy web app to Cloudflare Pages** (`.github/workflows/pages.yml`) runs on `main` when:
+
+- a push to `main` changes what the site build or the deploy reads: `web/` (not its tests or docs), `clients/ts/`,
+  the license files in `LICENSES.txt`, the pnpm workspace and lockfile, the mise and uv pins, the scripts the deploy
+  runs (`scripts/web_release.py`, `scripts/web_canary.py` and the `xy_forever` modules they import), the workflow
+  and the shared CI action. The workflow's `paths` list is the exact set;
+- the firmware workflow publishes a new canary (above);
+- someone chooses **Run workflow** on `main`.
+
+Pull requests never deploy. A newer run cancels one in progress: it builds a newer `main` and stages the newest
+eligible canary, so the last to start wins.
+
 ## Deploy an approved release
 
 Attach the verified `os.ldr` to the repository's GitHub release tagged `v<version>`, where
 `<version>` matches `web/src/install/release.json` on `main`. After publication is approved in
-[#223](https://github.com/trappar/xy-forever/issues/223), open **Actions → Deploy web app to
-Cloudflare Pages** and choose **Run workflow** on `main`.
+[#223](https://github.com/trappar/xy-forever/issues/223), the merge that changes the pin deploys it; a deploy
+fails while the pinned asset is missing, so attach it first, or run the workflow on `main` once it is attached.
 
 The workflow downloads the pinned release asset with GitHub's built-in token, verifies the image,
 adds the newest eligible canary, builds and smoke-tests the site with Wrangler, and uploads the checked output to the `xy-forever`
