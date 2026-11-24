@@ -8,9 +8,10 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
 
 - **Main agent of a session** (asked to "continue development" or "resume work"): if `mise run
   doctor` exits non-zero, setup is unfinished: follow [ONBOARDING.md](ONBOARDING.md) first. Otherwise
-  follow [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md): work the GitHub issues (`mise run plan`),
-  delegating when available or using its sequential workflow. Device work starts with the
-  [first device install](docs/operating/first-install.md) when it has not happened yet.
+  follow [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md): work the GitHub issues (`mise run plan`).
+  With sub-agents you never read or edit source, tests or build scripts: every implementation and every
+  question about the code goes to a sub-agent. Without any, work items yourself in sequence. Device work
+  starts with the [first device install](docs/operating/first-install.md) when it has not happened yet.
 - **Sub-agent with a brief:** read what the brief names, plus
   [docs/SAFETY.md](docs/SAFETY.md) (**binding**: never brick the developer's OP-XY) before
   anything that reaches the firmware or the device.
