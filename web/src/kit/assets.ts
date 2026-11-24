@@ -12,6 +12,12 @@ export const CORE_RELEASE = {
 } as const;
 
 export async function finishedContent(kit: Kit): Promise<Finished> {
+  const profile = new Uint8Array(await crypto.subtle.digest('SHA-256', core.decode64(kit.profileSource)));
+  if (Array.from(profile, (b) => b.toString(16).padStart(2, '0')).join('') !== core.PROFILE_SHA256)
+    throw new KitError(
+      `Open-XY's kit ${kit.version} is made for another firmware profile than this app reads ` +
+        `(Open-XY ${CORE_RELEASE.version}'s). Check for an XY Forever update.`,
+    );
   const opened = await core.openKit(kit).catch((error: unknown) => {
     throw new KitError(`Open-XY's builder refused the kit: ${error instanceof Error ? error.message : String(error)}`);
   });

@@ -5,7 +5,8 @@ The synthetic kits of tests/test_modkit.py and tests/test_modpatch.py (capabilit
 the gate tier with the hosts' stand-in content. The published Open-XY 0.0.7 kit (private fixtures) runs, when present
 with its SDK in the open-xy upstream clone, with each side's own Open-XY builder: the host's from the upstream release
 commit, the app's vendored copy (checked unchanged against that commit). It also shows a newer kit offering its new
-entry (the same code reads whatever kit it is given; the app fetches it at run time)."""
+entry (the same code reads whatever kit it is given; the app fetches it at run time), and the 0.0.6 kit, made for
+another firmware profile, refused."""
 
 import base64
 import copy
@@ -162,7 +163,9 @@ class PublishedKit(unittest.TestCase):
             older['objects'] = [o for o in older['objects'] if o.get('owner') != late]
             kit = write_json(work / 'kit.json', newer)
             ref = Path(M.split_kit(kit, work / 'py', paths.OPEN_XY_UPSTREAM, SOURCE_007, sdk_commit=SDK_007)['root'])
-            result, earlier = node_split([KIT_007, write_json(work / 'older.json', older)], work / 'ts', (), SOURCE_007)
+            kits = [KIT_007, write_json(work / 'older.json', older)]
+            kits += [paths.PUBLISHED_KIT] if paths.PUBLISHED_KIT.is_file() else []  # 0.0.6: another profile
+            result, earlier, *other = node_split(kits, work / 'ts', (), SOURCE_007)
             for upstream, vendored in VENDORED.items():
                 with self.subTest(vendored=upstream):
                     show = ['git', '-C', str(paths.OPEN_XY_UPSTREAM), 'show', '%s:%s' % (SDK_007, upstream)]
@@ -175,6 +178,8 @@ class PublishedKit(unittest.TestCase):
             self.assertNotEqual(earlier['generation'], result['generation'])
             self.assertNotIn(late, {p.name for p in Path(earlier['root']).iterdir()})
             self.assertIn(late, {p.name for p in Path(result['root']).iterdir()})
+            for refused in other:
+                self.assertRegex(refused.get('error', ''), 'made for another firmware profile', refused)
 
 
 if __name__ == '__main__':
