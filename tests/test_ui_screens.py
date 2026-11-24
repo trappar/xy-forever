@@ -85,8 +85,8 @@ class UiScreensTest(unittest.TestCase):
         """#315: the saver's frame is black but the infinity mark, inside its box and in one colour; frames later the
         mark is elsewhere, still whole on screen, nothing in the hidden rows."""
         boxes = []
-        for frames in (0, 37, 150):
-            x, y, w, h, color = self.lib.ui_render_saver(self.fb, frames)
+        for frames in (0, 111, 450):
+            x, y, w, h, color, _, _ = self.lib.ui_render_saver(self.fb, frames, 0)
             lit, hidden = self.visible()
             self.assertEqual(hidden, 0)
             self.assertEqual(self.lit_box(0, P.WIDTH, 0, P.HEIGHT), (x, x + w - 1, y, y + h - 1))
@@ -94,6 +94,17 @@ class UiScreensTest(unittest.TestCase):
             self.assertLess(len(lit), w * h // 2)  # two rings: most of the screen, and of the box, stays dark
             boxes.append((x, y))
         self.assertEqual(len(set(boxes)), 3)
+
+    def test_screen_saver_frames_redraw_only_the_marks_boxes(self):
+        """#315: after its first frame a saver frame clears the mark's old box and draws the new one: the same pixels
+        as a whole new frame (bounces and colour changes included), touching only the columns of the two boxes."""
+        whole = P.framebuffer(self.lib)
+        for frames, then in ((0, 1), (5, 40), (180, 30), (370, 300)):
+            *_, frm, to = self.lib.ui_render_saver(self.fb, frames, then)
+            x, y, w, *_ = self.lib.ui_render_saver(whole, frames + then, 0)
+            self.assertEqual(self.fb, whole)
+            self.assertLessEqual(to - frm, w)  # one px a frame: the two boxes overlap
+            self.assertTrue(frm <= x and x + w - 1 <= to)
 
     def test_home_chrome(self):
         """8.7: the USB mark top right only while lit (188: and the MTP mark left of it); nothing for storage OK;

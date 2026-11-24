@@ -536,10 +536,16 @@ extern "C" void xy_forever_key_ui() {
                 // #315: the saver's start, frames and end; while it has the screen, nothing else redraws (one full
                 // redraw on the wake shows the menu as it is then).
                 {
+                    // USB work is activity; it and a build hold the mark still (#288: a frame blocks ~17 ms).
+                    const bool usb = xy_forever::usb_service::host_activity() != 0;
+#if defined(XYF_MODS_PAGE)
+                    const bool build = xy_forever::usb_service::page_busy() || xy_forever::mods_io::converging();
+#else
+                    const bool build = false;
+#endif
                     const bool frame = xyf::saver::pass(
                         saver, xyf::clock::ms(), xyf::settings::saver_ms(xy_forever::usb_service::settings().saver),
-                        xyf::saver::holds(app, xy_forever::usb_service::trust_prompt()),
-                        xy_forever::usb_service::host_activity() != 0);
+                        xyf::saver::holds(app, xy_forever::usb_service::trust_prompt()), usb, usb || build);
                     if (saver.on) dirty = frame;
                     else if (frame) dirty = 1;
                 }

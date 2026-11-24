@@ -525,9 +525,14 @@ extern "C" void xy_forever_key_ui() {
         { // as key_ui.cpp (#315)
             const bool was = sim_saver.on != 0;
             const uint32_t timeout = xyf::settings::saver_ms(usb_service::settings().saver);
+            const bool usb = usb_service::host_activity() != 0;
+#if defined(XYF_MODS_PAGE)
+            const bool build = usb_service::page_busy() || mods_io::converging();
+#else
+            const bool build = false;
+#endif
             if (xyf::saver::pass(sim_saver, device_ms(), timeout,
-                                 xyf::saver::holds(sim_app, usb_service::trust_prompt()),
-                                 usb_service::host_activity() != 0)) {
+                                 xyf::saver::holds(sim_app, usb_service::trust_prompt()), usb, usb || build)) {
                 if (!was) {
                     sim_saver_frames = 0;
                     xyf_sim::log("saver: on at %u ms (after %u ms)", device_ms(), timeout);

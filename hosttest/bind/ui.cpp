@@ -159,13 +159,21 @@ void bind_screens(nb::module_ m) {
     // #21: one row, always selected
     m.def("ui_render_home", [](nb::handle fb, unsigned) { ui::draw_home_empty(Frame(fb), &bridge_chrome); });
     // #315: the screen saver's frame after `frames` frames from its start (key_ui draw_screen); its mark's box.
-    m.def("ui_render_saver", [](nb::handle fb, unsigned frames) {
+    // then: more frames after that one, each drawn as key_ui does (only the mark's old and new boxes), the last
+    // frame's touched columns returned too.
+    m.def("ui_render_saver", [](nb::handle fb, unsigned frames, unsigned then) {
         saver::State s;
         saver::start(s, 0);
-        saver::pass(s, 60000, 60000, false, false);
-        for (unsigned i = 1; i <= frames; ++i) saver::pass(s, 60000 + i * saver::frame_ms, 60000, false, false);
-        saver::draw(Frame(fb), s);
-        return nb::make_tuple(int(s.x), int(s.y), saver::mark_w, saver::mark_h, unsigned(saver::colors[s.color]));
+        saver::pass(s, 60000, 60000, false, false, false);
+        uint32_t now = 60000;
+        for (unsigned i = 0; i != frames; ++i) saver::pass(s, now += saver::frame_ms, 60000, false, false, false);
+        saver::Span span = saver::draw(Frame(fb), s, false);
+        for (unsigned i = 0; i != then; ++i) {
+            saver::pass(s, now += saver::frame_ms, 60000, false, false, false);
+            span = saver::draw(Frame(fb), s, false);
+        }
+        return nb::make_tuple(int(s.x), int(s.y), saver::mark_w, saver::mark_h, unsigned(saver::colors[s.color]),
+                              span.from, span.to);
     });
     m.def("ui_scale", [](uint32_t a, uint32_t b, uint32_t c) { return ui::scale(a, b, c); });
     m.def("ui_list_first", [](unsigned count, unsigned selected) { return unsigned(ui::list_first(count, selected)); });

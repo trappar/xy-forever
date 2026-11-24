@@ -28,6 +28,26 @@ bool usb_view_changed() {
 }
 #endif
 
+// The framebuffer bytes a present flushes (draw_screen narrows it for a saver frame; present resets it).
+uint32_t flush_from __attribute__((section(".data"))) = 0;
+uint32_t flush_to __attribute__((section(".data"))) = framebuffer_bytes;
+#if defined(XYF_SETTINGS)
+uint32_t saver_corner __attribute__((section(".data"))) = 0;   // the last saver frame had a where code in its corner
+// #315: a saver frame; after the first, only the mark's old and new boxes are drawn and flushed (their columns, which
+// are one run of the column-major framebuffer). A where code in the corner (now or on the last frame): all of it.
+void draw_saver(uint16_t* fb) {
+#if defined(XYF_USB_SERVICE)
+    const uint32_t corner = where_shown;
+#else
+    const uint32_t corner = 0;
+#endif
+    const xyf::saver::Span span = xyf::saver::draw(fb, saver, corner || saver_corner);
+    saver_corner = corner;
+    flush_from = uint32_t(xyf::gfx::width - 1 - span.to) * xyf::gfx::column_stride * 2u;
+    flush_to = uint32_t(xyf::gfx::width - span.from) * xyf::gfx::column_stride * 2u;
+}
+#endif
+
 void draw_screen(uint16_t* fb) {
     using namespace xyf::ui;
 #if defined(XYF_ONE_SESSION)
@@ -64,7 +84,7 @@ void draw_screen(uint16_t* fb) {
                              &chrome};
         draw_message(fb, ask);
     } else if (saver.on) {                           // #315: the screen saver (the menu's state stays under it)
-        xyf::saver::draw(fb, saver);
+        draw_saver(fb);
 #endif
 #if defined(XYF_SERVICE_SCREEN)
     } else if (ui_screen == 4) {
@@ -93,9 +113,9 @@ void draw_screen(uint16_t* fb) {
 #endif
 }
 
-// Same cache maintenance as the stock render (889eea0e -> 8803d000 FLUSH loop).
-void flush_framebuffer(uint32_t fb) {
-    for (uint32_t a = fb; a < fb + framebuffer_bytes; a += 32) __asm__ volatile("FLUSH [%0];" : : "a"(a) : "memory");
+// Same cache maintenance as the stock render (889eea0e -> 8803d000 FLUSH loop), over bytes from..to of it.
+void flush_framebuffer(uint32_t fb, uint32_t from = 0, uint32_t to = framebuffer_bytes) {
+    for (uint32_t a = fb + (from & ~31u); a < fb + to; a += 32) __asm__ volatile("FLUSH [%0];" : : "a"(a) : "memory");
     __asm__ volatile("SSYNC;" : : : "memory");
 }
 
@@ -130,9 +150,11 @@ void present() {
         r.present_skips += 0x10000u;
     }
     const uint32_t drawing = cycles_div1024();
-    draw_screen(reinterpret_cast<uint16_t*>(word(framebuffer)));   // full repaint
+    flush_from = 0;
+    flush_to = framebuffer_bytes;
+    draw_screen(reinterpret_cast<uint16_t*>(word(framebuffer)));   // full repaint (a saver frame: its boxes)
     where_draw(reinterpret_cast<uint16_t*>(word(framebuffer)));    // a long wait's code (key_ui_where.ipp)
-    flush_framebuffer(word(framebuffer));
+    flush_framebuffer(word(framebuffer), flush_from, flush_to);
     const uint32_t drawn = cycles_div1024();
     transfer();
     const uint32_t sent = cycles_div1024();
