@@ -85,15 +85,21 @@ int text(uint16_t* fb, int x, int y, const char* s, Color color, int scale) {
     return x;
 }
 
+void mark(uint16_t* fb, int x, int y, int outer, int inner, int offset, Color color) {
+    // The right ring passes under the left one at the bottom crossing for an interlocked look.
+    const int cy = y + outer, left = x + outer, right = left + offset;
+    ring(fb, right, cy, outer, inner, color, left, left + outer + 1);
+    ring(fb, left, cy, outer, inner, color, 0, 0);
+}
+
 int logo(uint16_t* fb, int x, int y, Color mark, Color word) {
     // One 35 px band from y: the infinity mark (two rings, 35 px tall, stroke 5 px as the letters'),
     // "XY" (scale 5, cap height 35) and "FOREVER" (scale 2) on the same baseline (y + 34), the mark's left
     // edge at x and logo_gap px between the three parts. The right ring passes under the left one at the
     // bottom crossing for an interlocked look.
-    const int outer = 17, inner = 13, cy = y + outer, left = x + outer, right = left + 2 * outer - 6;
-    ring(fb, right, cy, outer, inner, mark, left, left + outer + 1);
-    ring(fb, left, cy, outer, inner, mark, 0, 0);
-    const int text_x = right + outer + 1 + logo_gap;
+    const int outer = 17, offset = 2 * outer - 6;
+    xyf::gfx::mark(fb, x, y, outer, outer - 4, offset, mark);
+    const int text_x = x + mark_width(outer, offset) + logo_gap;
     text(fb, text_x, y, "XY", word, 5);
     const int forever_x = text_x + text_width("XY", 5) + logo_gap;
     text(fb, forever_x, y + 35 - 14, "FOREVER", mark, 2);

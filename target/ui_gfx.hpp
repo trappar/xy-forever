@@ -22,5 +22,9 @@ int text_width(const char* s, int scale);
 // "FOREVER" beside it, logo_height px tall from y, left edge at x. Returns the logo width in pixels.
 static const int logo_height = 35, logo_gap = 10;
 int logo(uint16_t* fb, int x, int y, Color mark, Color word);
+// The infinity mark alone, its box's top-left corner at (x, y): two rings of radius outer, stroke outer - inner,
+// their centres offset apart; mark_width(outer, offset) x (2 * outer + 1) px. The logo's: 17, 13, 28.
+inline int mark_width(int outer, int offset) { return 2 * outer + offset + 1; }
+void mark(uint16_t* fb, int x, int y, int outer, int inner, int offset, Color color);
 }}
 #endif
