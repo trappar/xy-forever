@@ -3,8 +3,11 @@
 // default_preset.json beside it, in the repository's layout), which check the kit and finish each machine's content.
 // Open-XY's site lets the production origin read both (#185). In development the dev server proxies the same paths
 // (vite.config.ts); until open-xy.com publishes the modules, development alone falls back to the release tag on
-// jsDelivr. Serving same-origin copies instead is a change of these lines alone.
+// jsDelivr. When the live kit cannot be read or split, the pinned 0.0.7 kit and its builder come from this site
+// (pinned.ts, #183).
 import type { Core } from './core.ts';
+import { PINNED_VERSION, pinnedKit } from './pinned.ts';
+import type { Kit } from './split.ts';
 
 const KIT_URL = import.meta.env.DEV ? '/kit.json.gz' : 'https://open-xy.com/kit.json.gz';
 const sdkBases = (version: string): string[] =>
@@ -56,4 +59,20 @@ export async function loadCore(version: unknown): Promise<Core> {
     }
   }
   throw new KitUnavailable(`Open-XY ${version}'s builder could not be loaded`);
+}
+
+/** This site's copy of the pinned Open-XY release (scripts/web_open_xy.py stages it). */
+const pinnedBase = (): string => new URL(`${import.meta.env.BASE_URL}open-xy/${PINNED_VERSION}/`, location.href).href;
+
+async function download(url: string): Promise<Uint8Array> {
+  const response = await fetch(url, { cache: 'no-cache' });
+  if (!response.ok) throw new Error(`${url} answered ${response.status}`);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+/** The pinned Open-XY 0.0.7 kit, refilled from Open-XY's repository, and that release's builder from this site. */
+export async function loadPinned(): Promise<{ kit: Kit; core: Core }> {
+  const kit = await pinnedKit(pinnedBase(), download);
+  const core = (await import(/* @vite-ignore */ new URL('builder/core.mjs', pinnedBase()).href)) as Core;
+  return { kit, core };
 }

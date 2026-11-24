@@ -128,7 +128,7 @@ function OpenXyCard({ inputs }: { inputs: SavedInputs | null }) {
             ? "Downloading and checking Open-XY's catalog..."
             : 'error' in state
               ? state.error
-              : `Open-XY ${state.catalog.version}: ${state.catalog.packages.length - 1} mods.`}
+              : `Open-XY ${state.catalog.version}${state.catalog.pinned ? ' (pinned)' : ''}: ${state.catalog.packages.length - 1} mods.`}
       </CardDescription>
       {state && 'catalog' in state && (
         <CatalogChoices key={state.catalog.generation} catalog={state.catalog} inputs={inputs} />

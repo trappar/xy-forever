@@ -54,7 +54,10 @@ after **Disconnect** (beside the link status) nothing reconnects without a click
   tag on jsDelivr). The builder checks the kit and finishes each machine's content; the app splits it into packages
   exactly as `modkit split` does (`src/kit/`); choose mods, send the base and the chosen packages, and save the
   selection (`config.set`). A kit it cannot package is refused with the reason, a failed download says what to do.
-  The vendored v0.0.7 builder (`src/vendor/open-xy/builder/`) is only the tests' reference.
+  When the live kit cannot be read or split, the site's pinned Open-XY 0.0.7 kit stands in ("(pinned)"): served here
+  without teenage engineering's material (`scripts/web_open_xy.py`, run by the Pages build, with Open-XY's notices and
+  sources), refilled from Open-XY's repository at v0.0.7 (`src/kit/pinned.ts`).
+  The vendored v0.0.7 builder (`src/vendor/open-xy/builder/`) is the tests' reference and the pinned kit's builder.
   Packages on the device grouped by kind (synths, drums, samplers, effects, players, extensions) with their
   saved on/off state; add packages from a folder (a `modkit split` generation folder); remove a package or a whole set;
   **Mods on the OP-XY**: the mods it runs and Mod memory, saved as the device's Mods menu does

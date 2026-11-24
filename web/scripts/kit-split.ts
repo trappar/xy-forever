@@ -4,7 +4,9 @@
 // OUT/N/mods/<profile>/<generation>/, and prints one JSON line: {"generation", "root"}, or {"error"} when the kit is
 // refused. With the Nth --assets JSON file ({machine id: {path: base64}}) a stand-in builder takes the kit as it is
 // (its objects read by readObject) and finishes each machine with those files: the synthetic kits of the host tests.
+// With --profile and --catalog, every kit is the stripped pinned one, refilled with them first (src/kit/pinned.ts).
 //   node web/scripts/kit-split.ts --kit KIT.json[.gz] ... --out OUT [--sdk-source URL@COMMIT] [--assets A.json ...]
+//     [--profile PROFILE.json --catalog op1_factory.json]
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -12,6 +14,7 @@ import { gunzipSync } from 'node:zlib';
 import * as vendored from '../src/vendor/open-xy/builder/core.mjs';
 import type { Core } from '../src/kit/core.ts';
 import { KitError } from '../src/kit/errors.ts';
+import { refill } from '../src/kit/pinned.ts';
 import { splitKit } from '../src/kit/split.ts';
 import type { Kit } from '../src/kit/split.ts';
 
@@ -21,6 +24,8 @@ const { values } = parseArgs({
     out: { type: 'string' },
     'sdk-source': { type: 'string' },
     assets: { type: 'string', multiple: true, default: [] },
+    profile: { type: 'string' },
+    catalog: { type: 'string' },
   },
 });
 const out = values.out;
@@ -49,7 +54,9 @@ for (const [n, path] of values.kit.entries()) {
   if (raw[0] === 0x1f && raw[1] === 0x8b) raw = gunzipSync(raw);
   const assets = values.assets[n];
   try {
-    const kit = JSON.parse(raw.toString('utf8')) as Kit;
+    let kit = JSON.parse(raw.toString('utf8')) as Kit;
+    if (values.profile && values.catalog)
+      kit = refill(kit, await readFile(values.profile), await readFile(values.catalog));
     const set = await splitKit(kit, assets ? await standIn(assets) : vendored, values['sdk-source'] ?? null);
     const root = join(out, String(n), 'mods', set.profile, set.generation);
     for (const [name, data] of set.files) {
