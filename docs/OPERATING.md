@@ -13,4 +13,4 @@ with the developer at the device. The rules in [SAFETY.md](SAFETY.md) are bindin
 - [At the device](operating/at-the-device.md): taking control of the device, timing, reports, the dev menu, working with the developer at the device
 - [Two agents at once](operating/two-agents.md): two agents on one machine: worktrees, the device lock
 - [Host C++](operating/host-build.md): the one CMake build of the tests', host tools' and simulator's C++ (`hosttest/`)
-- [Development tools](operating/dev-tools.md): mise, uv, pnpm, the private folder and toolchain (`xyf.local.json`), Open-XY upstream
+- [Development tools](operating/dev-tools.md): mise, uv, pnpm, the private folder (`xyf.local.json`), Docker and the build image, Open-XY upstream

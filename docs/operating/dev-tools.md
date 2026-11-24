@@ -26,10 +26,28 @@ Part of [Operating the device](../OPERATING.md). Setting a workspace up: [ONBOAR
   build outputs, device reports, sessions, your status notes. Firmware may also go to the checkout's
   gitignored `build/`. Elsewhere: `uv run scripts/setup.py init --private DIR` (recorded in `xyf.local.json`),
   or `XYF_PRIVATE` for one shell.
-- **Blackfin toolchain:** `../tools/blackfin` (`mise run setup` downloads it). Elsewhere:
-  `uv run scripts/setup.py init --toolchain DIR` (checked against its pins, recorded in `xyf.local.json`), or
-  `XYF_TOOLCHAIN` for one shell. Never change its pins (`toolchains.json`).
-- A worktree finds both, and `xyf.local.json`, through the main checkout ([two agents](two-agents.md)).
+- A worktree finds it, and `xyf.local.json`, through the main checkout ([two agents](two-agents.md)).
+
+## Docker
+
+Every firmware build, and every test that runs the Blackfin toolchain, runs in one pinned Linux image
+(`xy_forever/container.py`), so a tree gives the same `os.ldr` on every OS and in CI. The host keeps the firmware
+cache: a cached `mise run build` never starts the container.
+
+- **What each OS needs:** macOS: Docker Desktop. Linux: Docker Engine, your user in the `docker` group (the
+  container runs as you, so what it writes is yours). Windows: Docker Desktop with the WSL2 backend; clone, run
+  mise and every command inside a WSL2 distribution (a checkout on the Windows drive is slow through the mount).
+- **The image:** `docker/toolchain.Dockerfile` builds Open-XY's toolchain from its pinned source (their
+  `tools/gcc/build-linux.sh`) plus the Python and uv of `mise.toml` (change them together). `toolchain-image.yml`
+  publishes it to `ghcr.io/trappar/xy-forever-toolchain` for linux/amd64 and linux/arm64, each checked against its
+  tool hashes; `toolchains.json` pins its digest ("image"). `mise run setup` pulls it; by hand: `uv run -m
+  xy_forever.container pull`, or any command in it: `uv run -m xy_forever.container run xyf-build --xyf-mtp-usb
+  --out build/mtp-usb`.
+- **Access:** while the package is private, a pull logs Docker in to ghcr.io with your gh login, which needs
+  `gh auth refresh -h github.com -s read:packages` once. CI pulls with its `GITHUB_TOKEN`.
+- **A toolchain change** is on purpose and proved: publish the new image (a push that changes the Dockerfile), pin
+  its digest and tool hashes, and show in the pull request each build mode's `os.ldr` SHA-256 from the old image
+  and the new one, on both platforms.
 
 ## Open-XY upstream
 

@@ -24,7 +24,7 @@ file or output that answers the question. A doc over its budget is split into a 
 
 | Task | Read |
 |---|---|
-| Tools, commands, private folder, toolchain, Open-XY upstream | [docs/operating/dev-tools.md](docs/operating/dev-tools.md) |
+| Tools, commands, private folder, the build image, Open-XY upstream | [docs/operating/dev-tools.md](docs/operating/dev-tools.md) |
 | Tests, tiers, budgets, the PR gate | [checks](docs/operating/checks.md) |
 | Hardware session, install, reports, working with the developer at the device | [docs/OPERATING.md](docs/OPERATING.md) |
 | Design, boot flows, where code lives | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
@@ -38,7 +38,8 @@ file or output that answers the question. A doc over its budget is split into a 
 - **Private data stays out of git:** firmware and other teenage engineering bytes, keys, decompiled listings,
   build outputs and device reports live in the private folder ([dev tools](docs/operating/dev-tools.md)). Never print or commit key material.
 - **Tools:** mise, uv and pnpm pin everything; Python runs via `uv run`; `mise tasks` lists the commands.
-  Never change the toolchain pins (`toolchains.json`).
+  The toolchain (the build image and its pins in `toolchains.json`) changes only on purpose, with a
+  byte-identity proof.
 - **Open-XY facts come from upstream**, never from a workspace fork, and name the commit used
   ([dev tools](docs/operating/dev-tools.md#open-xy-upstream)).
 - **Checks:** after each change, `mise run test-changed`; once per PR, `mise run check` on a committed tree (lint, the

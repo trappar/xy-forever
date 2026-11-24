@@ -67,12 +67,16 @@ hour.
 
 `mise run neutral [REF]` (opt-in) compares every build mode with REF: a clean tree against HEAD is "same" at
 once; the working tree's product build comes through the firmware cache, its other modes are cached per clean
-tree, REF's per commit. CI (`.github/workflows/checks.yml`, on Linux, one job whose steps run by what changed: lint; the web and
-client suites; `mise run test-all` without private files or the Blackfin toolchain, whose tests only `check` or a
-manual macOS run cover; `e2e.yml`: the browser tests when the web app changes) is the merge check; a merge to
-main runs the Python suite again. `firmware.yml` builds the product `os.ldr` on macOS (open-xy's darwin-arm64
-toolchain; a Linux build of it gives other bytes) only when the build's inputs change, without stock files, and
-keeps it with its SHA-256 as a workflow artifact.
+tree, REF's per commit; every build runs in this checkout's pinned image. CI (`.github/workflows/checks.yml`, on
+Linux, one job whose steps run by what changed: lint; the web and client suites; `mise run test-all` without
+private files, its toolchain tests in the build image; `e2e.yml`: the browser tests when the web app changes) is
+the merge check; a merge to main runs the Python suite again. `firmware.yml` builds the product `os.ldr` in the
+build image, on Linux, only when the build's inputs change, without stock files, and keeps it with its SHA-256 as
+a workflow artifact: the same bytes as any contributor's build of that tree.
+
+The tests that run the Blackfin toolchain (marker `toolchain`) do it in the build container
+([Docker](dev-tools.md#docker)), batched into one run per test (`conftest.blackfin`); without Docker they skip,
+and `check` and CI fail them instead (`XYF_REQUIRE_CONTAINER`).
 
 The product build needs no stock files: the only stock values its image holds (the cold descriptor's helper
 CRC-32s) and the pair's sizes and SHA-256s come from `stock_facts.json`, by component and version
@@ -85,9 +89,9 @@ uploaded.
 ## Firmware cache
 
 `mise run build`, `mise run verify` and the check's build steps go through Turborepo's local cache
-(`scripts/firmware_cache.py`, `turbo.json`). The build's key is every file `xyf-build` hashes as its sources,
-plus the SHA-256 of the stock pair, the toolchain's location and pins, the Python running it and the
-checkout's path, computed on every run; verify's key is the build's (Turborepo hashes a task's dependencies
+(`scripts/firmware_cache.py`, `turbo.json`), on the host; only a miss starts the build container. The build's key
+is every file `xyf-build` hashes as its sources (`toolchains.json` among them: the image and its pins), plus the
+SHA-256 of the stock pair and of `uv.lock`, computed on every run; verify's key is the build's (Turborepo hashes a task's dependencies
 into its own). With all of them unchanged, `build/product` and the `--verify` log are restored; anything else
 rebuilds. A failed build or verify is never cached. The cache is `.turbo/cache` in the checkout (gitignored,
 at most 1 GB, never uploaded: remote caching is off). `--force` (`mise run build --force`) builds past it;
