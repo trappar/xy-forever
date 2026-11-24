@@ -34,9 +34,8 @@ def script(name):
 SETUP = script('setup')
 CLEAN_ENV = {k: v for k, v in os.environ.items() if not k.startswith('XYF_') or k == 'XYF_NO_DEVICE'}
 SHOW = (
-    'from xy_forever import paths, toolchain; import json; print(json.dumps({k: str(v) for k, v in dict('
-    'main=paths.MAIN, config=paths.LOCAL_CONFIG, private=paths.PRIVATE_ROOT, toolchain=toolchain.location(), '
-    'status=paths.STATUS).items()}))'
+    'from xy_forever import paths; import json; print(json.dumps({k: str(v) for k, v in dict('
+    'main=paths.MAIN, config=paths.LOCAL_CONFIG, private=paths.PRIVATE_ROOT, status=paths.STATUS).items()}))'
 )
 
 
@@ -52,7 +51,7 @@ def git(cwd, *args):
 
 @pytest.mark.gate
 class Workspace(unittest.TestCase):
-    """ws/xy-forever: a plain clone holding a copy of xy_forever/ (paths.py, toolchain.py); elsewhere/wt: a worktree
+    """ws/xy-forever: a plain clone holding a copy of xy_forever/ (paths.py); elsewhere/wt: a worktree
     of it outside the workspace."""
 
     def setUp(self):
@@ -65,7 +64,6 @@ class Workspace(unittest.TestCase):
             self.repo / 'xy_forever',
             ignore=lambda d, names: [n for n in names if n != '__init__.py' and not n.endswith('.py')],
         )
-        shutil.copy(ROOT / 'toolchains.json', self.repo)
         git(self.repo, 'init', '-q', '-b', 'main')
         git(self.repo, 'add', '-A')
         git(self.repo, 'commit', '-q', '-m', 'base')
@@ -90,7 +88,6 @@ class Workspace(unittest.TestCase):
                 main=self.repo,
                 config=self.repo / 'xyf.local.json',
                 private=self.ws / 'private',
-                toolchain=self.ws / 'tools/blackfin',
                 status=self.ws / 'private/xy-forever/status',
             ),
         )
@@ -102,12 +99,9 @@ class Workspace(unittest.TestCase):
         self.assertEqual(paths.main_checkout(self.wt), self.repo)
 
     def test_the_main_checkouts_config_and_the_variables_still_win(self):
-        config = {'private': str(self.ws / 'mine'), 'toolchain': str(self.ws / 'tc-mine')}
-        (self.repo / 'xyf.local.json').write_text(json.dumps(config))
-        got = self.show(self.wt)
-        self.assertEqual((got['private'], got['toolchain']), (self.ws / 'mine', self.ws / 'tc-mine'))
-        got = self.show(self.wt, {'XYF_PRIVATE': str(self.ws / 'env'), 'XYF_TOOLCHAIN': str(self.ws / 'tc')})
-        self.assertEqual((got['private'], got['toolchain']), (self.ws / 'env', self.ws / 'tc'))
+        (self.repo / 'xyf.local.json').write_text(json.dumps({'private': str(self.ws / 'mine')}))
+        self.assertEqual(self.show(self.wt)['private'], self.ws / 'mine')
+        self.assertEqual(self.show(self.wt, {'XYF_PRIVATE': str(self.ws / 'env')})['private'], self.ws / 'env')
         got = self.show(self.repo, {'XYF_PRIVATE': str(self.ws / 'env')})
         self.assertEqual(got['private'], self.ws / 'env')
 

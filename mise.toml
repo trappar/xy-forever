@@ -23,20 +23,16 @@ UV_PYTHON_DOWNLOADS = "never"   # uv uses the Python pinned above, never a downl
 TURBO_TELEMETRY_DISABLED = "1"  # Turborepo (the firmware cache): no telemetry; turbo.json turns remote caching off
 
 [tasks.setup]
-description = "Set up tools, dependencies, private folder, toolchain, fixtures"
+description = "Set up tools, dependencies, private folder, the build image, fixtures"
 usage = '''
 flag "--dry-run" help="print every action without doing it"
-flag "--workspace <dir>" help="the folder that holds this clone, private/ and tools/"
-flag "--toolchain-archive <zip>" help="open-xy's toolchain-1 release zip, already downloaded"
+flag "--workspace <dir>" help="the folder that holds this clone and private/"
 flag "--private <dir>" help="the private folder, when not ../private (recorded in xyf.local.json)"
-flag "--toolchain <dir>" help="an installed Blackfin toolchain, when not ../tools/blackfin (recorded in xyf.local.json)"
 '''
 run = '''
 python scripts/setup.py bootstrap {% if usage.dry_run %}--dry-run{% endif %} \
   {% if usage.workspace %}--workspace {{ usage.workspace | quote }}{% endif %} \
-  {% if usage.toolchain_archive %}--toolchain-archive {{ usage.toolchain_archive | quote }}{% endif %} \
-  {% if usage.private %}--private {{ usage.private | quote }}{% endif %} \
-  {% if usage.toolchain %}--toolchain {{ usage.toolchain | quote }}{% endif %}
+  {% if usage.private %}--private {{ usage.private | quote }}{% endif %}
 '''
 
 [tasks.doctor]

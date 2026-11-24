@@ -1,7 +1,7 @@
 """scripts/setup.py with synthetic stand-ins for the stock files (never the real bytes): the pin check, the 1.2.5
 refusal, unknown files, a copied /upgrade/ tree as input, and where the private folder comes from
 (XYF_PRIVATE > xyf.local.json > ../private), the Python check (3.14+), and `bootstrap` in a temporary workspace
-with the toolchain download (a synthetic zip) and the tool steps (mise, uv, pnpm) stubbed (no network)."""
+with the build image's pull and the tool steps (mise, uv, pnpm) stubbed (no network or Docker)."""
 
 import contextlib
 import hashlib
@@ -13,13 +13,12 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import zipfile
 from pathlib import Path
 from unittest import mock
 
 import pytest
 
-from xy_forever import dev_tools, modlink, outer, paths, toolchain, usb_proto
+from xy_forever import dev_tools, modlink, outer, paths, usb_proto
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -228,18 +227,6 @@ class PrivateRoot(unittest.TestCase):
             S.write_config(ROOT / 'private', self.config)
         self.assertFalse(self.config.exists())
 
-    def test_init_records_a_toolchain_only_when_it_passes_its_pins(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            config, folder = Path(tmp) / 'xyf.local.json', Path(tmp) / 'tc'
-            config.write_text('{"private": "/p"}')
-            with mock.patch.object(S, 'toolchain_problem', lambda d: 'Toolchain hash mismatch: bin/x'):
-                with self.assertRaisesRegex(S.SetupError, 'fails the toolchain pins'):
-                    S.record_toolchain(folder, config)
-            with mock.patch.object(S, 'toolchain_problem', lambda d: None):
-                S.record_toolchain(folder, config)
-            self.assertEqual(json.loads(config.read_text()), {'private': '/p', 'toolchain': str(folder.resolve())})
-            self.assertEqual(paths.configured('toolchain', config), folder.resolve())
-
     def test_init_adds_an_empty_leak_list_and_keeps_other_keys(self):
         S.ensure_leak_patterns(self.config)
         self.assertEqual(json.loads(self.config.read_text()), {'leak_patterns': []})
@@ -252,44 +239,9 @@ class PrivateRoot(unittest.TestCase):
         self.assertEqual(json.loads(self.config.read_text()), {'leak_patterns': ['(?i)jane']})
 
 
-def toolchain_zip(entries):
-    """A zip of {name: (bytes, mode)} like open-xy's release (unix modes in the high bits of external_attr)."""
-    out = io.BytesIO()
-    with zipfile.ZipFile(out, 'w') as z:
-        for name, (data, mode) in entries.items():
-            info = zipfile.ZipInfo(name)
-            info.external_attr = mode << 16
-            z.writestr(info, data)
-    return out.getvalue()
-
-
-FOLDER = 'open-xy-toolchain-darwin-arm64'
-GOOD_ZIP = toolchain_zip(
-    {
-        FOLDER + '/': (b'', 0o40755),
-        FOLDER + '/SOURCES.md': (b'sources\n', 0o100644),
-        FOLDER + '/bin/bfin-elf-as': (b'as', 0o100755),
-        FOLDER + '/lib/gcc/bfin-elf/8.0.0/libgcc.a': (b'lib', 0o100644),
-    }
-)
-
-
-class ToolchainPins(unittest.TestCase):
-    def test_each_downloadable_host_has_a_pinned_release_archive(self):
-        pins = S.PINS['toolchain']
-        hosts = json.loads((ROOT / 'toolchains.json').read_text())['hosts']
-        self.assertEqual(set(pins['archives']), set(hosts) - {'linux-x86_64'})
-        for host, record in pins['archives'].items():
-            self.assertEqual(
-                record['url'], '%s/open-xy-toolchain-%s.zip' % (pins['release'].replace('/tag/', '/download/'), host)
-            )
-            self.assertEqual(record['folder'], 'open-xy-toolchain-' + host)
-            self.assertRegex(record['sha256'], r'^[0-9a-f]{64}$')
-
-
 class Bootstrap(unittest.TestCase):
-    """bootstrap in a temporary workspace: the toolchain download serves a synthetic zip; mise, uv and pnpm are
-    stubbed (dev_tools: what is installed is self.done)."""
+    """bootstrap in a temporary workspace: the build image (Docker) and mise, uv and pnpm are stubbed (dev_tools:
+    what is installed is self.done; the image is pulled when self.image is None)."""
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -299,21 +251,16 @@ class Bootstrap(unittest.TestCase):
         (self.repo / 'docs').mkdir(parents=True)
         (self.repo / 'docs/STATUS.template.md').write_text('# status\n')
         self.config = self.repo / 'xyf.local.json'
-        self.calls, self.stock, self.which, self.served, self.done = [], False, {'mise'}, GOOD_ZIP, set()
-        self.record = {
-            'url': 'https://example.invalid/%s.zip' % FOLDER,
-            'folder': FOLDER,
-            'sha256': hashlib.sha256(GOOD_ZIP).hexdigest(),
-        }
+        self.calls, self.stock, self.which, self.done = [], False, {'mise'}, set()
+        self.image = 'not pulled yet (mise run setup pulls it)'
         for name, value in (
             ('run', self.fake_run),
-            ('toolchain_problem', self.fake_toolchain),
+            ('image_problem', lambda: self.image),
+            ('pull_image', self.fake_pull),
             ('stock_present', lambda: self.stock),
             ('cmd_doctor', lambda args: 1),
             ('cmd_fixtures', lambda args: self.calls.append('fixtures')),
             ('fixtures_missing', lambda: ['verified build']),
-            ('host_name', lambda: 'darwin-arm64'),
-            ('download', self.fake_download),
         ):
             patcher = mock.patch.object(S, name, value)
             patcher.start()
@@ -337,30 +284,24 @@ class Bootstrap(unittest.TestCase):
             patcher = mock.patch.object(S.dev_tools, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
-        for patcher in (
-            mock.patch.object(S.shutil, 'which', self.fake_which),
-            mock.patch.dict(S.PINS, {'toolchain': {'archives': {'darwin-arm64': self.record}}}),
-        ):
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(S.shutil, 'which', self.fake_which)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def fake_run(self, cmd, cwd=None, env=None):
         self.calls.append(' '.join(map(str, cmd[:2])))
         self.done.add(Path(cmd[0]).name)
 
-    def fake_download(self, url, path):
-        self.calls.append('download ' + url)
-        Path(path).write_bytes(self.served)
+    def fake_pull(self):
+        self.calls.append('pull')
+        self.image = None
 
     def fake_which(self, name):
         return '/bin/' + name if name in self.which else None
 
-    def fake_toolchain(self, directory=None):  # stands in for the per-file check against toolchains.json
-        return None if directory and (Path(directory) / 'bin/bfin-elf-as').is_file() else 'missing'
-
-    def bootstrap(self, dry_run=False, workspace=None, environ=None, archive=None):
+    def bootstrap(self, dry_run=False, workspace=None, environ=None):
         out = io.StringIO()
-        b = S.Bootstrap(workspace or self.ws, self.repo, self.config, dry_run, environ or {}, archive)
+        b = S.Bootstrap(workspace or self.ws, self.repo, self.config, dry_run, environ or {})
         with contextlib.redirect_stdout(out):
             b.run()
         return b, out.getvalue()
@@ -378,10 +319,6 @@ class Bootstrap(unittest.TestCase):
         self.assertTrue((self.ws / 'private/incoming').is_dir())
         self.assertEqual((self.ws / 'private/xy-forever/status/README.md').read_text(), '# status\n')
         self.assertEqual(json.loads(self.config.read_text()), {'leak_patterns': []})  # ../private: nothing recorded
-        tools = self.ws / 'tools/blackfin'
-        self.assertFalse(tools.is_symlink())
-        self.assertEqual((tools / 'bin/bfin-elf-as').read_bytes(), b'as')
-        self.assertEqual(sorted(p.name for p in (self.ws / 'tools').iterdir()), ['blackfin'])  # no temporary left
         self.assertEqual(
             self.calls,
             [
@@ -389,7 +326,7 @@ class Bootstrap(unittest.TestCase):
                 '/bin/uv sync',
                 '/bin/pnpm install',
                 '/bin/lefthook install',
-                'download ' + self.record['url'],
+                'pull',
             ],
         )
         self.assertEqual((self.ws / 'CLAUDE.md').read_text(), '@AGENTS.md\n')
@@ -415,27 +352,13 @@ class Bootstrap(unittest.TestCase):
         chosen = self.ws / 'elsewhere'
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            S.Bootstrap(self.ws, self.repo, self.config, False, {}, None, private=chosen).run()
+            S.Bootstrap(self.ws, self.repo, self.config, False, {}, private=chosen).run()
         self.assertEqual(json.loads(self.config.read_text())['private'], str(chosen))
         self.assertTrue((chosen / 'incoming').is_dir())
         with contextlib.redirect_stdout(io.StringIO()):
-            again = S.Bootstrap(self.ws, self.repo, self.config, False, {}, None, private=chosen)
+            again = S.Bootstrap(self.ws, self.repo, self.config, False, {}, private=chosen)
             again.run()
         self.assertEqual(again.actions, [])
-
-    def test_toolchain_given_is_recorded_and_used_by_the_closing_doctor(self):
-        chosen = self.ws / 'chosen-toolchain'
-        (chosen / 'bin').mkdir(parents=True)
-        (chosen / 'bin/bfin-elf-as').write_bytes(b'as')
-        seen = []
-        with (
-            mock.patch.object(paths, 'LOCAL_CONFIG', self.config),
-            mock.patch.object(S, 'cmd_doctor', lambda args: seen.append(toolchain.location({}))),
-            contextlib.redirect_stdout(io.StringIO()),
-        ):
-            S.Bootstrap(self.ws, self.repo, self.config, False, {}, None, toolchain=chosen).run()
-        self.assertEqual(json.loads(self.config.read_text())['toolchain'], str(chosen))
-        self.assertEqual(seen, [chosen])  # the folder just recorded, not the one read when setup started
 
     def test_status_notes_in_the_checkout_move_to_the_private_folder_once(self):
         (self.repo / 'docs/status/approvals').mkdir(parents=True)
@@ -462,14 +385,6 @@ class Bootstrap(unittest.TestCase):
         self.assertEqual((self.repo / 'docs/status/README.md').read_text(), '# old\n')
         self.assertIn('merge it by hand', out)
 
-    @unittest.skipIf(sys.platform == 'win32', 'no unix permission bits')
-    def test_executable_bits_come_back_from_the_zip(self):
-        self.bootstrap()
-        tools = self.ws / 'tools/blackfin'
-        self.assertTrue(S.os.access(str(tools / 'bin/bfin-elf-as'), S.os.X_OK))
-        for name in ('SOURCES.md', 'lib/gcc/bfin-elf/8.0.0/libgcc.a'):
-            self.assertFalse(S.os.access(str(tools / name), S.os.X_OK), name)
-
     def test_dry_run_prints_every_action_and_changes_nothing(self):
         before = self.tree()
         b, out = self.bootstrap(dry_run=True)
@@ -480,7 +395,7 @@ class Bootstrap(unittest.TestCase):
             '"leak_patterns"',
             'write %s' % (self.ws / 'AGENTS.md'),
             'write %s' % (self.ws / 'CLAUDE.md'),
-            'download %s, check its SHA-256' % self.record['url'],
+            'pull the build image',
             'mise install',
             'uv sync --locked',
             'pnpm install --frozen-lockfile',
@@ -489,77 +404,33 @@ class Bootstrap(unittest.TestCase):
             self.assertRegex(out, r'  would .*' + re.escape(what))
         self.assertIn('dry run: the 10 actions above would run; nothing changed', out)
 
-    def test_an_archive_with_the_wrong_hash_is_refused_and_nothing_stays(self):
-        self.served = GOOD_ZIP + b'tampered'
-        with self.assertRaisesRegex(
-            S.SetupError, 'toolchain archive hash mismatch: .* the pin \\(stock.json\\) is %s' % self.record['sha256']
-        ):
-            self.bootstrap()
-        self.assertTrue((self.ws / 'private/xy-forever/status/README.md').exists())  # what came before stays done
-        self.assertEqual(list((self.ws / 'tools').iterdir()), [])
-
-    def test_a_given_archive_is_used_without_a_download(self):
-        archive = self.ws / 'downloaded.zip'
-        archive.write_bytes(GOOD_ZIP)
-        b, out = self.bootstrap(archive=str(archive))
-        self.assertNotIn('download', ' '.join(self.calls))
-        self.assertIn('%s (given), check its SHA-256' % archive, out)
-        self.assertTrue((self.ws / 'tools/blackfin/bin/bfin-elf-as').is_file())
-        self.assertTrue(archive.is_file())  # the developer's file is kept
-
-    def test_an_unpacked_toolchain_failing_its_pins_or_an_escaping_entry_is_refused(self):
-        for entries, message in (
-            ({FOLDER + '/SOURCES.md': (b'x', 0o100644)}, 'fails its pins \\(toolchains.json\\)'),
-            ({FOLDER + '/../evil': (b'x', 0o100644)}, 'unexpected entry'),
-        ):
-            self.served = toolchain_zip(entries)
-            self.record['sha256'] = hashlib.sha256(self.served).hexdigest()
-            with self.assertRaisesRegex(S.SetupError, message):
-                self.bootstrap()
-            self.assertEqual(list((self.ws / 'tools').iterdir()), [])
-            self.assertFalse((self.ws / 'evil').exists())
-
-    def test_a_failed_download_names_the_manual_route(self):
-        def offline(url, path):
-            raise S.urllib.error.URLError('no network')
-
-        with (
-            mock.patch.object(S, 'download', offline),
-            self.assertRaisesRegex(S.SetupError, 'could not download .*in a browser, then run .*--toolchain-archive'),
-        ):
-            self.bootstrap()
-
-    def test_toolchain_already_set_up_or_linux_is_not_fetched(self):
-        with mock.patch.object(S, 'toolchain_problem', lambda directory=None: None):
-            b, out = self.bootstrap()
-        self.assertIn('toolchain: ok', out)
+    def test_an_image_already_pulled_or_no_docker_pulls_nothing(self):
+        self.image = None
+        b, out = self.bootstrap()
+        self.assertIn('build image: ok', out)
         self.assertEqual(
             self.calls, ['/bin/mise install', '/bin/uv sync', '/bin/pnpm install', '/bin/lefthook install']
         )
-        self.calls = []
-        with mock.patch.object(S, 'host_name', lambda: 'linux-x86_64'):
-            b, out = self.bootstrap()
-        self.assertIn('build it with Docker (open-xy docs/build.md, "On Linux")', out)
-        self.assertEqual((self.calls, (self.ws / 'tools').exists()), ([], False))
+        self.calls, self.image = [], 'Docker is needed for firmware builds and is not installed'
+        b, out = self.bootstrap()
+        self.assertIn('docs/operating/dev-tools.md says what each OS needs', out)
+        self.assertEqual(self.calls, [])
 
     def test_no_mise_skips_the_tools_with_a_note(self):
         self.which = set()
         b, out = self.bootstrap()
-        self.assertEqual(self.calls, ['download ' + self.record['url']])
+        self.assertEqual(self.calls, ['pull'])
         self.assertIn('tools: skipped: mise not found', out)
 
     def test_another_workspace_is_recorded_unless_the_private_folder_is_set(self):
         other = self.ws.parent / 'other'
-        with mock.patch.object(S, 'host_name', lambda: 'linux-x86_64'):
-            b, out = self.bootstrap(workspace=other)
-            self.assertEqual(
-                json.loads(self.config.read_text()), {'private': str(other / 'private'), 'leak_patterns': []}
-            )
-            self.assertTrue((other / 'private/firmware/stock-1.2.1').is_dir())
-            self.assertIn('workspace AGENTS.md: skipped', out)
-            self.assertFalse((other / 'AGENTS.md').exists())
-            self.config.unlink()
-            b, out = self.bootstrap(workspace=other, environ={'XYF_PRIVATE': str(self.ws / 'env')})
+        b, out = self.bootstrap(workspace=other)
+        self.assertEqual(json.loads(self.config.read_text()), {'private': str(other / 'private'), 'leak_patterns': []})
+        self.assertTrue((other / 'private/firmware/stock-1.2.1').is_dir())
+        self.assertIn('workspace AGENTS.md: skipped', out)
+        self.assertFalse((other / 'AGENTS.md').exists())
+        self.config.unlink()
+        b, out = self.bootstrap(workspace=other, environ={'XYF_PRIVATE': str(self.ws / 'env')})
         self.assertEqual(json.loads(self.config.read_text()), {'leak_patterns': []})
         self.assertIn('private folder: %s (XYF_PRIVATE)' % (self.ws / 'env'), out)
         self.assertTrue((self.ws / 'env/xy-forever/builds').is_dir())
@@ -572,20 +443,6 @@ class Bootstrap(unittest.TestCase):
         self.assertEqual(self.calls[-1], 'fixtures')
         self.assertFalse((self.ws / 'private/incoming').exists())
         self.assertRegex(out, r'Next:\n  1\. Add your name.*\n  2\. Open your agent in ')
-
-    def test_an_existing_toolchain_folder_or_link_that_fails_its_pins_is_left_alone(self):
-        tools = self.ws / 'tools/blackfin'
-        (tools / 'bin').mkdir(parents=True)
-        (tools / 'bin/old').write_bytes(b'mine')
-        with self.assertRaisesRegex(S.SetupError, 'exists but fails its pins .*move it aside, then rerun bootstrap'):
-            self.bootstrap()
-        self.assertEqual((tools / 'bin/old').read_bytes(), b'mine')
-        S.os.rename(str(tools), str(self.ws / 'aside'))
-        S.os.symlink(str(self.ws / 'nowhere'), str(tools))
-        with self.assertRaisesRegex(S.SetupError, 'exists but fails its pins'):
-            self.bootstrap()
-        self.assertTrue(tools.is_symlink())
-        self.assertNotIn('download', ' '.join(self.calls))
 
     def test_the_workspace_guide_names_a_private_folder_elsewhere_in_full(self):
         elsewhere = self.ws.parent / 'elsewhere'
@@ -646,7 +503,7 @@ class DevToolRows(unittest.TestCase):
             for label in (
                 'python',
                 'private folder',
-                'toolchain',
+                'build image',
                 'stock os.ldr',
                 'stock bootloader.ldr',
                 'mise',
@@ -656,7 +513,7 @@ class DevToolRows(unittest.TestCase):
                 'git hook',
             )
         ]
-        for label in ('mise', 'tools', 'python deps', 'js deps', 'git hook', 'toolchain'):
+        for label in ('mise', 'tools', 'python deps', 'js deps', 'git hook', 'build image'):
             rows = [(l, l != label, d) for l, _, d in fine] + [('verified build', False, 'none')]
             with mock.patch.object(S, 'doctor', return_value=(rows, [])), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(S.cmd_doctor(None), 1, label)
