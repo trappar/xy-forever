@@ -84,69 +84,107 @@ test('connects to the simulator and shows the device and its files', async () =>
   await page.close();
 });
 
-test('installs a newer XY Forever and restarts into its menu', async () => {
+/** The simulator's verified build as a release pin, with its bytes. */
+function simRelease() {
   const imagePath = verifiedBuild(found);
   const image = readFileSync(imagePath);
   const sha256 = createHash('sha256').update(image).digest('hex');
   const { version } = JSON.parse(readFileSync(join(dirname(imagePath), 'manifest.json'), 'utf8')) as {
     version: string;
   };
-  const release = {
-    schema: 1,
-    version,
-    sha256,
-    image: sha256.slice(0, 8),
-    bytes: image.length,
-    notes: 'Faster updates.',
-  };
+  return { image, pin: { schema: 1, version, sha256, image: sha256.slice(0, 8), bytes: image.length } };
+}
+
+/**
+ * Relays the page to the simulator, rewriting the first boot's HELLO info (the same simulator executable handles
+ * both boots, so the first one gets an older label); returns the restart target the page asked for.
+ */
+async function relayOlderFirstBoot(page: Page, older: (info: string) => string): Promise<() => number | undefined> {
+  let restart: number | undefined;
+  await page.routeWebSocket('**/xyf-relay?*', (socket) => {
+    const server = socket.connectToServer();
+    const requests = new v1.FrameParser();
+    const replies = new v1.FrameParser();
+    socket.onMessage((message) => {
+      for (const frame of requests.feed(Buffer.from(message))) {
+        if (frame.type === v1.TYPE['device.reboot']) restart = v1.decodeDeviceRebootRequest(frame.payload).target;
+      }
+      server.send(message);
+    });
+    server.onMessage((message) => {
+      for (const frame of replies.feed(Buffer.from(message))) {
+        let payload = frame.payload;
+        if (restart === undefined && frame.type === (v1.TYPE.hello | v1.REPLY)) {
+          const reply = v1.decodeHelloReply(payload);
+          if (reply.ok) payload = v1.encodeHelloReply({ ...reply, fields: { info: older(reply.fields.info) } });
+        }
+        socket.send(Buffer.from(v1.encodeFrame(frame.type, frame.seq, payload)));
+      }
+    });
+  });
+  return () => restart;
+}
+
+async function serveRelease(page: Page, stable: object, image?: Buffer): Promise<void> {
+  await page.route('**/src/install/release.json*', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: `export default ${JSON.stringify(stable)};` }),
+  );
+  if (image) await page.route('**/release/os.ldr', (route) => route.fulfill({ body: image }));
+}
+
+test('installs a newer XY Forever and restarts into its menu', async () => {
+  const { image, pin } = simRelease();
+  const release = { ...pin, notes: 'Faster updates.' };
+  const { version } = release;
   const page = await browser!.newPage();
   try {
-    await page.route('**/src/install/release.json*', (route) =>
-      route.fulfill({
-        contentType: 'text/javascript',
-        body: `export default ${JSON.stringify(release)};`,
-      }),
-    );
-    await page.route('**/release/os.ldr', (route) => route.fulfill({ body: image }));
-    let restart: number | undefined;
-    await page.routeWebSocket('**/xyf-relay?*', (socket) => {
-      const server = socket.connectToServer();
-      const requests = new v1.FrameParser();
-      const replies = new v1.FrameParser();
-      socket.onMessage((message) => {
-        for (const frame of requests.feed(Buffer.from(message))) {
-          if (frame.type === v1.TYPE['device.reboot']) restart = v1.decodeDeviceRebootRequest(frame.payload).target;
-        }
-        server.send(message);
-      });
-      server.onMessage((message) => {
-        // The same simulator executable handles both boots. Give the first boot an older release label.
-        for (const frame of replies.feed(Buffer.from(message))) {
-          let payload = frame.payload;
-          if (restart === undefined && frame.type === (v1.TYPE.hello | v1.REPLY)) {
-            const reply = v1.decodeHelloReply(payload);
-            if (reply.ok) {
-              const info = reply.fields.info.replace(/;version=[^;]+/, ';version=191');
-              payload = v1.encodeHelloReply({ ...reply, fields: { info } });
-            }
-          }
-          socket.send(Buffer.from(v1.encodeFrame(frame.type, frame.seq, payload)));
-        }
-      });
-    });
+    await serveRelease(page, release, image);
+    const restart = await relayOlderFirstBoot(page, (info) => info.replace(/;version=[^;]+/, ';version=191'));
     await page.goto(appUrl(`?sim=${simPort}`));
     await page.getByRole('button', { name: 'Connect', exact: true }).click();
     const update = page.getByRole('button', { name: `Update to ${version}`, exact: true });
     await update.waitFor();
     expect(await page.getByText(release.notes).isVisible()).toBe(true);
+    expect(await page.getByTestId('channel').count()).toBe(0); // no canary on this site: Stable only
     await update.click();
     await expect(page.getByTestId('update-status')).toHaveText(`XY Forever ${version} is running in the menu.`, {
       timeout: 30_000,
     });
-    expect(restart).toBe(2);
+    expect(restart()).toBe(2);
     expect(await page.locator('[data-fact=image]').textContent()).toBe(release.image);
     expect(await update.count()).toBe(0);
   } finally {
+    await page.close();
+  }
+});
+
+test('updates an older canary of the same version to the chosen canary, told apart by image', async () => {
+  const { image, pin } = simRelease();
+  const canary = {
+    ...pin,
+    channel: 'canary',
+    commit: '0123456789abcdef0123456789abcdef01234567',
+    date: '2026-11-23T10:00:00Z',
+  };
+  const stable = { ...pin, sha256: 'e'.repeat(64), image: 'eeeeeeee' }; // another image of the same version
+  const page = await browser!.newPage();
+  try {
+    await serveRelease(page, stable);
+    await page.route('**/canary/release.json', (route) => route.fulfill({ json: canary }));
+    await page.route('**/canary/os.ldr', (route) => route.fulfill({ body: image }));
+    const restart = await relayOlderFirstBoot(page, (info) => info.replace(/;image=[^;]+/, ';image=abcd0123'));
+    await page.goto(appUrl(`?sim=${simPort}`));
+    await page.getByRole('button', { name: 'Connect', exact: true }).click();
+    await expect(page.locator('[data-fact=image]')).toHaveText('abcd0123', { timeout: 20_000 });
+    await page.getByRole('radio', { name: /Canary/ }).check();
+    const name = 'Canary 2026-11-23 (0123456)';
+    await page.getByRole('button', { name: `Update to ${name}`, exact: true }).click();
+    await expect(page.getByTestId('update-status')).toHaveText(`${name} is running in the menu.`, { timeout: 30_000 });
+    expect(restart()).toBe(2);
+    expect(await page.locator('[data-fact=image]').textContent()).toBe(canary.image);
+    expect(await page.locator('[data-fact=version]').textContent()).toBe(pin.version);
+  } finally {
+    await page.evaluate(() => localStorage.removeItem('xyf.channel')).catch(() => {});
     await page.close();
   }
 });

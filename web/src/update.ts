@@ -1,6 +1,6 @@
 import { TYPE } from 'xy-forever-client';
 import type { Client, DeviceInfo } from 'xy-forever-client';
-import { fetchRelease } from './install/release.ts';
+import { channelOf, fetchRelease, releaseName } from './install/release.ts';
 import type { ReleasePin } from './install/release.ts';
 
 // Three byte-sized components match xy_forever/release.py. Older devices
@@ -14,29 +14,56 @@ function releaseCode(version: string | null): number | null {
   return parts.reduce((code, part) => code * 256 + part, 0);
 }
 
-export function updateAvailable(info: DeviceInfo, release: ReleasePin): boolean {
+/**
+ * Channel switches (Stable to Canary, or Canary back to Stable's same version) are offered only once they are
+ * qualified on an OP-XY (#301): until then, in development builds only.
+ */
+export const SWITCHES = import.meta.env.DEV;
+
+/**
+ * Whether the connected OP-XY can move to target: 'update' (a newer version, or a newer canary of the same version),
+ * 'switch' (a channel switch: from the stable image to a canary, or from another image of stable's version to
+ * stable), or null. Builds between releases share a version, so the image tells them apart. Never older versions.
+ */
+export function updateOffer(
+  info: DeviceInfo,
+  target: ReleasePin,
+  stable: ReleasePin | null,
+): 'update' | 'switch' | null {
   const installed = releaseCode(info.version);
-  const available = releaseCode(release.version);
-  return (
-    installed !== null &&
-    available !== null &&
-    available > installed &&
-    info.serial &&
-    info.hello.answers(TYPE['boot.install']) &&
-    info.hello.answers(TYPE['device.reboot'])
-  );
+  const available = releaseCode(target.version);
+  if (
+    installed === null ||
+    available === null ||
+    available < installed ||
+    info.image === target.image ||
+    !info.serial ||
+    !info.hello.answers(TYPE['boot.install']) ||
+    !info.hello.answers(TYPE['device.reboot'])
+  )
+    return null;
+  if (channelOf(target) === 'canary') return stable && info.image === stable.image ? 'switch' : 'update';
+  return available > installed ? 'update' : 'switch';
 }
+
+/** An update the page may start: switches only where they are enabled. */
+export const updateAvailable = (info: DeviceInfo, target: ReleasePin, stable: ReleasePin | null): boolean => {
+  const offer = updateOffer(info, target, stable);
+  return offer === 'update' || (offer === 'switch' && SWITCHES);
+};
 
 type UpdateClient = Pick<Client, 'info' | 'stage' | 'bootInstall' | 'reboot' | 'reconnect'>;
 
-/** Installs the pinned release and confirms it from HELLO after a restart into the menu. */
+/** Installs the chosen release (Stable or Canary) and confirms its image from HELLO after a restart into the menu. */
 export async function updateXyf(
   client: UpdateClient,
   release: ReleasePin,
+  stable: ReleasePin | null,
   step: (message: string) => void,
   get?: Parameters<typeof fetchRelease>[1],
 ): Promise<DeviceInfo> {
-  if (!updateAvailable(client.info, release)) throw new Error('This update is unavailable for the connected OP-XY.');
+  if (!updateAvailable(client.info, release, stable))
+    throw new Error('This update is unavailable for the connected OP-XY.');
   step('Downloading and checking the update…');
   const image = await fetchRelease(release, get);
   step('Sending the update to your OP-XY…');
@@ -65,7 +92,7 @@ export async function updateXyf(
     );
   }
   if (info.image !== release.image || info.version !== release.version) {
-    throw new Error(`The OP-XY restarted, but did not report XY Forever ${release.version} (image ${release.image}).`);
+    throw new Error(`The OP-XY restarted, but did not report ${releaseName(release)} (image ${release.image}).`);
   }
   return info;
 }

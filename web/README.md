@@ -34,9 +34,10 @@ for each route so direct links and reloads work on static hosting at `/`.
 - **Connect**: Web Serial, or the simulator with `?sim=PORT`; a clear message in browsers without Web Serial.
 - **Install** (#178): installs XY Forever on a stock OP-XY (Open-XY's builder flow: te-boot over Web MIDI, the dev
   menu's MTP over WebUSB, or a drag into Explorer on Windows); XY Forever then sets itself up on the device and the
-  page hands off to **Mods**. The whole flow: [the Install page](docs/install.md).
+  page hands off to **Mods**. It installs Stable, or Canary when the site has one and the owner chooses it. The whole flow: [the Install page](docs/install.md).
 - **Device**: build, what is running, what boots next, the saved mods (`/yaffs2/xy-forever/config.json`), the content state.
-  When a newer XY Forever release is available, the page shows its changes and an Update button. Clicking Update
+  When a newer XY Forever release is available, the page shows its changes and an Update button. When the site has a
+  canary, the page offers a choice of Stable or Canary (experimental; kept in this browser). Clicking Update
   downloads and verifies the release, installs and reads it back, then restarts straight into the XY Forever menu
   and checks the running image. USB control uses the usual device trust prompt.
 - **Mods**: packages on the device grouped by kind (synths, drums, samplers, effects, players, extensions) with their
@@ -80,7 +81,7 @@ and the e2e tests' simulator helpers come from its `./test/*` export.
 
 ## Release
 
-The pinned release image and Cloudflare Pages deployment are described in [release](docs/release.md).
+The pinned release image, the canary and the Cloudflare Pages deployment are described in [release](docs/release.md).
 
 ## Not built yet
 

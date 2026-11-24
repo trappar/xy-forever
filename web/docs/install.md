@@ -27,3 +27,8 @@ already granted, never opening the chooser unasked, and jumps ahead when it answ
 which may open the chooser) does the same. It never looks while a te-boot check over Web MIDI or the MTP copy is
 under way, only once that ends (te-boot is MIDI only; the serial "OP_XY Boot" is XY Forever's own fallback service).
 Either way it follows the setup as above.
+
+When the site has a canary ([release](release.md#canary)), the first stage offers Stable (the default) or Canary,
+and both stages before a copy show the chosen release's version and image (a canary's date and commit too). The
+choice, its pin, is kept with the others and stays fixed for the rest of the install: a reload or a newer deployment
+never swaps the image, and bytes that differ from the kept pin are refused.

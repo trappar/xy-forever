@@ -9,6 +9,7 @@ import type { Client } from 'xy-forever-client';
 import { Button } from '@/components/ui/button.tsx';
 import { Card, CardTitle } from '@/components/ui/card.tsx';
 import { Progress } from '@/components/ui/progress.tsx';
+import { ChannelChoice, ReleaseIdentity } from '@/components/channel-choice.tsx';
 import { PageHeader } from '@/components/page-header.tsx';
 import { cn } from '@/lib/utils.ts';
 import { useConnection } from '../connection.ts';
@@ -127,7 +128,7 @@ const Faq = ({ open }: { open: boolean }) => (
 function InstallView({ flow: f }: { flow: InstallFlow }) {
   const v = useStore(f.view);
   const { stage, busy, stop, log, status, fraction } = v;
-  const release = f.release;
+  const { release, canary } = v;
   const { deps } = f;
   const [title, detail, actions, instructions = []] = stageContent(v, deps, release);
   const official =
@@ -162,6 +163,16 @@ function InstallView({ flow: f }: { flow: InstallFlow }) {
         {v.formatting && <p className="text-muted-foreground">Start fresh with OS 1.2.1</p>}
         <CardTitle id="flow-title">{title}</CardTitle>
         {detail && <p>{detail}</p>}
+        {stage === 'boot' && f.stable && canary && (
+          <ChannelChoice
+            stable={f.stable}
+            canary={canary}
+            value={release?.sha256 === canary.sha256 ? 'canary' : 'stable'}
+            onChange={f.choose}
+            disabled={busy}
+          />
+        )}
+        {release && ['boot', 'transfer'].includes(stage) && <ReleaseIdentity release={release} />}
         {instructions.length > 0 && (
           <ol className="max-w-[62ch] list-decimal space-y-1 pl-[22px]">
             {instructions.map((t) => (
