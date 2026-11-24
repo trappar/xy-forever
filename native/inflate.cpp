@@ -310,8 +310,7 @@ const unsigned short length_base[29] = {3,  4,  5,  6,  7,  8,  9,  10, 11,  13,
                                         31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
 const Byte length_extra[29] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
 // The first four distance codes each encode one distance. Later pairs encode two equally sized ranges, doubling on
-// every pair: a code's extra bits, and the distance before them (computed: a table of them has the bytes of the
-// stock bootloader's own, which the build refuses, #178).
+// every pair: a code's extra bits, and the distance before them (computed, not a table).
 const Byte distance_extra[30] = {0, 0, 0, 0, 1, 1, 2, 2,  3,  3,  4,  4,  5,  5,  6,
                                  6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
 U32 distance_base(U32 code, U32 shift) { return code < 4 ? code + 1 : ((2 + (code & 1u)) << shift) + 1; }

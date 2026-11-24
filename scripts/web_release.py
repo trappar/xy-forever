@@ -6,10 +6,9 @@
 
 The page installs only the image whose SHA-256 web/src/install/release.json pins, fetched from its own origin at
 release/os.ldr. This script takes a verified product build (builds/<image>/, `uv run xyf-build --verify` passed),
-checks again that it shares no bytes with the stock pair (xy_forever/stock_bytes.py), writes the pin (commit it in a
-release pull request) and copies candidate.ldr to web/public/release/os.ldr, which Vite serves and builds into
-dist/ (gitignored: a build output, never committed). Builds are deterministic, so the pinned image can be rebuilt
-from its commit by anyone with their own device's stock files.
+writes the pin (commit it in a release pull request) and copies candidate.ldr to web/public/release/os.ldr, which
+Vite serves and builds into dist/ (gitignored: a build output, never committed). Builds are deterministic, so the
+pinned image can be rebuilt from its commit, with or without the stock files (stock_facts.json).
 """
 
 import argparse
@@ -19,7 +18,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from xy_forever import paths, release, stock_bytes
+from xy_forever import paths, release
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -48,16 +47,12 @@ def check(pin_path=PIN, staged=STAGED):
     return None
 
 
-def stage(build, stocks, pin_path=PIN, staged=STAGED, *, notes=None):
+def stage(build, pin_path=PIN, staged=STAGED, *, notes=None):
     """Pins and stages a verified product build with the notes the update page shows."""
     manifest = paths.verified(build)  # builds/<image>/ or a checkout's build/product
     if not manifest:
         raise ValueError('%s is not a verified product build folder' % build)
-    data = (Path(build) / 'candidate.ldr').read_bytes()
-    shared = stock_bytes.shared_runs(data, stocks)
-    if shared:
-        raise ValueError('%s shares stock bytes: %s' % (manifest['image'], shared[:3]))
-    pin = pin_of(data)
+    pin = pin_of((Path(build) / 'candidate.ldr').read_bytes())
     if pin['version'] != manifest.get('version'):
         raise ValueError('the build is release %s, this checkout %s' % (manifest.get('version'), pin['version']))
     if notes is None and pin_path.is_file():
@@ -89,9 +84,8 @@ def main():
     if build is None:
         print(paths.verified_build()[1])
         return 1
-    stocks = {name: (paths.STOCK_121 / name).read_bytes() for name in ('os.ldr', 'bootloader.ldr')}
     try:
-        pin = stage(build, stocks, notes=args.notes)
+        pin = stage(build, notes=args.notes)
     except ValueError as error:
         print('refused: %s' % error)
         return 1
