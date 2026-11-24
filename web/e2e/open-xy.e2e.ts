@@ -45,8 +45,7 @@ async function modsPage(serve: () => Buffer | null, builder = true): Promise<Pag
     const contentType = extname(path) === '.json' ? 'application/json' : 'text/javascript';
     return route.fulfill({ body: readFileSync(new URL(path, vendored)), contentType });
   });
-  await page.goto(`${process.env['XYF_E2E_URL']!}?sim=${simPort}`);
-  await page.getByRole('button', { name: 'Connect' }).click();
+  await page.goto(`${process.env['XYF_E2E_URL']!}?sim=${simPort}`); // Install switches to Manage by itself
   await expect(page.locator('[data-fact=version]')).toHaveText(/^\d+\.\d+\.\d+$/, { timeout: 20_000 });
   await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Mods', exact: true }).click();
   return page;
