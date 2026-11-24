@@ -24,6 +24,7 @@ How a build of `main` becomes a canary (`.github/workflows/firmware.yml`):
    the `os.ldr` against its build manifest and this checkout's version, and compares its SHA-256 with the newest
    canary's pin. The same bytes publish nothing. New bytes become prerelease `canary-<commit>` with two assets:
    `os.ldr` and its pin `release.json` (the stable pin's fields plus `channel`, `commit` and the commit's `date`).
+   A new canary then starts the Pages deploy on `main` (**Deploy web app to Cloudflare Pages**); none, no deploy.
 3. The next Pages deployment picks the newest eligible canary (`uv run scripts/web_canary.py stage`): its commit is
    on the deployed `main` and newer than the stable release's tag, its pin matches its tag and its `os.ldr`, and its
    image is not the stable one. It copies both assets to `web/public/canary/` (gitignored), and the stable pin to

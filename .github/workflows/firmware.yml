@@ -8,8 +8,9 @@
 # nothing but the build. The toolchain is cached by its pins.
 #
 # Canaries (#301): on main (a push, or a run started on main), a Linux job publishes the verified os.ldr as
-# prerelease canary-<commit> (scripts/web_canary.py publish) unless the current canary has the same bytes. It never
-# runs for a pull request; it alone may write releases.
+# prerelease canary-<commit> (scripts/web_canary.py publish) unless the current canary has the same bytes, then starts
+# the Pages deploy on main (pages.yml) so the site offers it; publishing nothing deploys nothing. It never runs for a
+# pull request; it alone may write releases. A workflow_dispatch is the one event GITHUB_TOKEN may start a run with.
 name: Firmware
 
 on:
@@ -101,7 +102,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      contents: write
+      contents: write   # the prerelease
+      actions: write    # starts the Pages deploy
     env:
       UV_NO_SYNC: "1"
     steps:
@@ -114,9 +116,16 @@ jobs:
         with:
           name: os-ldr-${{ needs.product.outputs.image }}
           path: ${{ runner.temp }}/artifact
-      - name: Publish the os.ldr as a canary unless the current canary has it
+      - id: publish
+        name: Publish the os.ldr as a canary unless the current canary has it
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -o pipefail
-          uv run scripts/web_canary.py publish "$RUNNER_TEMP/artifact" --commit "$GITHUB_SHA" | tee -a "$GITHUB_STEP_SUMMARY"
+          said=$(uv run scripts/web_canary.py publish "$RUNNER_TEMP/artifact" --commit "$GITHUB_SHA")
+          echo "$said" | tee -a "$GITHUB_STEP_SUMMARY"
+          case "$said" in published*) echo "published=true" >> "$GITHUB_OUTPUT" ;; esac
+      - name: Deploy the site with the new canary
+        if: steps.publish.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref main
