@@ -8,7 +8,8 @@ using namespace xyf::save_log;
 
 TEST_CASE("save log line and merge") {
     const char want[] =
-        "kind=save result=ok mods=30 memory=expanded added=1 removed=0 total=2205 list=200 check=5 base=0 packages=0 "
+        "kind=save result=ok mods=30 memory=expanded added=1 removed=0 total=2205 list=200 check=5 cset_list=0 cset_open=0 cset_read=0 cset_sha=0 "
+        "cset_write=0 base=0 packages=0 "
         "catalog=0 stock=0 patch1=0 link1=1000 zero=0 link2=1000 set_module=0 patch2=0 crc=0 content=0 write=0 verify=0 "
         "image_check=0 finish=0 away=0 in=0 clean=0 close=0 stamp=0 switch=0 switch_close=0 config=0 entry_files=0 "
         "compared=0 read=0 written=7 removed_files=0 bytes=4096000000\n";

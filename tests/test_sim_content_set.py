@@ -56,7 +56,14 @@ class ContentSet(ConfigBase, unittest.TestCase):
         for name, data in expected_entry(stock).items():
             (entry / name).write_bytes(data)
         (cls.seeded / 'content/stray.txt').unlink()  # the official files and a sound pack (dlc/) only
+        # files read in several 8 KiB halves, one ending on a half and one empty: the list as the host makes it
+        for path, size in (('samples/big/long.wav', 3 * 8192 + 1000), ('samples/big/even.wav', 2 * 8192)):
+            (cls.seeded / 'content' / path).parent.mkdir(parents=True, exist_ok=True)
+            (cls.seeded / 'content' / path).write_bytes(bytes((i * 7 + 3) & 0xFF for i in range(size)))
+        (cls.seeded / 'content/presets/empty.json').write_bytes(b'')
         cls.official = CS.content(cls.seeded)
+        files = {p: b for p, b in cls.official[0].items() if not p.startswith('dlc/')}
+        cls.official_text = ''.join('%s  %s\n' % (hashlib.sha256(files[p]).hexdigest(), p) for p in sorted(files))
         listed = cls.official_text.encode()
         before = os.environ.get(ENV)
         os.environ[ENV] = '%s %s' % (hashlib.sha256(listed).hexdigest(), hashlib.sha256(CATALOG).hexdigest())
@@ -93,6 +100,8 @@ class ContentSet(ConfigBase, unittest.TestCase):
         self.assertGreaterEqual(len(set(bars)), 3, bars)  # it moves as the files are read
         self.assertEqual(bars, sorted(bars))
         self.assertEqual(self.progress()[-1]['title'], first)  # then the usual screen
+        times = dict(f.split('=') for f in (self.root / 'xy-forever/log/save-times.txt').read_text().split()[1:])
+        self.assertGreater(int(times['cset_read']) + int(times['cset_sha']) + int(times['cset_open']), 0, times)
         self.assertEqual(self.entry('content.sha256'), self.official_text.encode())
         self.assertEqual(self.entry('firmware.version'), b'1.2.1+0\n')
         self.assertFalse((self.root / 'xy-forever/tmp' / ('cset-' + self.base)).exists())

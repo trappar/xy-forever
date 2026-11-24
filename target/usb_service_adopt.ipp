@@ -32,6 +32,10 @@ const char content[] = "/yaffs2/content", state_old[] = "/yaffs2/xy-forever/cont
 // The list's bounds (docs/storage/packages.md: files.sha256's 4096 entries of at most 160 path bytes).
 const U32 max_files = 4096, max_folders = 1024, max_rel = 160, pool_bytes = 0x40000u, text_bytes = 0x100000u;
 const U32 line_bytes = 64 + 2 + max_rel + 1;
+// #183: each file read in halves of file_client's read-ahead buffer (as the pack import, #279): one left out while
+// B hashes the other.
+const U32 half_bytes = file_client::stream_max;
+static_assert(2 * half_bytes <= file_client::stream_capacity, "two halves");
 }
 enum AdoptStep : U32 {
     ad_find = 0,
@@ -66,7 +70,8 @@ enum AdoptStep : U32 {
 struct AdoptSlot {
     ContentIo io;
     int in, out;
-    U32 id, step, at, error, code, started_ms, ended_ms, hash, crc, bytes, copy, sub, text_n, debris, total;
+    U32 id, step, at, error, code, started_ms, ended_ms, hash, crc, bytes, copy, sub, text_n, debris, total, half,
+        ahead;
     xyf_core::hash::Sha256 sha;
     char target[32], detail[40], folder[96], path[128];
     char text[512];
@@ -87,6 +92,9 @@ struct ContentSetWork {
 };
 constexpr U32 content_set_work = XYF_JOB_REGION_BEGIN + job_slot_bytes + content_slot_bytes + 0x20000u;
 static_assert(content_set_work + sizeof(ContentSetWork) <= job_work_end - mods_metadata_bytes, "below the page's work");
+#if !defined(XYF_MTP_SESSION)
+static_assert(content_set_work + sizeof(ContentSetWork) <= file_client::stream_buffer, "the read-ahead buffer is free");
+#endif
 ContentSetWork& cwork() { return *reinterpret_cast<ContentSetWork*>(content_set_work); }
 // The official set's digests: in the simulator, XYF_SIM_OFFICIAL_CONTENT="<list hex> <catalog hex>" (its tests'
 // synthetic content) replaces them.
@@ -139,7 +147,7 @@ U32 adopt_begin(const char* id, U32 mode) {
     join(a.folder, xa::tmp, "/adopt-", a.target);
     a.io.link = 0;
     a.in = a.out = -1;
-    a.at = a.error = a.code = a.bytes = a.crc = a.sub = a.debris = 0;
+    a.at = a.error = a.code = a.bytes = a.crc = a.sub = a.debris = a.half = a.ahead = 0;
     a.copy = mode;
     a.total = 0;
     a.step = mode == usb_service::adopt_copy ? ad_find : mode == usb_service::adopt_content ? cs_entry : ad_closing;
@@ -153,6 +161,10 @@ U32 adopt_begin(const char* id, U32 mode) {
     return P::s_ok;
 }
 void adopt_fail(AdoptSlot& a, U32 error, U32 code) {
+    if (a.ahead) { // the read left out: its answer first (bounded), then the file can close
+        a.ahead = 0;
+        if (file_client::left_poll(true).outcome) a.io.link = 1;
+    }
     a.error = a.io.lost() ? U32(xc::e_link) : error;
     a.code = a.io.lost() ? U32(P::s_link) : code;
     if (a.in >= 0) a.io.close(a.in);
@@ -283,6 +295,16 @@ void content_list_page(AdoptSlot& a, ContentSetWork& w) {
     }
     w.skip = 0;
     ++w.folder_at;
+}
+// The next half of file a.in asked into half a.half, left out (read_start); false: not sent (a.io.link: the link).
+bool content_ask(AdoptSlot& a) {
+    const file_client::Reply r = file_client::read_start(a.in, a.half * xa::half_bytes, xa::half_bytes);
+    if (r.outcome) {
+        a.io.fail(r);
+        return false;
+    }
+    a.ahead = 1;
+    return true;
 }
 // One line of the list ("<hex>  <path>\n") for file file_at, whose SHA-256 is d.
 bool content_line(ContentSetWork& w, const xyf_core::hash::Digest& d) {
@@ -468,6 +490,7 @@ void adopt_step(AdoptSlot& a) {
         w.folder_ref[w.folders++] = 0;
         w.list.reset();
         a.bytes = a.total = 0;
+        save_lap(xl::p_cset_list);
         a.step = cs_state;
         return;
     }
@@ -496,6 +519,7 @@ void adopt_step(AdoptSlot& a) {
         a.step = cs_open;
         return;
     case cs_open: {
+        save_lap(xl::p_cset_open);
         ContentSetWork& w = cwork();
         if (w.file_at == w.files) {
             a.step = cs_compare;
@@ -506,25 +530,36 @@ void adopt_step(AdoptSlot& a) {
         if (a.in < 0)
             return adopt_fail(a, a.in == -2 ? xc::e_open : xc::e_read, a.in == -2 ? P::s_not_found : P::s_storage);
         a.sha.reset();
+        a.half = 0;
+        if (!content_ask(a))
+            return adopt_fail(a, a.io.link ? xc::e_link : xc::e_read, a.io.link ? P::s_link : P::s_storage);
         a.step = cs_read;
         return;
     }
-    case cs_read: { // one piece of the file: hashed; at its end, its line
-        const file_client::Reply r = file_client::read(a.in, a.piece, file_client::piece_max);
+    case cs_read: { // #183: one half read (A read it while B hashed the one before); the next asked, this one hashed
+        save_lap(xl::p_cset_read);
+        a.ahead = 0;
+        const file_client::Reply r = file_client::left_poll(true);
         if (r.outcome) {
             a.io.fail(r);
             return adopt_fail(a, xc::e_link, P::s_link);
         }
-        if (r.value < 0 || U32(r.value) > file_client::piece_max) return adopt_fail(a, xc::e_read, P::s_storage);
-        if (r.value) {
-            a.sha.update(a.piece, U32(r.value));
-            a.bytes += U32(r.value);
-            return;
-        }
+        if (r.value < 0 || U32(r.value) > xa::half_bytes) return adopt_fail(a, xc::e_read, P::s_storage);
+        const U32 n = U32(r.value);
+        const uint8_t* data = file_client::stream(a.half * xa::half_bytes, n);
+        a.half ^= 1u;
+        if (n == xa::half_bytes && !content_ask(a)) // a whole half: more may follow (short only at the end)
+            return adopt_fail(a, a.io.link ? xc::e_link : xc::e_read, a.io.link ? P::s_link : P::s_storage);
+        save_lap(xl::p_cset_sha);
+        a.sha.update(data, n);
+        a.bytes += n;
+        if (n == xa::half_bytes) return;
+        save_lap(xl::p_cset_open);
         const int fd = a.in;
         a.in = -1;
         if (a.io.close(fd) < 0) return adopt_fail(a, xc::e_read, P::s_storage);
         xyf_core::hash::Digest d;
+        save_lap(xl::p_cset_sha);
         if (!a.sha.finish(d) || !content_line(cwork(), d)) return adopt_fail(a, xc::e_size, P::s_refused);
         ++cwork().file_at;
         a.step = cs_open;
@@ -538,6 +573,7 @@ void adopt_step(AdoptSlot& a) {
         return;
     }
     case cs_window: { // A's write window, tmp/ made
+        save_lap(xl::p_cset_write);
         U32 code = enter_writes();
         if (code == P::s_ok) code = file_client::mount_ready(mounted);
         if (code != P::s_ok) return adopt_fail(a, code == P::s_link ? xc::e_link : xc::e_write, code);
