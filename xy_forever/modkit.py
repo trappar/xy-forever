@@ -63,7 +63,7 @@ KIT_KEYS = {
 }
 KIT_OPTIONAL = {'linked', 'notices', 'extensions', 'serviceFallbacks'}
 OBJECT_KEYS = {'name', 'owner', 'sha256', 'bytes', 'service', 'runtime', 'extension'}
-EDIT_KINDS = ('heap', 'table', 'text', 'hook', 'startup')
+EDIT_KINDS = ('heap', 'table', 'text', 'hook', 'startup', 'limit')
 EDIT_KEYS = {
     'kind',
     'name',
@@ -301,6 +301,35 @@ def make_object(sections=(), symbols=(), relocations=()):
 # ---------------------------------------------------------------- edits.bin (the profile's edits in binary form)
 
 EDITS_MAGIC = b'XYFE'
+LIMIT_SERVICES = {'long_samples', 'release_floor'}
+FLOOR_VALUES = tuple(range(-20, -67, -1))
+
+
+def limit_choices(edit, services):
+    """Validate the two capability edit forms in Open-XY v0.0.7."""
+    service = edit.get('service')
+    check(isinstance(service, str) and service in LIMIT_SERVICES and service in services, 'unsupported limit service')
+    check(not (edit.keys() & {'symbol', 'call', 'profiling'}), 'unsupported limit fields')
+    length = edit['length']
+    check(length in ((8,) if service == 'long_samples' else (2, 8)), 'unsupported limit length')
+    for key in ('before', 'after'):
+        value = edit.get(key)
+        check(isinstance(value, str) and re.fullmatch(r'[0-9a-f]{%d}' % (length * 2), value), 'invalid limit ' + key)
+    if service == 'release_floor' and length == 8:
+        choices = edit.get('choices')
+        check(
+            edit.get('setting') == service
+            and isinstance(choices, dict)
+            and set(choices) == set(map(str, FLOOR_VALUES)),
+            'unsupported release-floor choices',
+        )
+        check(
+            all(isinstance(v, str) and re.fullmatch(r'[0-9a-f]{16}', v) for v in choices.values()),
+            'invalid release-floor bytes',
+        )
+        return b''.join(bytes.fromhex(choices[str(v)]) for v in FLOOR_VALUES)
+    check(not (edit.keys() & {'setting', 'choices'}), 'unsupported fixed limit choices')
+    return b''
 
 
 def encode_edits(profile):
@@ -316,8 +345,13 @@ def encode_edits(profile):
 
     service_at = [text(s) for s in services]
     records = bytearray()
+    version = 1
     for edit in profile['patches']:
         kind = EDIT_KINDS.index(edit['kind']) + 1
+        choices = b''
+        if edit['kind'] == 'limit':
+            version = 2
+            choices = limit_choices(edit, services)
         before = bytes.fromhex(edit['before'])
         after = bytes.fromhex(edit['after']) if 'after' in edit else b''
         check(len(before) == edit['length'] and (not after or len(after) == edit['length']), 'edit length mismatch')
@@ -330,7 +364,7 @@ def encode_edits(profile):
                 kind,
                 flags,
                 service,
-                0,
+                len(choices) // edit['length'] if choices else 0,
                 int(edit['address'], 16),
                 int(edit['file_offset'], 16),
                 edit['length'],
@@ -338,9 +372,10 @@ def encode_edits(profile):
             )
             + before
             + after
+            + choices
         )
     check(len(strings) < 0xFFFF and len(services) < 0xFF, 'edit tables too large')
-    head = EDITS_MAGIC + struct.pack('<HHHH', 1, len(profile['patches']), len(services), len(strings))
+    head = EDITS_MAGIC + struct.pack('<HHHH', version, len(profile['patches']), len(services), len(strings))
     return bytes(head + b''.join(struct.pack('<H', a) for a in service_at) + strings + records)
 
 
@@ -348,7 +383,7 @@ def decode_edits(data):
     """edits.bin -> [edit] with the fields patchFirmware uses (the inverse of encode_edits)."""
     check(data[:4] == EDITS_MAGIC, 'edits.bin: bad magic')
     version, count, nservices, nstrings = struct.unpack_from('<HHHH', data, 4)
-    check(version == 1, 'edits.bin: unknown version %d' % version)
+    check(version in (1, 2), 'edits.bin: unknown version %d' % version)
     at = 12 + 2 * nservices
     strings = data[at : at + nstrings]
     name = lambda off: strings[off : strings.index(b'\0', off)].decode()
@@ -356,7 +391,8 @@ def decode_edits(data):
     at += nstrings
     edits = []
     for _ in range(count):
-        kind, flags, service, _, address, offset, length, symbol = struct.unpack_from('<BBBBIIHH', data, at)
+        kind, flags, service, choices, address, offset, length, symbol = struct.unpack_from('<BBBBIIHH', data, at)
+        check(1 <= kind <= (5 if version == 1 else 6), 'edits.bin: unsupported kind')
         at += 16
         edit = dict(
             kind=EDIT_KINDS[kind - 1],
@@ -377,6 +413,15 @@ def decode_edits(data):
             edit['call'] = bool(flags & 1)
         if flags & 2:
             edit['profiling'] = False
+        if choices:
+            check(version == 2 and kind == 6 and choices == len(FLOOR_VALUES), 'edits.bin: unsupported choices')
+            edit['setting'] = 'release_floor'
+            edit['choices'] = {
+                str(v): data[at + i * length : at + (i + 1) * length].hex() for i, v in enumerate(FLOOR_VALUES)
+            }
+            at += choices * length
+        if kind == 6:
+            limit_choices(edit, services)
         edits.append(edit)
     check(at == len(data), 'edits.bin: trailing bytes')
     return services, edits
@@ -391,7 +436,7 @@ def edit_fields(edit):
         length=edit['length'],
         before=edit['before'],
     )
-    for key in ('after', 'service', 'symbol', 'call', 'profiling'):
+    for key in ('after', 'service', 'symbol', 'call', 'profiling', 'setting', 'choices'):
         if key in edit:
             out[key] = edit[key]
     return out
@@ -427,6 +472,24 @@ def generation_of(kit):
         fixed=kit['fixed'],
         fallbacks=kit.get('serviceFallbacks', {}),
     )
+    # The v0.0.6 generation stays byte-for-byte stable. From v0.0.7 on, extension
+    # metadata can change both service activation and patched firmware bytes.
+    if tuple(map(int, kit['version'].split('.'))) >= (0, 0, 7) or any(
+        {'linked', 'drumline_page', 'capabilities', 'settings'} & e.keys() for e in kit.get('extensions', [])
+    ):
+        canon['extensions'] = [
+            [
+                e['id'],
+                e.get('linked'),
+                processor_key(e),
+                e.get(processor_key(e)),
+                e.get('claims'),
+                e.get('drumline_page'),
+                e.get('capabilities'),
+                e.get('settings'),
+            ]
+            for e in kit.get('extensions', [])
+        ]
     return '%s-%s' % (kit['version'], sha256(json.dumps(canon, sort_keys=True).encode())[:12])
 
 
@@ -508,6 +571,53 @@ def services_for(profile, users):
     return [name for name, wanted in profile.get('services', {}).items() if any(u in wanted for u in users)]
 
 
+def validate_extension_capabilities(extension, profile):
+    e = extension
+    capabilities = e.get('capabilities', [])
+    check(
+        isinstance(capabilities, list)
+        and all(isinstance(c, str) and c in LIMIT_SERVICES for c in capabilities)
+        and len(set(capabilities)) == len(capabilities)
+        and all(
+            profile.get('services', {}).get(c) == [c]
+            and any(
+                p.get('service') == c and p['kind'] == 'limit' and 'choices' not in p and p['before'] != p['after']
+                for p in profile['patches']
+            )
+            for c in capabilities
+        ),
+        'unsupported extension capabilities',
+    )
+    check('capabilities' not in e or capabilities, 'empty extension capabilities')
+    check('drumline_page' not in e or e['drumline_page'] is True, 'invalid Drumline page')
+    check(
+        'linked' not in e
+        or (
+            e['linked'] is False
+            and capabilities
+            and not e.get('claims')
+            and not e.get('actions')
+            and not processor_key(e)
+        ),
+        'unsupported settings extension',
+    )
+    settings = e.get('settings', {})
+    check(isinstance(settings, dict) and settings.keys() <= {'release_floor'}, 'unsupported extension settings')
+    if not settings:
+        return
+    key, setting = 'release_floor', settings['release_floor']
+    check(
+        key in capabilities
+        and isinstance(setting, dict)
+        and all(type(setting.get(k)) is int for k in ('minimum', 'maximum', 'default', 'value'))
+        and FLOOR_VALUES[-1] <= setting['minimum'] <= setting['value'] <= setting['maximum'] <= FLOOR_VALUES[0]
+        and setting['minimum'] <= setting['default'] <= setting['maximum']
+        and all(isinstance(setting.get(k), str) for k in ('label', 'unit'))
+        and any(edit.get('setting') == key for edit in profile['patches']),
+        'invalid extension release floor',
+    )
+
+
 def analyse(kit):
     """Every check this tool makes before writing anything; returns the parsed kit model."""
     check(
@@ -531,6 +641,9 @@ def analyse(kit):
             edit.get('kind') in EDIT_KINDS, 'unknown edit kind %r: this kit is newer than this tool' % edit.get('kind')
         )
         extra = set(edit) - EDIT_KEYS
+        if edit['kind'] == 'limit':
+            extra -= {'setting', 'choices'}
+            limit_choices(edit, profile.get('services', {}))
         check(not extra, 'unknown edit fields %s: this kit is newer than this tool' % sorted(extra))
     machines, extensions = kit['machines'], kit.get('extensions', [])
     ids = [m['id'] for m in machines]
@@ -594,7 +707,11 @@ def analyse(kit):
             bad = sorted(o['imports'] - allowed)
             check(not bad, 'machine %s imports %s, which are not SDK or runtime exports' % (m['id'], bad))
     for e in extensions:
+        validate_extension_capabilities(e, profile)
         own = [o for o in objects if o['extension'] == e['id']]
+        if e.get('linked') is False:
+            check(not own, 'settings extension %s links no code' % e['id'])
+            continue
         check(len(own) == 1, 'extension %s needs exactly one object' % e['id'])
         o = own[0]
         check(
@@ -925,24 +1042,33 @@ def write_base(folder, model, common, sdk_source):
 
 
 def extension_row(model, e):
-    o = next(x for x in model['objects'] if x['extension'] == e['id'])
+    o = next((x for x in model['objects'] if x['extension'] == e['id']), None)
     key = processor_key(e)
-    accessors = ['hooks']
+    accessors = ['hooks'] if o else []
     if key:
         accessors += [
             s for s in ('processor', 'panel', 'filter') if 'sdk_extension_%s_%s' % (e['id'], s) in o['exports']
         ]
-    users = ['extension'] + (['master_filter'] if key else [])
+    users = (['extension'] if o else []) + (['master_filter'] if key else [])
+    users += (['drumline_page'] if e.get('drumline_page') else []) + e.get('capabilities', [])
     proc = e[key] if key else {}
+    capability_fields = []
+    if e.get('drumline_page'):
+        capability_fields.append('drumline_page=1')
+    if e.get('capabilities'):
+        capability_fields.append('capabilities=' + ','.join(sorted(e['capabilities'])))
+    if setting := e.get('settings', {}).get('release_floor'):
+        capability_fields.append('release_floor=%d' % -setting['value'])
     return (
-        'link=%d' % o['order'],
+        'link=' + (str(o['order']) if o else '-'),
         'services=' + dash(services_for(model['profile'], users)),
         'claims=' + dash(e.get('claims')),
         'labels=' + claim_labels_field(e),
-        'accessors=' + ','.join(accessors),
+        'accessors=' + dash(accessors),
         'processor=' + (key or '-'),
         'state_id=' + (proc.get('state_id') or '-'),
         'asset=' + (proc.get('asset') or '-'),
+        *capability_fields,
         'origin=' + e['origin'],
     )
 
@@ -1032,11 +1158,13 @@ def write_machine(folder, model, m, order, common, assets, notice):
 
 
 def write_extension(folder, model, e, order, common, pin):
-    o = next(x for x in model['objects'] if x['extension'] == e['id'])
-    files = {
-        'objects/' + o['name']: o['blob'],
-        'objects.txt': table('order role path', [(o['order'], 'extension', 'objects/' + o['name'])]),
-    }
+    o = next((x for x in model['objects'] if x['extension'] == e['id']), None)
+    rows, files = [], {}
+    if o:
+        path = 'objects/' + o['name']
+        rows.append((o['order'], 'extension', path))
+        files[path] = o['blob']
+    files['objects.txt'] = table('order role path', rows)
     key = processor_key(e)
     host = {k: v for k, v in e.items() if k != 'id'}
     if key:
@@ -1063,11 +1191,9 @@ def write_extension(folder, model, e, order, common, pin):
         ('id', e['id']),
         ('order', order),
         ('origin', e['origin']),
-        ('objects', 1),
-        ('code', o['code']),
-        ('data', o['data']),
-        ('state', o['state']),
-    ] + [tuple(f.split('=', 1)) for f in row[:-1] if not f.startswith('labels=')]
+        ('objects', int(o is not None)),
+        *((k, o[k] if o else 0) for k in ('code', 'data', 'state')),
+    ] + [tuple(f.split('=', 1)) for f in row[:-1] if f != 'link=-' and not f.startswith('labels=')]
     if pin:
         extra.append(('maintainer', pin['maintainer']))
     files[package_records.NATIVE] = package_records.document(known, extra)
@@ -1239,9 +1365,28 @@ def rebuild_kit(generation_dir, machines, extensions, catalog):
                 if f['state_id'] != '-':
                     proc['state_id'] = f['state_id']
                 e[f['processor']] = proc
-            objects.append(
-                object_entry(int(f['link']), 'objects/' + path, placeholder_object(eid, accessors), extension=eid)
-            )
+            if 'drumline_page' in f:
+                e['drumline_page'] = True
+            if 'capabilities' in f:
+                e['capabilities'] = f['capabilities'].split(',')
+            if 'release_floor' in f:
+                value = -int(f['release_floor'])
+                e['settings'] = dict(
+                    release_floor=dict(
+                        value=value,
+                        default=value,
+                        minimum=FLOOR_VALUES[-1],
+                        maximum=FLOOR_VALUES[0],
+                        label='Release floor',
+                        unit='dB',
+                    )
+                )
+            if f['link'] == '-':
+                e['linked'] = False
+            else:
+                objects.append(
+                    object_entry(int(f['link']), 'objects/' + path, placeholder_object(eid, accessors), extension=eid)
+                )
         kit_extensions.append(e)
     orders = [o for o, _ in objects]
     check(len(set(orders)) == len(orders), 'two packages claim the same link-order key')

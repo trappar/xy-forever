@@ -168,6 +168,54 @@ def kit_for(profile):
     return kit
 
 
+def capability_kit(data):
+    profile = profile_for(data)
+    profile['services'].update(long_samples=['long_samples'], release_floor=['release_floor'])
+
+    def edit(offset, service, after, **fields):
+        length = len(after) // 2
+        return dict(
+            kind='limit',
+            service=service,
+            address=hex(TEXT + offset),
+            file_offset=hex(TEXT_AT + offset),
+            length=length,
+            before=data[TEXT_AT + offset : TEXT_AT + offset + length].hex(),
+            after=after,
+            **fields,
+        )
+
+    profile['patches'] += [
+        edit(
+            0x90,
+            'release_floor',
+            'be' * 8,
+            setting='release_floor',
+            choices={str(v): '%02x' % -v * 8 for v in M.FLOOR_VALUES},
+        ),
+        edit(0x98, 'release_floor', '1234'),
+        edit(0xA0, 'long_samples', 'ef' * 8),
+    ]
+    kit = kit_for(profile)
+    extension = dict(
+        name='Limits',
+        description='Select a release floor',
+        origin='personal',
+        linked=False,
+        claims=[],
+        claim_labels={},
+        actions=[],
+        capabilities=['release_floor', 'long_samples'],
+    )
+    setting = dict(minimum=-66, maximum=-20, default=-40, value=-33, label='Release floor', unit='dB')
+    kit['extensions'] += [
+        dict(extension, id='limit_default'),
+        dict(extension, id='limit_choice', settings=dict(release_floor=setting)),
+        dict(extension, id='limit_conflict', settings=dict(release_floor=setting)),
+    ]
+    return kit
+
+
 def finish(kit):
     """Stands in for core.mjs buildAssets: finished svgs, instrument presets, aux presets (both aux machines
     carry the cv role's init, each its own bytes: the later machine in collection order wins)."""
@@ -472,6 +520,38 @@ class Synthetic(unittest.TestCase):
             (root / 'alpha/objects/alpha/voice.o').write_bytes(b'\0' * 64)
 
         self.refused(['alpha'], 'input', 'sha256', gen=self.variant(obj), detail='alpha/objects/alpha/voice.o')
+
+    def test_capability_edits_match_the_selected_extension(self):
+        kit = capability_kit(self.stock)
+        gen = self.split(kit, 'capabilities')
+        encoded = (gen / 'base/edits.bin').read_bytes()
+        self.assertEqual(encoded[4:6], b'\x02\x00')
+        self.assertEqual(M.decode_edits(encoded)[1], [M.edit_fields(e) for e in kit['profile']['patches']])
+        original_generation = M.generation_of(kit)
+        kit['extensions'][-1]['settings']['release_floor']['value'] = -67
+        self.assertNotEqual(M.generation_of(kit), original_generation)
+        with self.assertRaisesRegex(M.KitError, 'invalid extension release floor'):
+            M.analyse(kit)
+        for extensions, floor, rest in (
+            ([], self.stock[TEXT_AT + 0x90 : TEXT_AT + 0x98], False),
+            (['limit_default'], bytes.fromhex('be' * 8), True),
+            (['limit_choice'], bytes([33]) * 8, True),
+        ):
+            with self.subTest(extensions=extensions):
+                report, out = self.run_job(['alpha'], extensions, gen=gen)
+                self.assertEqual((report['patch'], report['verify'], report['copy']), ('ok', 'ok', 'ok'), report)
+                image = (out / 'os.ldr').read_bytes()
+                self.assertEqual(image[TEXT_AT + 0x90 : TEXT_AT + 0x98], floor)
+                for offset, after in ((0x98, bytes.fromhex('1234')), (0xA0, bytes.fromhex('ef' * 8))):
+                    at = TEXT_AT + offset
+                    self.assertEqual(image[at : at + len(after)], after if rest else self.stock[at : at + len(after)])
+        report, out = self.run_job(['alpha'], ['limit_choice', 'limit_conflict'], gen=gen)
+        self.assertEqual((report['link_status'], report['link_detail']), ('claim', 'Release floor'), report)
+        self.assertFalse(any(out.iterdir()))
+        malformed = self.folder() / gen.name
+        shutil.copytree(gen, malformed)
+        TK.rewrite(malformed / 'base', 'edits.bin', encoded[:4] + b'\x01\x00' + encoded[6:])
+        self.refused(['alpha'], 'patch', 'edits', gen=malformed, detail='edit 8')
 
     def test_refuses_an_unpinned_catalog(self):
         def other(lines, folder):
@@ -900,8 +980,8 @@ class PublishedKit(unittest.TestCase):
         self.assertTrue(all(r['base'] == 'known' for n, r in self.rows.items() if 'base' in r))
 
     def known_base_table_is_this_base(self):
-        """native/mod_known_bases.inc is what modkit known-base writes for the kept package set."""
-        self.assertEqual(P.KNOWN_BASES.read_text(), P.known_bases_text([PACKAGES / 'base'], TK.STOCK, TK.CATALOG))
+        """The kept generation remains in the known-base table alongside newer kits."""
+        self.assertIn(P.known_base_entry(PACKAGES / 'base', TK.STOCK, TK.CATALOG), P.KNOWN_BASES.read_text())
 
     def working_memory_and_steps(self):
         row = self.rows['linked']

@@ -50,8 +50,9 @@ struct Machine {
 };
 struct Extension {
     char id[33];
-    Byte processor, chosen, accessors, exports, objects, pad[2];
+    Byte processor, chosen, accessors, exports, objects, linked, release_floor, drumline;
     U32 claims, claims_length, labels, labels_length;
+    U32 users;
 };
 struct Service {
     U32 name, users, length;
@@ -524,7 +525,7 @@ Status parse_base(State& st, U32 index, Cursor& c) {
             m.selected = 0;
             ++st.machine_count;
         } else if (index == 3) { // extensions.txt: order id link= services= claims= labels= accessors= processor= ...
-            U32 order, cn, ln, an, pn;
+            U32 order, cn, ln, an, pn, nlink, dn, capn, fn;
             if (st.tokens < 2 || !parse_unsigned(token(st, 0), st.token_length[0], order) ||
                 order != st.extension_count || !valid_id(token(st, 1), st.token_length[1], 32))
                 return malformed(st);
@@ -535,8 +536,30 @@ Status parse_base(State& st, U32 index, Cursor& c) {
             const Byte* labels = field(st, 2, "labels", ln);
             const Byte* accessors = field(st, 2, "accessors", an);
             const Byte* processor = field(st, 2, "processor", pn);
-            if (!claims || !labels || !accessors || !processor) return malformed(st);
+            const Byte* link = field(st, 2, "link", nlink);
+            const Byte* drumline = field(st, 2, "drumline_page", dn);
+            const Byte* capabilities = field(st, 2, "capabilities", capn);
+            const Byte* floor = field(st, 2, "release_floor", fn);
+            if (!claims || !labels || !accessors || !processor || !link) return malformed(st);
             e.processor = !(pn == 1 && processor[0] == '-');
+            e.linked = !equal(link, nlink, "-");
+            U32 ignored, magnitude = 0;
+            if ((e.linked && !parse_unsigned(link, nlink, ignored)) || (drumline && !equal(drumline, dn, "1")))
+                return malformed(st);
+            const bool long_samples = capabilities && (equal(capabilities, capn, "long_samples") ||
+                                                       equal(capabilities, capn, "long_samples,release_floor"));
+            const bool release_floor = capabilities && (equal(capabilities, capn, "release_floor") ||
+                                                        equal(capabilities, capn, "long_samples,release_floor"));
+            if ((capabilities && !long_samples && !release_floor) ||
+                (floor && (!release_floor || !parse_unsigned(floor, fn, magnitude) || magnitude < release_floor_min ||
+                           magnitude > release_floor_max)))
+                return malformed(st);
+            e.release_floor = Byte(magnitude);
+            e.drumline = drumline != 0;
+            const U32 samples_user = long_samples ? word_bit(st, bytes("long_samples"), 12) : 0u;
+            const U32 floor_user = release_floor ? word_bit(st, bytes("release_floor"), 13) : 0u;
+            if ((long_samples && !samples_user) || (release_floor && !floor_user)) return malformed(st);
+            e.users = samples_user | floor_user | (drumline ? word_bit(st, bytes("drumline_page"), 13) : 0u);
             e.accessors = 0;
             for (U32 i = 0, start = 0; i <= an; ++i) {
                 if (i != an && accessors[i] != ',') continue;
@@ -545,6 +568,7 @@ Status parse_base(State& st, U32 index, Cursor& c) {
                 start = i + 1;
             }
             e.claims_length = cn == 1 && claims[0] == '-' ? 0 : cn;
+            if (!e.linked && (!capabilities || e.processor || e.accessors || e.claims_length)) return malformed(st);
             if (e.claims_length && list_items(claims, cn) > max_claims)
                 return refuse(st, Status::claim_count, token(st, 1), st.token_length[1]);
             e.labels_length = e.claims_length ? ln : 0; // one label per claim, "-" with none
@@ -689,8 +713,10 @@ Status prepare(State& st) {
         if (st.machines[i].selected) users |= st.machines[i].users;
     for (U32 i = 0; i != st.extension_count; ++i)
         if (st.extensions[i].chosen) {
-            extension = true;
-            processor = processor || st.extensions[i].processor;
+            const Extension& e = st.extensions[i];
+            extension = extension || e.linked;
+            processor = processor || e.processor;
+            users |= e.users;
         }
     if (extension) users |= word_bit(st, bytes("extension"), 9);
     if (processor) users |= word_bit(st, bytes("master_filter"), 13);
@@ -1044,13 +1070,24 @@ Status claim_refusal(State& st, const Byte* claim, U32 n) {
 
 // After pass 1: linkKit from extensionSelection to the absent aliases.
 Status link_tables(State& st, Sizes& sizes) {
+    U32 release_floor = 0;
+    bool drumline_chosen = false;
     for (U32 i = 0; i != st.extension_count; ++i) { // openKit's accessor checks
         const Extension& e = st.extensions[i];
         if (!e.chosen) continue;
-        if (e.objects != 1 || !(e.exports & 1)) return refuse(st, Status::accessor, e.id);
+        if (e.objects != e.linked || (e.linked && !(e.exports & 1))) return refuse(st, Status::accessor, e.id);
         if (e.processor && (e.exports & 6) != 6 && !(e.exports & 8))
             return refuse(st, Status::processor_accessor, e.id);
+        if (e.drumline) {
+            if (drumline_chosen) return refuse(st, Status::claim, "Drumline page 2");
+            drumline_chosen = true;
+        }
+        if (e.release_floor) {
+            if (release_floor) return refuse(st, Status::claim, "Release floor");
+            release_floor = e.release_floor;
+        }
     }
+    st.result->release_floor = release_floor;
     for (U32 i = 0; i != st.extension_count; ++i) { // extensionSelection: no claim twice
         const Extension& e = st.extensions[i];
         for (U32 c = 0, start = 0; c <= e.claims_length && e.chosen; ++c) {
