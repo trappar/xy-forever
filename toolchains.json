@@ -57,6 +57,22 @@
         "lib/gcc/bfin-elf/8.0.0/include/stdint.h": "86a7914ab7d6a18465a6fb9a7b54f945cad604fdbf3ca0d10e4e0254e0037911",
         "lib/gcc/bfin-elf/8.0.0/include/stdint-gcc.h": "9f91de7f8568e02ddcf7b2eefca31ec0d5dda9f1842570d7500b8314fe19625c"
       }
+    },
+    "linux-arm64": {
+      "executable_suffix": "",
+      "tools": {
+        "as": "c721fb9fb4e07fc52e320e28bc942fc92bad71d6ea4513fa408b67b23a96369d",
+        "ld": "18a807e83d1210e3bab3d3fb6901852cd099e2623b7246592ae7aee08afd08e4",
+        "objcopy": "cb458330553fd4b623204a3e416a08d73dd092aeaad0482e358cbf2af9b63c0c",
+        "objdump": "8df0c387b95a070c2005f6c5b75988b4994339a5c0bdbe7c51017026143bb7ea"
+      },
+      "compiler": {
+        "bin/bfin-elf-g++": "022ce65d8c25ce31bb7ce37ffdbca824054790e866d542d24d12d7e74173f042",
+        "libexec/gcc/bfin-elf/8.0.0/cc1plus": "14855928d3d1ba4b8471b06727356746ef7731b12547d70bb2461ef70b5b7fb8",
+        "lib/gcc/bfin-elf/8.0.0/include/stddef.h": "1ec68deac2c5c0f846949de67d8266c02964132fa216165ea2ec4e70c8fcb930",
+        "lib/gcc/bfin-elf/8.0.0/include/stdint.h": "86a7914ab7d6a18465a6fb9a7b54f945cad604fdbf3ca0d10e4e0254e0037911",
+        "lib/gcc/bfin-elf/8.0.0/include/stdint-gcc.h": "9f91de7f8568e02ddcf7b2eefca31ec0d5dda9f1842570d7500b8314fe19625c"
+      }
     }
   }
 }

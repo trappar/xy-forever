@@ -7,7 +7,7 @@ import platform
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN_SHA256 = '81b2900fce63fe9b8871f72f4d9a9388ff7ea390a3795866d53ba1e22c2c9856'
+PIN_SHA256 = '5bee34f04b8ae84513ebf2b2c34712a08968ffd7ceaf16a331642f6a27914169'
 CXX_FLAGS = [
     '-mcpu=bf707',
     '-O2',
