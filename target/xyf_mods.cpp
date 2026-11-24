@@ -718,6 +718,11 @@ uint32_t stage_share(uint32_t i) { return i < bar_stages ? shares[i] : 0; }
 uint32_t stage_ms(uint32_t i) { return i < bar_stages ? times[i] : 0; }
 
 uint32_t progress(Progress& p, uint32_t ms) {
+    if (p.reading) {                            // #183: the bytes read of the content, the whole bar
+        const uint32_t value = p.job_total ? ui::scale(bar_full, p.job_done, p.job_total) : 0u;
+        if (value > p.bar) p.bar = value > bar_full ? bar_full : value;
+        return p.bar;
+    }
     const bool building = !p.save || !p.save_stage;
     const uint32_t stage = !building ? 8u + p.save_stage : p.job_commit ? 8u : p.job_phase > 7 ? 7u : p.job_phase;
     const uint32_t total = p.job_total ? p.job_total : 1u, done = p.job_done > total ? total : p.job_done;

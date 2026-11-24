@@ -75,6 +75,7 @@ struct Progress {
     uint32_t job, job_phase, job_done, job_total, job_commit;
     uint32_t bar, bar_step, bar_since;
     uint32_t save, save_stage, cancel;
+    uint32_t reading;               // #183: the base's content read (job_done of job_total bytes): its own bar
     const char* title;              // the title bar ("Saving changes", "Booting without mods", ...)
     char job_name[16];
     char note[64];

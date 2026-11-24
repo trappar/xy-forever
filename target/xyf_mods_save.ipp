@@ -261,7 +261,8 @@ uint32_t adopting() {
 }
 // #183: the build's base needs its content set (firmware/<base>/content.sha256, firmware.version): an OS 1.2.1 entry
 // the web install adopted has none, so the adoption job's content mode makes it from the live official content first
-// (a no-op when it is there), its progress on this screen; then the build.
+// (a no-op when it is there); once it reads content, the screen is its own (title, the bytes read as the whole bar);
+// then the build, its bar from the start.
 const char* build_title XYF_DATA = 0;
 uint32_t content_set() {
     if (usb_service::adopt_start(sv.base, usb_service::adopt_content) != s_ok)
@@ -271,26 +272,33 @@ uint32_t content_set() {
     sv.job = v.id;
     sv.stage = sv_content_set;
     build_title = run.title;
-    run.title = "Reading OS 1.2.1 content";
     run.job_phase = run.job_done = run.job_total = 0;
     return 1;
+}
+void reading_screen(bool on) { // a new job number: the screen drawn whole
+    if (!run.reading == !on) return;
+    run.reading = on ? 1u : 0u;
+    run.title = on ? "Reading OS 1.2.1 content" : build_title;
+    run.job = (on ? 0x20000u : 0x10000u) + sv.serial;
+    run.bar = run.bar_step = run.bar_since = 0;
 }
 uint32_t content_setting() {
     usb_service::JobView v;
     usb_service::job_view(v);
     if (v.state == 1 && v.id == sv.job) {
-        const bool phase = v.phase != run.job_phase;
+        const bool phase = v.phase != run.job_phase || (v.total && !run.reading);
+        if (v.total) reading_screen(true);
         run.job_phase = v.phase;
         run.job_done = v.done;
         run.job_total = v.total;
         return moved(phase);
     }
-    if (v.id == sv.job && v.state == 2 && v.phase == 8) { // the window closed: the build, its bar from the start
+    if (v.id == sv.job && v.state == 2 && v.phase == 8) { // the window closed: the build
         if (usb_service::page_busy()) return moved(false);
-        run.title = build_title;
-        run.bar = run.bar_step = run.bar_since = 0;
+        reading_screen(false);
         return start_build(m::flag_saved);
     }
+    reading_screen(false);
     if (v.error == 9) return fail(prefix(), "the base is not official OS 1.2.1 (mods need its content).");
     if (v.error == 15) return fail(prefix(), "mods' content is installed; the base has no content set.");
     if (v.error == 10 || v.error == 7) return fail(prefix(), "the content is not official OS 1.2.1's.");

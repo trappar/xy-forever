@@ -336,6 +336,7 @@ void bind_mods(nb::module_ m) {
         if (!progress_shown) run.title = "Saving changes";
         progress_shown = true;
         run.job = 0x10001;
+        run.reading = 0;
         run.note[0] = 0;
         run.save = mods::save_on | (build ? mods::save_build : 0);
         run.save_stage = stage;
@@ -344,6 +345,20 @@ void bind_mods(nb::module_ m) {
             run.job_total = total;
             run.job_commit = 0;
         }
+    });
+    // #183: the base's content read before a build (xyf_mods_save.ipp reading_screen)
+    m.def("mods_reading", [](unsigned done, unsigned total) {
+        progress_shown = true;
+        run.job = 0x20001;
+        run.reading = 1;
+        run.bar = run.bar_step = run.bar_since = 0;
+        run.title = "Reading OS 1.2.1 content";
+        run.note[0] = 0;
+        run.save = mods::save_on;
+        run.save_stage = run.job_commit = 0;
+        run.job_phase = 1;
+        run.job_done = done;
+        run.job_total = total;
     });
     m.def("mods_text", [] { return bytes_or_none(page.text); });
     m.def("mods_line", [] { return unsigned(page.line); });

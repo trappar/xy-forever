@@ -62,6 +62,9 @@ class ContentSet(ConfigBase, unittest.TestCase):
         os.environ[ENV] = '%s %s' % (hashlib.sha256(listed).hexdigest(), hashlib.sha256(CATALOG).hexdigest())
         cls.addClassCleanup(lambda: os.environ.pop(ENV) if before is None else os.environ.update({ENV: before}))
 
+    def log(self):
+        return (self.dir / 'log.txt').read_text(errors='replace')
+
     def entry(self, name):
         path = self.root / 'xy-forever/firmware' / self.base / name
         return path.read_bytes() if path.exists() else None
@@ -76,10 +79,20 @@ class ContentSet(ConfigBase, unittest.TestCase):
         """Kept: every OP-XY installed from the web app builds its first mods this way."""
         self.assertEqual(self.set_mods(['alpha']), (0, ''))
         self.saved(['alpha'])
+        self.sim.set('a_slow_ms', 40)  # the read long enough for the bar's redraws
         self.cont()
+        shown = self.wait_progress(lambda p: p['title'] == 'Reading OS 1.2.1 content', 'reading the content')
+        self.assertEqual(shown['bar'], 0)
+        first = self.progress()[0]['title']  # the sequence's own screen, before
+        self.wait_log(lambda: self.progress()[-1]['title'] != shown['title'], 'the build after the read')
+        self.sim.set('a_slow_ms', 0)
         entry = self.booted()
         self.assertIn(entry, ('mods-a', 'mods-b'))
         self.saved_as(entry, ['alpha'])
+        bars = [int(b) for b in re.findall(r'mods bar: job=%d bar=(\d+)' % shown['job'], self.log())]
+        self.assertGreaterEqual(len(set(bars)), 3, bars)  # it moves as the files are read
+        self.assertEqual(bars, sorted(bars))
+        self.assertEqual(self.progress()[-1]['title'], first)  # then the usual screen
         self.assertEqual(self.entry('content.sha256'), self.official_text.encode())
         self.assertEqual(self.entry('firmware.version'), b'1.2.1+0\n')
         self.assertFalse((self.root / 'xy-forever/tmp' / ('cset-' + self.base)).exists())
