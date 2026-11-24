@@ -13,8 +13,9 @@
 // under way (it looks once that ends). te-boot itself is MIDI only. A serial port named "OP-XY Boot" is the same
 // remembered port as XY Forever's (docs/hardware/usb-identity.md): in the stock recovery menu it never answers as XY
 // Forever, so the look finds nothing until XY Forever runs. Once its stock entry is there and the default names a
-// library entry (the stock one, or one with mods) it hands the owner to the app's Mods page; while it sets up, or when
-// it refuses, the page shows that. Channel (#301): at the first stage the owner may choose the site's canary over
+// library entry (the stock one, or one with mods) it hands the owner to the app's Manage section (its Mods page after
+// an install; found at the first stage, XY Forever was already there: #316); while it sets up, or when it refuses,
+// the page shows that. Channel (#301): at the first stage the owner may choose the site's canary over
 // the stable release; the choice (its pin) is kept with the others and fixed until the flow starts over at that stage,
 // so a reload or a newer deploy never changes the image mid-install (a changed one is refused by its SHA-256).
 import type { Client } from 'xy-forever-client';
@@ -49,8 +50,9 @@ export interface InstallDeps {
   /** XY Forever over Web Serial on a click: this app's connection when it holds one (never a second link on the
    * port), else a granted port or the chooser (or the simulator). */
   readonly connect: () => Promise<Lease>;
-  /** XY Forever is installed: the app takes the connection (kept open) and shows its Mods page. */
-  readonly handoff: (lease: Lease) => void;
+  /** XY Forever is installed: the app takes the connection (kept open) and switches to Manage. installed: the owner was
+   * installing (past the first stage); false: XY Forever was already there. */
+  readonly handoff: (lease: Lease, installed: boolean) => void;
   /** XY Forever on a port already granted (never the chooser), or null when none answers. */
   readonly find?: () => Promise<Lease | null>;
   /** Calls back when a serial port appears (Web Serial's connect event). */
@@ -282,7 +284,7 @@ export function installFlow(deps: InstallDeps) {
         if (!shown) return;
         if (setup.kind === 'installed') {
           kept = true;
-          deps.handoff(lease);
+          deps.handoff(lease, stage !== 'boot');
           return;
         }
         if (setup.kind === 'refused') {

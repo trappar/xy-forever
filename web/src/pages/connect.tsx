@@ -1,17 +1,16 @@
-// Connect: Web Serial, or the simulator with ?sim=PORT; a clear message in browsers without Web Serial. The port opens
-// only from the Connect click (the chooser when no granted port answers).
-import { Link, useNavigate, useSearch } from '@tanstack/react-router';
+// Connect, in Manage without a connection (pages/manage.tsx): Web Serial, or the simulator with ?sim=PORT; a clear
+// message in browsers without Web Serial. It looks for a granted port that answers when it shows and when a port
+// appears (detect.ts); the chooser opens only from the Connect click.
+import { useEffect } from 'react';
+import { Link, useSearch } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button.tsx';
 import { Card, CardTitle, CardDescription } from '@/components/ui/card.tsx';
 import { PageHeader } from '@/components/page-header.tsx';
-import { useConnection } from '../connection.ts';
-import { adopt, canConnect, disconnect, openDevice, useAction } from '../device.ts';
+import { watchForDevice } from '../detect.ts';
+import { adopt, canConnect, openDevice, useAction } from '../device.ts';
 
 export default function ConnectPage() {
-  const client = useConnection((s) => s.client);
-  const stockRestored = useConnection((s) => s.stockRestored);
   const { sim } = useSearch({ strict: false });
-  const navigate = useNavigate();
   const connect = useAction(
     'connect',
     async () => {
@@ -19,17 +18,12 @@ export default function ConnectPage() {
     },
     'Looking for the OP-XY...',
   );
-  const close = useAction('disconnect', disconnect);
+  useEffect(() => watchForDevice((navigator as Navigator & { serial?: EventTarget }).serial), []);
   return (
     <section>
-      {stockRestored && (
-        <p role="status" className="mb-4 rounded-lg border bg-card px-3.5 py-2.5">
-          Stock OS 1.2.1 was restored and your OP-XY was asked to restart.
-        </p>
-      )}
       <PageHeader title="Connect your OP-XY">
-        Start the OP-XY into the XY Forever menu, connect it by USB, then press Connect and choose XY Forever in the
-        list. Not installed yet?{' '}
+        Switch the OP-XY on while holding PLAY, then connect it by USB. A computer that connected before finds it by
+        itself; otherwise press Connect and choose XY Forever in the list. Not installed yet?{' '}
         <Link to="/install/" className="text-primary underline">
           Install XY Forever
         </Link>
@@ -38,20 +32,9 @@ export default function ConnectPage() {
       <Card>
         {canConnect() ? (
           <div className="flex flex-wrap items-center gap-2.5">
-            {client ? (
-              <>
-                <span>Connected to XY Forever {client.info.version ?? '?'}.</span>
-                <Button onClick={() => close.mutate()}>Disconnect</Button>
-              </>
-            ) : (
-              <Button
-                variant="default"
-                disabled={connect.isPending}
-                onClick={() => connect.mutate(undefined, { onSuccess: () => void navigate({ to: '/device/' }) })}
-              >
-                Connect
-              </Button>
-            )}
+            <Button variant="default" disabled={connect.isPending} onClick={() => connect.mutate()}>
+              Connect
+            </Button>
             <span className="text-muted-foreground">
               {sim ? `Simulator on 127.0.0.1:${sim} (development)` : 'Web Serial over USB'}
             </span>

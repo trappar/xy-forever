@@ -1,5 +1,5 @@
-// The web app driven in the system Chrome by Playwright, with no human step: Connect, the Device
-// page, list /yaffs2/xy-forever, upload a scratch file, download and compare it, delete it, list mod packages,
+// The web app driven in the system Chrome by Playwright, with no human step: the site finds the OP-XY by itself (#316:
+// Install switches to Manage when a granted port or the simulator answers), the Device page, list /yaffs2/xy-forever, upload a scratch file, download and compare it, delete it, list mod packages,
 // disconnect. PASS/FAIL per step, result.json and a screenshot per step in --out; exit status 1 on any
 // failure. The scratch file is deleted even after a failure (a second connection if the first is gone).
 //
@@ -145,8 +145,8 @@ async function folder(): Promise<string> {
   return (await crumbs.count()) ? ((await crumbs.textContent()) ?? '').replace(/\s/g, '') : '';
 }
 
+/** The Device page, once the site found the OP-XY by itself (a granted port or the simulator answers). */
 async function connect(): Promise<string> {
-  await page!.getByRole('button', { name: 'Connect', exact: true }).click();
   await settled(async () => (await page!.locator('[data-fact=version]').count()) > 0);
   return (await page!.locator('#device-facts').innerText()).replace(/\s*\n\s*/g, '; ');
 }
@@ -160,7 +160,6 @@ async function openDir(): Promise<string> {
 }
 
 async function disconnect(): Promise<string> {
-  await nav('Connect');
   await page!.getByRole('button', { name: 'Disconnect', exact: true }).click();
   await settled(async () => !(await connected()));
   return (await page!.getByTestId('link').textContent()) ?? '';
@@ -179,8 +178,7 @@ async function deleteScratch(): Promise<void> {
 /** Deletes the scratch file through the Files page (connecting again when needed); true when it is gone. */
 async function cleanup(): Promise<string> {
   if (!(await connected())) {
-    await page!.reload();
-    await nav('Connect');
+    await page!.reload(); // Manage looks again: a granted port answers
     await connect();
   }
   if ((await folder()) !== 'yaffs2/xy-forever') await openDir();
@@ -251,7 +249,7 @@ async function grantMode(): Promise<number> {
   try {
     ctx = await chromium.launchPersistentContext(profile, { channel: 'chrome', headless: false });
     let p = ctx.pages()[0] ?? (await ctx.newPage());
-    await p.goto(origin);
+    await p.goto(`${origin}manage/`); // Manage's Connect: the chooser from the click
     if ((await grantedHere(p)).mine === 0) {
       await p.evaluate((line) => {
         const bar = Object.assign(document.createElement('div'), { id: 'grant-line', textContent: line });

@@ -9,7 +9,9 @@ The tests of the web app ([the web app](../README.md)); the client library's own
 type checks (`pnpm run typecheck`: tsc once each; the build does not run it). `mise run web-test-changed` runs only the
 tests of both packages that your uncommitted changes affect (Vitest `--changed`), or that import the files given
 (`vitest related`). One file or test: `pnpm exec vitest run test/install.test.ts -t 'Mac'`. Budgets: as the client's
-([its README](../../clients/ts/README.md)).
+([its README](../../clients/ts/README.md)). `test/sections.test.ts` covers the switch from Install to Manage (found
+and not found, on load and when a port appears) and Manage's own look, with the install flow and `src/detect.ts` as the
+page runs them.
 
 ## Browser tests
 
@@ -18,7 +20,7 @@ drives the app in the system Chrome, headless, never a downloaded browser:
 
 - **One dev server per run.** `playwright.config.ts` starts Vite once (`webServer`, a free port passed to the
   workers); the specs share it, so a cold dependency cache is optimized once.
-- **Projects.** `app` (`e2e/app.e2e.ts`: connect, the Device page, Files, an update that restarts into the menu, the
+- **Projects.** `app` (`e2e/app.e2e.ts`: the switch from Install to Manage, the Device page, Files, an update that restarts into the menu, the
   offline bug report) against the simulator, Web Serial off in Chrome. `install` (`e2e/install.e2e.ts`: every
   refusal and guidance branch of the Install page against fake te-boot MIDI and a fake dev-menu MTP device,
   `test/fake-devices.ts`; `e2e/install-sim.e2e.ts`: the install's end against the simulator, a stock OP-XY just

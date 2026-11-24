@@ -1,6 +1,6 @@
 // Device: build, what is running, what boots next, the saved mods, the content state; Update when a newer pinned
 // release exists, or the site's canary (#301: the owner's channel choice, kept in this browser), and Uninstall
-// (restores stock OS 1.2.1, then the app goes back to Connect).
+// (restores stock OS 1.2.1, then the app goes to Install).
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -210,7 +210,7 @@ function UninstallCard({ info }: { info: DeviceInfo }) {
       setProgress('');
     }
     useConnection.setState({ client: null, installed: false, stockRestored: true });
-    navigatePath('/connect', { replace: true });
+    navigatePath('/install', { replace: true });
   });
   return (
     <Card>

@@ -28,15 +28,26 @@ try {
     }
   });
 
+  // The site's two sections (#316): / opens Install; the earlier pages' links lead to their Manage pages.
+  const MOVED: Record<string, string> = {
+    '': 'install/boot/',
+    install: 'install/boot/',
+    connect: 'manage/',
+    device: 'manage/',
+    mods: 'manage/mods/',
+    files: 'manage/files/',
+  };
   for (const path of ['', ...staticPaths()]) {
     assert((await page.goto(site + path))?.ok(), `Direct navigation must serve ${path || 'the home page'}`);
-    const stage = path.split('/')[1] ?? 'boot';
-    // Fresh connections are required to show Device, Mods and Files.
-    const shown = path.startsWith('install')
-      ? `[data-stage="${stage}"]:visible`
+    const at = MOVED[path] ?? `${path}/`;
+    await page.waitForURL(site + at);
+    // Device, Mods and Files show Connect in their place without a connection.
+    const shown = at.startsWith('install/')
+      ? `[data-stage="${at.split('/')[1]}"]:visible`
       : 'h1:text-is("Connect your OP-XY"):visible';
     await page.locator(shown).waitFor();
     assert((await page.reload())?.ok(), `Reload must serve ${path || 'the home page'}`);
+    await page.waitForURL(site + at);
     await page.locator(shown).waitFor();
   }
   for (const path of ['unknown-page/', 'release/missing.ldr']) {
@@ -44,15 +55,17 @@ try {
   }
   assert((await page.request.get(site + 'LICENSES.txt')).ok(), 'Serve the notices with the web assets');
 
-  await page.goto(site + 'connect/?source=smoke');
-  const connect = page.locator('a[data-page=connect]');
+  await page.goto(site + 'files/?source=smoke');
+  await page.waitForURL(site + 'manage/files/?source=smoke'); // an earlier link keeps its query
+  const manage = page.locator('a[data-page=manage]');
   const install = page.locator('a[data-page=install]');
-  assert.equal(await connect.getAttribute('href'), '/connect/?source=smoke'); // the query is kept
+  assert.equal(await manage.getAttribute('href'), '/manage/?source=smoke'); // the query is kept
   assert.equal(await install.getAttribute('href'), '/install/?source=smoke');
+  assert.equal(await page.locator('a[data-page="manage/mods"]').getAttribute('href'), '/manage/mods/?source=smoke');
   await page.getByRole('link', { name: 'Install XY Forever', exact: true }).click();
   await page.waitForURL(site + 'install/boot/?source=smoke');
   await page.goBack();
-  await page.waitForURL(site + 'connect/?source=smoke');
+  await page.waitForURL(site + 'manage/files/?source=smoke');
   await page.goForward();
   await page.waitForURL(site + 'install/boot/?source=smoke');
 

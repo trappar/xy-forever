@@ -1,5 +1,5 @@
-// The app in the system Chrome (headless) against the device simulator: connect with ?sim=PORT,
-// see the Device page, then browse Files. Starts `python -m xy_forever.sim` from this repository's venv
+// The app in the system Chrome (headless) against the device simulator: with ?sim=PORT the site opens on Install and
+// switches to Manage by itself (#316), shows the Device page, then browses Files. Starts `python -m xy_forever.sim` from this repository's venv
 // through the client's simulator helpers, with its state under <private sessions>/web-e2e (the
 // private folder of xy_forever/paths.py, so XYF_PRIVATE applies; override with XYF_SIM_STATE), and
 // removes the state afterwards. Skipped with the reason without the private stock files or clang++.
@@ -50,8 +50,9 @@ test('connects to the simulator and shows the device and its files', async () =>
   });
   await page.goto(appUrl(`?sim=${simPort}`));
   expect(await page.evaluate(() => 'serial' in navigator)).toBe(false);
-  await page.getByRole('button', { name: 'Connect' }).click();
+  // no click: XY Forever answers, so Install switches to Manage
   await expect(page.locator('[data-fact=version]')).toHaveText(/^\d+\.\d+\.\d+$/, { timeout: 20_000 });
+  expect(new URL(page.url()).pathname).toBe('/manage/');
   const requestsBeforeReport = deviceRequests;
   await page.getByRole('button', { name: 'Bug report' }).click();
   const preview = page.getByRole('dialog', { name: 'Bug report preview' });
@@ -72,9 +73,8 @@ test('connects to the simulator and shows the device and its files', async () =>
   await expect(page.getByTestId('files-rules')).toContainText('never /yaffs2/bootloader.dev or /yaffs2/upgrade');
   await nav(page, 'Mods').click();
   await expect(page.getByRole('heading', { level: 1, name: 'Mods' })).toHaveText('Mods', { timeout: 10_000 });
-  await page.getByRole('link', { name: 'Connect' }).click();
   await page.getByRole('button', { name: 'Disconnect' }).click();
-  await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeVisible(); // and stays: no look
   await page.getByRole('button', { name: 'Bug report' }).click();
   expect(JSON.parse((await json.textContent())!)).toMatchObject({
     connected: false,
@@ -140,8 +140,7 @@ test('installs a newer XY Forever and restarts into its menu', async () => {
   try {
     await serveRelease(page, release, image);
     const restart = await relayOlderFirstBoot(page, (info) => info.replace(/;version=[^;]+/, ';version=191'));
-    await page.goto(appUrl(`?sim=${simPort}`));
-    await page.getByRole('button', { name: 'Connect', exact: true }).click();
+    await page.goto(appUrl(`?sim=${simPort}`)); // Install switches to Manage by itself
     const update = page.getByRole('button', { name: `Update to ${version}`, exact: true });
     await update.waitFor();
     expect(await page.getByText(release.notes).isVisible()).toBe(true);
@@ -173,8 +172,7 @@ test('updates an older canary of the same version to the chosen canary, told apa
     await page.route('**/canary/release.json', (route) => route.fulfill({ json: canary }));
     await page.route('**/canary/os.ldr', (route) => route.fulfill({ body: image }));
     const restart = await relayOlderFirstBoot(page, (info) => info.replace(/;image=[^;]+/, ';image=abcd0123'));
-    await page.goto(appUrl(`?sim=${simPort}`));
-    await page.getByRole('button', { name: 'Connect', exact: true }).click();
+    await page.goto(appUrl(`?sim=${simPort}`)); // Install switches to Manage by itself
     await expect(page.locator('[data-fact=image]')).toHaveText('abcd0123', { timeout: 20_000 });
     await page.getByRole('radio', { name: /Canary/ }).check();
     const name = 'Canary 2026-11-23 (0123456)';
@@ -195,6 +193,8 @@ test('previews and downloads the same offline snapshot after a connection error'
   await page.addInitScript((message) => {
     Object.defineProperty(navigator, 'serial', {
       value: {
+        addEventListener: () => {},
+        removeEventListener: () => {},
         getPorts: async () => [],
         requestPort: () => {
           throw new Error(message);
@@ -202,7 +202,7 @@ test('previews and downloads the same offline snapshot after a connection error'
       },
     });
   }, failure);
-  await page.goto(appUrl());
+  await page.goto(appUrl('manage/'));
   const report = page.getByRole('button', { name: 'Bug report' });
   const preview = page.getByRole('dialog', { name: 'Bug report preview' });
   await report.click();

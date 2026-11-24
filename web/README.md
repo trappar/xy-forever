@@ -14,7 +14,8 @@ pnpm install
 mise run web         # pnpm run dev in web/: http://127.0.0.1:5173/
 ```
 
-Open it in Chrome, start the OP-XY into the XY Forever menu, connect USB, press Connect.
+Open it in Chrome, start the OP-XY into the XY Forever menu, connect USB: the site switches to Manage by itself on a
+computer that connected before; otherwise press Find my OP–XY (Install) or Connect (Manage).
 For development without a device, start the simulator from the repository root
 (`mise run sim`, port 7341; it needs the private stock files, see `../docs/operating/first-install.md`) and open
 `http://127.0.0.1:5173/?sim=7341` (the dev server relays a WebSocket to the simulator's TCP port).
@@ -26,15 +27,21 @@ in a Zustand store outside React (`src/connection.ts`); device data comes throug
 action is a mutation in one shared scope, so the OP-XY gets one at a time (`src/device.ts`). The port opens only
 from a click.
 
-Each page has its own path (TanStack Router, `src/routing.ts`). Routes include `/connect` (also `/`),
-`/device`, `/mods`, `/files` and install stages such as `/install/boot`, `/install/transfer`, `/install/start`
-and `/install/stop`. The install stages are listed in `src/install/stages.ts`. The build emits an HTML index
-for each route so direct links and reloads work on static hosting at `/`.
+The site has two sections (#316), each page with its own path (TanStack Router, `src/routing.ts`): **Install**
+(`/install`, which `/` opens, and its stages such as `/install/boot`, `/install/transfer`, `/install/start` and
+`/install/stop`, listed in `src/install/stages.ts`) and **Manage** (`/manage` for the Device page, `/manage/mods/`,
+`/manage/files/`). The earlier pages' links (`/connect`, `/device`, `/mods`, `/files`) lead to their Manage pages.
+The build emits an HTML index for each route so direct links and reloads work on static hosting at `/`.
+
+The site opens on Install. When a port this browser was given before (or the simulator) answers as XY Forever, on
+load, at an install stage or when a port appears, the app takes the connection and switches to Manage
+(`src/detect.ts`). Without a connection, Manage shows **Connect** in place of its pages and looks the same way;
+after **Disconnect** (beside the link status) nothing reconnects without a click until a reload.
 
 - **Connect**: Web Serial, or the simulator with `?sim=PORT`; a clear message in browsers without Web Serial.
 - **Install** (#178): installs XY Forever on a stock OP-XY (Open-XY's builder flow: te-boot over Web MIDI, the dev
   menu's MTP over WebUSB, or a drag into Explorer on Windows); XY Forever then sets itself up on the device and the
-  page hands off to **Mods**. It installs Stable, or Canary when the site has one and the owner chooses it. The whole flow: [the Install page](docs/install.md).
+  page hands off to Manage's **Mods**. It installs Stable, or Canary when the site has one and the owner chooses it. The whole flow: [the Install page](docs/install.md).
 - **Device**: build, what is running, what boots next, the saved mods (`/yaffs2/xy-forever/config.json`), the content state.
   When a newer XY Forever release is available, the page shows its changes and an Update button. When the site has a
   canary, the page offers a choice of Stable or Canary (experimental; kept in this browser). Clicking Update
