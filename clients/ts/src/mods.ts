@@ -3,8 +3,8 @@
 // A package set is one generation folder as `modkit split` writes it: base/, <machine>/, ext-<id>/,
 // each with info.txt and files.sha256 listing every file of the package. On the device it goes to
 // MODS_ROOT/<generation>/<package>/<stored name>, the flat store (modstore.ts; #124: the dev menu's MTP depth
-// limit; an older tree lists as older). Only the file methods are used. A push skips a stored file the
-// device holds with the same size (`verify` reads everything back). Within a package files.sha256 is
+// limit; an older tree lists as older). Only the file methods are used. A push skips a package the device holds
+// whole: every stored file with its size and the same files.sha256 (`verify` reads every file back). Within a package files.sha256 is
 // written last and deleted first whenever anything in the package changes, so a package folder holding
 // files.sha256 has every listed file; stored files it no longer names go after it.
 // Building (applyMods, as `xyf-host mods apply --wait | cancel`): the host asks the device to assemble
@@ -223,16 +223,21 @@ export async function pushPackages(
       const t0 = performance.now(),
         folder = `${genPath}/${name}`;
       const existing = await remoteTree(client, folder, call);
-      let same = existing !== null && existing.files.size === files.length;
-      if (same)
-        for (const file of files) {
-          await session.command(1);
-          const back = await client.readFile(`${folder}/${file.stored}`, call);
-          if (back.length !== file.data.length || back.some((byte, index) => byte !== file.data[index])) {
-            same = false;
-            break;
-          }
+      // #306: the package is there when every stored file is, with its size, and its files.sha256 is this one's
+      // (stored names carry each file's SHA-256, and the list is published last): one read, not every file's
+      let same =
+        existing !== null &&
+        existing.files.size === files.length &&
+        files.every((file) => existing.files.get(file.stored) === file.data.length);
+      for (const file of same ? files : []) {
+        if (!options.verify && file.stored !== LIST) continue;
+        await session.command(1);
+        const back = await client.readFile(`${folder}/${file.stored}`, call);
+        if (back.length !== file.data.length || back.some((byte, index) => byte !== file.data[index])) {
+          same = false;
+          break;
         }
+      }
       const stale = existing
         ? [...existing.files.keys()].filter((path) => !files.some((file) => file.stored === path)).length
         : 0;
