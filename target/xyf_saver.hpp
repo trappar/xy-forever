@@ -9,15 +9,20 @@
 // screen gives way to the infinity mark on black, moving diagonally step px every frame_ms (about 30 frames a second)
 // and bouncing off the edges, its colour changing at each bounce. Any key press or knob turn ends it and does nothing
 // else: that press, and its key's release, go nowhere (PLAY never boots from it); the menu then shows its current
-// state. A question or an error on screen (holds) never times out into it and ends it. USB work (activity: key_ui's
-// host_activity, a job or a request that changes something, MTP traffic) counts as activity; it and a build (still)
-// hold the mark still: no frame takes time from them (#288: a frame's stock transfer blocks the menu loop ~15 ms).
-// Under the saver the menu's other redraws wait for the wake (key_ui: one full redraw then). A frame after the first
-// redraws only the mark's old and new boxes (draw: the columns it touched, for the cache flush).
+// state. It runs only while nothing happens: a question or an error on screen (holds) and any work (USB work:
+// key_ui's host_activity, a job or a request that changes something, MTP traffic; a build or a content change on the
+// device) count as activity: they end it and it starts again only after the idle time with none. (A host that only
+// polls, HELLO and status, is not activity: an open web app would keep it off.) So its frames (#288: each blocks
+// the menu loop ~15 ms in the stock transfer) never take time from work. Under the saver the menu's other redraws
+// wait for the wake (key_ui: one full redraw then). A frame after the first redraws only the mark's old and new boxes
+// (draw: the columns it touched, for the cache flush).
 namespace xyf { namespace saver {
 static const uint32_t frame_ms = 33, none = 0xffffffffu;
-static const int outer = 26, inner = 20, offset = 2 * outer - 9, step = 1;   // the logo's mark, 1.5x
-static const int mark_w = 2 * outer + offset + 1, mark_h = 2 * outer + 1;  // gfx::mark_width
+static const int step = 1;
+#include "ui_mark_large.ipp"
+static const int mark_w = 96, mark_h = 53;   // the logo's mark, 1.5x (scripts/mark_mask.py large)
+static_assert(sizeof(mark_large_alpha) == mark_w * mark_h, "saver mask size");
+static const gfx::Mask mark = {mark_w, mark_h, mark_large_alpha};
 static const int max_x = gfx::width - mark_w, max_y = gfx::height - mark_h;
 static const uint32_t color_count = 5;
 static const gfx::Color colors[color_count] = {gfx::accent, gfx::white, 0x867d, 0x9fd3, 0xfb56};
@@ -78,12 +83,12 @@ inline void move(State& s) {
     s.y += s.dy;
     if (bounced) s.color = s.color + 1 == color_count ? 0 : s.color + 1;
 }
-// Each menu pass. activity: USB work (idle starts again); still: no frame now (USB work, a build). True: the screen
-// changes (it started, the mark moved, or a hold or off ended it). Frames keep their average rate (a late one does not
-// delay the next) unless more than one is missed.
-inline bool pass(State& s, uint32_t now, uint32_t timeout_ms, bool hold, bool activity, bool still) {
-    if (hold || !timeout_ms || activity) s.since = now;
-    if (hold || !timeout_ms) {
+// Each menu pass. busy: a screen that stays (holds) or work runs: it ends the saver, idle starts again. True: the
+// screen changes (it started, the mark moved, or busy or off ended it). Frames keep their average rate (a late one
+// does not delay the next) unless more than one is missed.
+inline bool pass(State& s, uint32_t now, uint32_t timeout_ms, bool busy) {
+    if (busy || !timeout_ms) {
+        s.since = now;
         if (!s.on) return false;
         s.on = 0;
         return true;
@@ -95,7 +100,7 @@ inline bool pass(State& s, uint32_t now, uint32_t timeout_ms, bool hold, bool ac
         s.drawn = 0; // the menu was on screen: the first frame is full
         return true;
     }
-    if (still || now - s.moved < frame_ms) return false;
+    if (now - s.moved < frame_ms) return false;
     s.moved = now - s.moved < 2 * frame_ms ? s.moved + frame_ms : now;
     move(s);
     return true;
@@ -119,7 +124,7 @@ inline Span draw(uint16_t* fb, State& s, bool full) {
         span.from = s.drawn_x < s.x ? s.drawn_x : s.x;
         span.to = (s.drawn_x > s.x ? s.drawn_x : s.x) + mark_w - 1;
     }
-    gfx::mark(fb, s.x, s.y, outer, inner, offset, colors[s.color < color_count ? s.color : 0]);
+    gfx::draw_mask(fb, s.x, s.y, mark, colors[s.color < color_count ? s.color : 0]);
     s.drawn = 1;
     s.drawn_x = s.x;
     s.drawn_y = s.y;

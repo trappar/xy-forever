@@ -74,7 +74,7 @@ class UiScreensTest(unittest.TestCase):
         ACCENT, WHITE = 0xFD20, 0xFFFF
         self.lib.ui_render_logo(self.fb, 20, 11)
         xy = self.lit_box(0, P.WIDTH, 0, 80, WHITE)
-        ring = self.lit_box(0, xy[0], 0, 80, ACCENT)
+        ring = self.lit_box(0, xy[0], 0, 80)  # #315: anti-aliased (shades of accent)
         forever = self.lit_box(xy[1] + 1, P.WIDTH, 0, 80, ACCENT)
         self.assertEqual((ring[0], ring[2], ring[3]), (20, 11, 45))
         self.assertEqual((xy[2], xy[3]), (11, 45))  # cap height 35
@@ -82,15 +82,18 @@ class UiScreensTest(unittest.TestCase):
         self.assertEqual((xy[0] - ring[1] - 1, forever[0] - xy[1] - 1), (10, 10))
 
     def test_screen_saver_lights_only_its_moving_mark(self):
-        """#315: the saver's frame is black but the infinity mark, inside its box and in one colour; frames later the
-        mark is elsewhere, still whole on screen, nothing in the hidden rows."""
+        """#315: the saver's frame is black but the infinity mark, inside its box, in shades of one colour; frames
+        later the mark is elsewhere, still whole on screen, nothing in the hidden rows."""
         boxes = []
         for frames in (0, 111, 450):
             x, y, w, h, color, _, _ = self.lib.ui_render_saver(self.fb, frames, 0)
             lit, hidden = self.visible()
             self.assertEqual(hidden, 0)
             self.assertEqual(self.lit_box(0, P.WIDTH, 0, P.HEIGHT), (x, x + w - 1, y, y + h - 1))
-            self.assertEqual({self.fb[(P.WIDTH - 1 - px) * P.STRIDE + py] for px, py in lit}, {color})
+            shades = {self.fb[(P.WIDTH - 1 - px) * P.STRIDE + py] for px, py in lit}  # anti-aliased against black
+            self.assertIn(color, shades)
+            for v in shades:
+                self.assertTrue(v >> 11 <= color >> 11 and v >> 5 & 63 <= color >> 5 & 63 and v & 31 <= color & 31)
             self.assertLess(len(lit), w * h // 2)  # two rings: most of the screen, and of the box, stays dark
             boxes.append((x, y))
         self.assertEqual(len(set(boxes)), 3)

@@ -164,12 +164,12 @@ void bind_screens(nb::module_ m) {
     m.def("ui_render_saver", [](nb::handle fb, unsigned frames, unsigned then) {
         saver::State s;
         saver::start(s, 0);
-        saver::pass(s, 60000, 60000, false, false, false);
+        saver::pass(s, 60000, 60000, false);
         uint32_t now = 60000;
-        for (unsigned i = 0; i != frames; ++i) saver::pass(s, now += saver::frame_ms, 60000, false, false, false);
+        for (unsigned i = 0; i != frames; ++i) saver::pass(s, now += saver::frame_ms, 60000, false);
         saver::Span span = saver::draw(Frame(fb), s, false);
         for (unsigned i = 0; i != then; ++i) {
-            saver::pass(s, now += saver::frame_ms, 60000, false, false, false);
+            saver::pass(s, now += saver::frame_ms, 60000, false);
             span = saver::draw(Frame(fb), s, false);
         }
         return nb::make_tuple(int(s.x), int(s.y), saver::mark_w, saver::mark_h, unsigned(saver::colors[s.color]),
