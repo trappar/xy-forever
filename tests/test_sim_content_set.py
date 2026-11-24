@@ -1,11 +1,12 @@
 """In the simulator: a base the web install adopted has no content set (#183). Its library entry is os.ldr,
 manifest.json and files.sha256 only, as the adoption writes it (test_sim_adopt), and a mod build needs the base's
-content.sha256. Continue lists /yaffs2/content/ (dlc/ aside), hashes every file and writes firmware.version and
-content.sha256 beside the base, before it builds, installs the content and boots. Content that is not the official
-set fails the build with the reason named, before anything is written. The official set is the simulator's synthetic
-content, given by XYF_SIM_OFFICIAL_CONTENT; the device's 1.2.1 digests are checked against the private manifest when
-it is present. Synthetic packages (test_sim_mod_job's kit). Needs clang++ and the private stock 1.2.1 images (skipped
-without them). No device access."""
+content.sha256. Saving a selection (config.set) accepts it while the live content looks official. Continue then
+lists /yaffs2/content/ (dlc/ aside), hashes every file and writes firmware.version and content.sha256 beside the base,
+before it builds, installs the content and boots. Content that is not the official set is refused, with the reason
+named: a catalog that is not the official one at config.set, any other file during the build, before anything is
+written. The official set is the simulator's synthetic content, given by XYF_SIM_OFFICIAL_CONTENT; the device's
+1.2.1 digests are checked against the private manifest when it is present. Synthetic packages (test_sim_mod_job's
+kit). Needs clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
 
 import hashlib
 import os
@@ -82,6 +83,15 @@ class ContentSet(ConfigBase, unittest.TestCase):
         self.assertEqual(self.entry('content.sha256'), self.official_text.encode())
         self.assertEqual(self.entry('firmware.version'), b'1.2.1+0\n')
         self.assertFalse((self.root / 'xy-forever/tmp' / ('cset-' + self.base)).exists())
+
+    @pytest.mark.sim
+    def test_a_catalog_that_is_not_official_is_refused_at_saving(self):
+        """Kept: config.set names why the build could not happen, before power-on."""
+        (self.root / 'content/op1_factory.json').write_bytes(CATALOG + b' ')
+        code, reason = self.set_mods(['alpha'])
+        self.assertEqual(code, modconfig.P.ids.S_REFUSED)
+        self.assertEqual(reason, "The OP-XY's content is not official OS 1.2.1, and the base has no content set.")
+        self.assertIsNone(self.config())
 
     @pytest.mark.sim
     def test_other_content_that_is_not_official_fails_the_build_before_writing(self):
