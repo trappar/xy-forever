@@ -81,6 +81,20 @@ class UiScreensTest(unittest.TestCase):
         self.assertEqual(forever[3], 45)  # the same baseline
         self.assertEqual((xy[0] - ring[1] - 1, forever[0] - xy[1] - 1), (10, 10))
 
+    def test_screen_saver_lights_only_its_moving_mark(self):
+        """#315: the saver's frame is black but the infinity mark, inside its box and in one colour; frames later the
+        mark is elsewhere, still whole on screen, nothing in the hidden rows."""
+        boxes = []
+        for frames in (0, 37, 150):
+            x, y, w, h, color = self.lib.ui_render_saver(self.fb, frames)
+            lit, hidden = self.visible()
+            self.assertEqual(hidden, 0)
+            self.assertEqual(self.lit_box(0, P.WIDTH, 0, P.HEIGHT), (x, x + w - 1, y, y + h - 1))
+            self.assertEqual({self.fb[(P.WIDTH - 1 - px) * P.STRIDE + py] for px, py in lit}, {color})
+            self.assertLess(len(lit), w * h // 2)  # two rings: most of the screen, and of the box, stays dark
+            boxes.append((x, y))
+        self.assertEqual(len(set(boxes)), 3)
+
     def test_home_chrome(self):
         """8.7: the USB mark top right only while lit (188: and the MTP mark left of it); nothing for storage OK;
         188: the activity right-aligned under the marks, the status line kept; the build on the hint line, right-aligned; on a compact page the mark in the title bar and

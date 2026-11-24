@@ -63,6 +63,8 @@ void draw_screen(uint16_t* fb) {
                              "PLAY  allow      STOP  don't allow",
                              &chrome};
         draw_message(fb, ask);
+    } else if (saver.on) {                           // #315: the screen saver (the menu's state stays under it)
+        xyf::saver::draw(fb, saver);
 #endif
 #if defined(XYF_SERVICE_SCREEN)
     } else if (ui_screen == 4) {

@@ -13,6 +13,7 @@
 #include "target/ui_screens.hpp"
 #include "target/xyf_menu_view.hpp"
 #include "target/xyf_mods_view.hpp"
+#include "target/xyf_saver.hpp"
 #include "target/xyf_settings.hpp"
 
 namespace nb = nanobind;
@@ -157,6 +158,15 @@ void bind_screens(nb::module_ m) {
     });
     // #21: one row, always selected
     m.def("ui_render_home", [](nb::handle fb, unsigned) { ui::draw_home_empty(Frame(fb), &bridge_chrome); });
+    // #315: the screen saver's frame after `frames` frames from its start (key_ui draw_screen); its mark's box.
+    m.def("ui_render_saver", [](nb::handle fb, unsigned frames) {
+        saver::State s;
+        saver::start(s, 0);
+        saver::pass(s, 60000, 60000, false, false);
+        for (unsigned i = 1; i <= frames; ++i) saver::pass(s, 60000 + i * saver::frame_ms, 60000, false, false);
+        saver::draw(Frame(fb), s);
+        return nb::make_tuple(int(s.x), int(s.y), saver::mark_w, saver::mark_h, unsigned(saver::colors[s.color]));
+    });
     m.def("ui_scale", [](uint32_t a, uint32_t b, uint32_t c) { return ui::scale(a, b, c); });
     m.def("ui_list_first", [](unsigned count, unsigned selected) { return unsigned(ui::list_first(count, selected)); });
 }
