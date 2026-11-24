@@ -54,4 +54,5 @@ try { await client.reboot(); await client.reconnect(); } catch (e) { if (isXyfEr
 ```
 
 The call layer's time-outs and pauses: a call's `timeoutMs`, `Client.pause` (wall time on a real device, device time on
-the simulator). The rest: [files](docs/files.md), [mod packages and builds](docs/mods.md).
+the simulator). A read-only command (`file.read`, `file.list`, `diag.status`, ...) whose
+reply does not come within `RESEND_MS` (3 s) is sent once more (#306); nothing that changes the device is resent. The rest: [files](docs/files.md), [mod packages and builds](docs/mods.md).
