@@ -92,12 +92,10 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         self.assertEqual(self.B.usb_switches(self.B.MTP_USB_MODE), self.B.usb_switches('xyf-product'))  # device_pass
 
     def test_test_build_admits_kicks_with_its_spans(self):
-        from xy_forever.paths import STOCK_121
+        from xy_forever import stock_facts
 
-        boot = STOCK_121 / 'bootloader.ldr'
-        if not boot.exists():
-            self.skipTest('private bootloader absent')
-        allowed = self.B.check_mtp_usb(boot.read_bytes(), self.B.MTP_USB_MODE, {'88a092ee', '88a0ba08', '88a094aa'})
+        boot = stock_facts.Bootloader()
+        allowed = self.B.check_mtp_usb(boot, self.B.MTP_USB_MODE, {'88a092ee', '88a0ba08', '88a094aa'})
         self.assertEqual(allowed, self.B.MTP_USB_CALLS | self.B.MTP_USB_KICK_CALLS)
         self.assertTrue(self.B.FORBIDDEN_TARGETS.isdisjoint(allowed))
 
@@ -206,14 +204,11 @@ class MtpUsbBuildGateTest(unittest.TestCase):
             if '#include "mtp_usb_spans.hpp"' in path.read_text() and not path.name.endswith('_test.cpp'):
                 self.assertIn('defined(XYF_MTP_USB)', path.read_text(), path.name)
 
-    def test_mtp_spans_match_bootloader(self):
-        from xy_forever.paths import STOCK_121
+    def test_mtp_spans_match_bootloader(self):  # its facts (stock_facts.json)
+        from xy_forever import stock_facts
 
-        boot = STOCK_121 / 'bootloader.ldr'
-        if not boot.exists():
-            self.skipTest('private bootloader absent')
         spans = self.B.mtp_spans() + self.B.mtp_usb_spans()
-        self.B.check_spans(boot.read_bytes(), spans, 'MTP USB', self.B.MTP_USB_CALLS, spans)
+        self.B.check_spans(stock_facts.Bootloader(), spans, 'MTP USB', self.B.MTP_USB_CALLS, spans)
 
     def _exits(self):
         try:

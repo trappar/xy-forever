@@ -16,7 +16,7 @@ import re
 import struct
 import zlib
 
-from xy_forever import release, stock_bytes, usb_proto
+from xy_forever import release, stock_facts, usb_proto
 from xy_forever import xyf_stage2 as S2
 from xy_forever.build_formats import Firmware, elf32, header, parse_stream, require
 from xy_forever.build_modules import (
@@ -40,7 +40,7 @@ from xy_forever.otp_audit import (
     referencing_symbols,
     rom_references,
 )
-from xy_forever.outer import ALLOWED, BOOT_HASH, HELPERS, PROTECTED, package, verify_outer
+from xy_forever.outer import ALLOWED, HELPERS, PROTECTED, package, verify_outer
 from xy_forever.paths import STOCK_121, private_output
 from xy_forever.probe_report import report_only_fixture
 from xy_forever.stage2_audit import STAGE2_ENTER, STAGE2_WINDOW, check_stage2_image, stage2_enter_sites
@@ -49,7 +49,6 @@ from xy_forever.stage2_audit import STAGE2_LITERALS as S2_LITERALS
 # Layout names (historical): "reporter" is the small program added to the stock OS
 # image that writes the cold report to storage, "carry" the report slot it reads,
 # "census" the cold memory snapshot stored below it, "module" the cold-time code.
-STOCK_HASH = '60358afdaa9b58ed40411602f6d5d4e1e3e02553ff2da7e25038e71dd002b52f'
 HEAP_BASE, HEAP_BYTES = 0x8C0D0380, 0x1400000
 REPORTER, CARRY, END = 0x8D4CE380, 0x8D4CF380, 0x8D4D0380
 HOOK = 0x8D506A02
@@ -512,12 +511,12 @@ def client_spans():
 
 
 def check_spans(boot, spans, table, calls=(), covered=None):
-    """Every span matches the bootloader and lies outside L1 instruction memory; every call is inside a span."""
-    image = Firmware(boot)
+    """Every span matches the bootloader's facts (boot: a stock_facts.Bootloader) and lies outside L1 instruction
+    memory; every call is inside a span."""
     for address, length, crc in spans:
         require(not L1_CODE[0] <= address < L1_CODE[1], table + ' span reads L1 instruction memory')
         require(
-            zlib.crc32(image.read(address, length)) == crc,
+            boot.crc(address, length) == crc,
             table + ' span CRC differs from bootloader at ' + hex(address),
         )
     for call in sorted(calls):
@@ -565,10 +564,10 @@ def check_mtp_spans(boot):
 
 
 def check_construct_spans(boot):
-    image, source = Firmware(boot), target_source('cold_storage.cpp')
+    source = target_source('cold_storage.cpp')
     for address, length in CONSTRUCT_SPANS + DIRECT_SPANS:
         require(
-            '{0x%08xu, 0x%xu, 0x%08xu}' % (address, length, zlib.crc32(image.read(address, length))) in source,
+            '{0x%08xu, 0x%xu, 0x%08xu}' % (address, length, boot.crc(address, length)) in source,
             'Constructor span CRC differs from bootloader at ' + hex(address),
         )
 
@@ -746,17 +745,32 @@ def check_memory_map():
 
 def check_boot_reservations(boot):
     check_memory_map()
-    mapped = Firmware(boot)
     for begin, end in ((MODULE, WIDE_STACK_END), STAGE2_WINDOW, (0x8B000000, 0x8B800000), FILE_STAGING, (CARRY, END)):
         require(
-            all(hi <= begin or lo >= end for lo, hi, _ in mapped.segments),
+            all(hi <= begin or lo >= end for lo, hi in boot.loaded()),
             'Reservation intersects statically loaded old bootloader memory',
         )
-    require(mapped.read(0x88A2A4D0, 12) == struct.pack('<3I', 0x88A65BF8, 0x1FFFFFC, 0), 'Old allocator table differs')
+    require(
+        boot.crc(0x88A2A4D0, 12) == zlib.crc32(struct.pack('<3I', 0x88A65BF8, 0x1FFFFFC, 0)),
+        'Old allocator table differs',
+    )
     require((0x88A65BF8, 0x88A65BF8 + 0x1FFFFFC) == RETAINED_ARENA, 'Retained arena differs from the map')
     require(
         0x88A65BF8 + 0x1FFFFFC <= MODULE and 0x88A65BF8 + 0x1FFFFFC < CARRY,
         'Reservation intersects retained allocator arena',
+    )
+
+
+def check_os_facts():
+    """UNINSTALL's stock os.ldr identity in the image (target/usb_service.hpp) is the base's size and SHA-256."""
+    facts, header = stock_facts.load()['os'][stock_facts.BASE], target_source('usb_service.hpp')
+    size = re.search(r'stock_os_bytes = (\d+)u;', header)
+    digest = re.search(r'stock_os_sha256\[32\] = \{([^}]*)\}', header)
+    require(size and digest, 'usb_service.hpp stock os.ldr identity not found')
+    require(
+        int(size.group(1)) == facts['bytes']
+        and bytes(int(b, 16) for b in digest.group(1).split(',')).hex() == facts['sha256'],
+        'usb_service.hpp stock os.ldr identity differs from stock_facts.json',
     )
 
 
@@ -860,9 +874,8 @@ def source_hashes():
 
 
 def descriptor_words(boot, inner):
-    """The cold descriptor (target/cold.hpp): magic, version, payload size and CRC, stock helper CRCs."""
-    image = Firmware(boot)
-    return [0x584C4348, 1, len(inner), zlib.crc32(inner), *[zlib.crc32(image.read(a, n)) for a, n in HELPERS]]
+    """The cold descriptor (target/cold.hpp): magic, version, payload size and CRC, stock helper CRCs (boot's facts)."""
+    return [0x584C4348, 1, len(inner), zlib.crc32(inner), *[boot.crc(a, n) for a, n in HELPERS]]
 
 
 def verify_elf(out, stem, base, limit):
@@ -890,8 +903,18 @@ def verify_elf(out, stem, base, limit):
     return module, symbols
 
 
+def needs_stock(mode, stock):
+    """A mode that embeds the stock OS (every mode but NO_EMBEDDED_MODES) builds and verifies only from the files."""
+    require(
+        stock is not None or product_kind(mode) in NO_EMBEDDED_MODES,
+        '--%s embeds the stock OS: it needs the stock 1.2.1 pair (scripts/setup.py import-stock)' % mode,
+    )
+
+
 def verify(out, stock, boot):
+    """Re-check a build; stock is the stock os.ldr's bytes or None, boot a stock_facts.Bootloader."""
     check_boot_reservations(boot)
+    check_os_facts()
     manifest = json.loads((out / 'manifest.json').read_text())
     mode = manifest.get('mode')
     require(mode in MODES, 'Unknown build mode')
@@ -937,8 +960,13 @@ def verify(out, stock, boot):
     require(not has('xy_forever_storage_probe'), 'Stream snapshot links the direct carry path')
     at = symbols['xy_forever_trace_expected']['value'] - MODULE
     require(module[at : at + 360] == report_only_fixture(), 'Compiled trace preimage differs')
-    inner = (out / 'payload.ldr').read_bytes()
-    inner_checks = verify_inner(stock, inner, reporter, report_only_fixture(), dump_bytes)
+    # payload.ldr and boot.ldr (the stock OS with the reporter): built only from the stock files; never in the product's
+    # candidate (NO_EMBEDDED_MODES), so a build without them has neither.
+    inner = inner_checks = None
+    if (out / 'payload.ldr').is_file() or mode not in NO_EMBEDDED_MODES:
+        require(stock is not None, 'This build holds stock OS images: --verify needs the stock 1.2.1 pair')
+        inner = (out / 'payload.ldr').read_bytes()
+        inner_checks = verify_inner(stock, inner, reporter, report_only_fixture(), dump_bytes)
     require(has('census4fill') and has('locate_zero'), 'Module lacks the census writer')
     listing = (out / 'module.asm').read_text().lower()
     state_write = mode in WRITE_AUDIT_MODES
@@ -1173,10 +1201,11 @@ def verify(out, stock, boot):
             (REPORT_DIR + FILE_VARIANT_REPORTS[mode_name] + '\0').encode() in variant,
             'File image reporter destination differs',
         )
-        file_image = (out / 'boot.ldr').read_bytes()
-        verify_inner(stock, file_image, variant, report_only_fixture(), dump_bytes)
-        require(file_image != inner, 'File image equals embedded payload')
-        require(len(file_image) <= FILE_STAGING[1] - FILE_STAGING[0] - 0x20000 - 512, 'File image exceeds staging')
+        if inner is not None:
+            file_image = (out / 'boot.ldr').read_bytes()
+            verify_inner(stock, file_image, variant, report_only_fixture(), dump_bytes)
+            require(file_image != inner, 'File image equals embedded payload')
+            require(len(file_image) <= FILE_STAGING[1] - FILE_STAGING[0] - 0x20000 - 512, 'File image exceeds staging')
     stage2_info = None
     if stage2:
         stage2_info = check_stage2_image(out, relocated=True)
@@ -1232,8 +1261,6 @@ def verify(out, stock, boot):
     candidate = (out / 'candidate.ldr').read_bytes()
     require(sha(candidate) == manifest['candidate_sha256'], 'Candidate hash differs')
     outer_checks = verify_outer(candidate, module, embedded or None, MODULE)
-    shared = [] if embedded else stock_bytes.shared_runs(candidate, {'os.ldr': stock, 'bootloader.ldr': boot})
-    require(not shared, 'Candidate shares stock bytes (#178): %s' % shared[:3])
     return dict(
         passed=True,
         inner=inner_checks,
@@ -1248,7 +1275,9 @@ def verify(out, stock, boot):
 
 
 def build(out, stock, boot, mode):
+    """Build a mode into out; stock is the stock os.ldr's bytes or None (needs_stock), boot a stock_facts.Bootloader."""
     require(mode in MODES, 'Unknown build mode')
+    needs_stock(mode, stock)
     mode_name, mode = mode, product_kind(mode)  # the MTP USB test build is the product plus its probe
     mtp_usb = mode_name in MTP_USB_MODES  # 188: the product has the composite
     _, stack, stack_end = layout(mode)
@@ -1258,6 +1287,7 @@ def build(out, stock, boot, mode):
     stage2_service = f['stage2_service']
     dump_bytes = CENSUS_BYTES
     check_boot_reservations(boot)
+    check_os_facts()
     check_key_ui_spans(boot)
     check_peer_spans(boot)
     require(not out.exists(), 'Use a fresh output directory')
@@ -1386,9 +1416,10 @@ def build(out, stock, boot, mode):
     link('reporter', REPORTER, CARRY, 'xy_forever_report_entry', ('reporter_entry', 'reporter', 'record', 'memory'))
     reporter, _ = verify_elf(out, 'reporter', REPORTER, CARRY)
     fixture = report_only_fixture()
-    inner = inner_image(stock, reporter, fixture, dump_bytes)
-    verify_inner(stock, inner, reporter, fixture, dump_bytes)
-    (out / 'payload.ldr').write_bytes(inner)
+    inner = None if stock is None else inner_image(stock, reporter, fixture, dump_bytes)
+    if inner is not None:
+        verify_inner(stock, inner, reporter, fixture, dump_bytes)
+        (out / 'payload.ldr').write_bytes(inner)
     if file_boot:
         # The library file image: same stock OS, report and census slots as the
         # embedded payload; its reporter writes a different report name, so the
@@ -1406,10 +1437,11 @@ def build(out, stock, boot, mode):
             ('reporter_entry', 'reporter_storage', 'record', 'memory'),
         )
         variant, _ = verify_elf(out, 'reporter_storage', REPORTER, CARRY)
-        file_image = inner_image(stock, variant, fixture, dump_bytes)
-        verify_inner(stock, file_image, variant, fixture, dump_bytes)
-        require(file_image != inner, 'File image must differ from embedded payload')
-        (out / 'boot.ldr').write_bytes(file_image)
+        if inner is not None:
+            file_image = inner_image(stock, variant, fixture, dump_bytes)
+            verify_inner(stock, file_image, variant, fixture, dump_bytes)
+            require(file_image != inner, 'File image must differ from embedded payload')
+            (out / 'boot.ldr').write_bytes(file_image)
     probe_defines = (
         tuple(census_defines)
         + (('-DXYF_MENU_LINK=1',) if menu_link else ())
@@ -1683,8 +1715,8 @@ def build(out, stock, boot, mode):
         candidate_bytes=len(candidate),
         module_bytes=len(module),
         reporter_bytes=len(reporter),
-        stock_sha256=sha(stock),
-        bootloader_reference_sha256=sha(boot),
+        stock_sha256=stock_facts.load()['os'][stock_facts.BASE]['sha256'],  # the base (equal when the files are read)
+        bootloader_reference_sha256=boot.facts['sha256'],
         source_sha256=hashes,
         tool_sha256=compiler['checked'],
         artifact_sha256=artifacts,
@@ -1755,8 +1787,15 @@ def main():
     )
     args = parser.parse_args()
     require(args.verify or args.mode, 'Choose a build mode (normally --xyf-product)')
-    stock, boot = args.stock.read_bytes(), args.bootloader.read_bytes()
-    require(sha(stock) == STOCK_HASH and sha(boot) == BOOT_HASH, 'Exact stock 1.2.1 inputs required')
+    # The stock pair is optional for the product (stock_facts.py): present, every fact is recomputed from it first.
+    present = [path.is_file() for path in (args.stock, args.bootloader)]
+    require(all(present) or not any(present), 'Only one of the stock pair is present: give both or neither')
+    facts = stock_facts.load()
+    if all(present):
+        stock = args.stock.read_bytes()
+        boot = stock_facts.recompute(facts, stock, args.bootloader.read_bytes())
+    else:
+        stock, boot = None, stock_facts.Bootloader(facts)
     result = verify(args.out, stock, boot) if args.verify else build(args.out, stock, boot, args.mode)
     print(
         json.dumps(

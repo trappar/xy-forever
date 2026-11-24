@@ -36,6 +36,7 @@
         "xy_forever/*.s",
         "xy_forever/*.py",
         "toolchains.json",
+        "stock_facts.json",
         "third_party/**",
         "scripts/firmware_cache.py"
       ],
