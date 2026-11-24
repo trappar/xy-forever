@@ -330,10 +330,11 @@ function encodeEdits(profile: Profile): Uint8Array {
     check(before.length === edit.length && (!after.length || after.length === edit.length), 'edit length mismatch');
     const flags = (truthy(edit.call) ? 1 : 0) | (edit.profiling === false ? 2 : 0) | (after.length ? 4 : 0);
     const service = has(edit, 'service') ? services.indexOf(edit.service!) : 0xff;
+    check(service >= 0, `edit names an unknown service ${String(edit.service)}`);
     const symbol = has(edit, 'symbol') ? text(edit.symbol!) : 0xffff;
     const head = new Uint8Array(16),
       view = new DataView(head.buffer);
-    head.set([kind, flags, service & 0xff, choices.length ? choices.length / edit.length : 0]);
+    head.set([kind, flags, service, choices.length ? choices.length / edit.length : 0]);
     view.setUint32(4, int16(edit.address), true);
     view.setUint32(8, int16(edit.file_offset), true);
     view.setUint16(12, edit.length, true);
