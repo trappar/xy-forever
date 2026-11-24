@@ -17,7 +17,8 @@ enum SaveStage : uint32_t {
     sv_marking,
     sv_boot,
     sv_failed,
-    sv_adopting
+    sv_adopting,
+    sv_content_set
 };
 // The sequence: why (converge_begin's: which inputs it set, for its texts only), the inputs (count, expanded, safe,
 // unverified, base, built), the plan (ops, target), the slot and stamp the record names (a build's new ones), the
@@ -222,7 +223,8 @@ static const char unread_library[] = "Failed: the library could not be read.";
 uint32_t adopt(const char* base) {
     if (sv.adopted) return fail(prefix(), "no stock OP-XY firmware in the library.");
     if (!xyf_boot::catalog()) return fail(unread_library);
-    if (usb_service::adopt_start(base ? base : adopt_id, !base) != s_ok)
+    if (usb_service::adopt_start(base ? base : adopt_id, base ? usb_service::adopt_default : usb_service::adopt_copy) !=
+        s_ok)
         return fail(prefix(), "OS 1.2.1 could not be added.");
     usb_service::JobView v;
     usb_service::job_view(v);
@@ -256,6 +258,45 @@ uint32_t adopting() {
     char d[12];
     m::decimal(d, v.error);
     return fail("Failed: OS 1.2.1 could not be added to the library (", d, ").");
+}
+// #183: the build's base needs its content set (firmware/<base>/content.sha256, firmware.version): an OS 1.2.1 entry
+// the web install adopted has none, so the adoption job's content mode makes it from the live official content first
+// (a no-op when it is there), its progress on this screen; then the build.
+const char* build_title XYF_DATA = 0;
+uint32_t content_set() {
+    if (usb_service::adopt_start(sv.base, usb_service::adopt_content) != s_ok)
+        return fail(prefix(), "the base's content set could not be checked.");
+    usb_service::JobView v;
+    usb_service::job_view(v);
+    sv.job = v.id;
+    sv.stage = sv_content_set;
+    build_title = run.title;
+    run.title = "Reading OS 1.2.1 content";
+    run.job_phase = run.job_done = run.job_total = 0;
+    return 1;
+}
+uint32_t content_setting() {
+    usb_service::JobView v;
+    usb_service::job_view(v);
+    if (v.state == 1 && v.id == sv.job) {
+        const bool phase = v.phase != run.job_phase;
+        run.job_phase = v.phase;
+        run.job_done = v.done;
+        run.job_total = v.total;
+        return moved(phase);
+    }
+    if (v.id == sv.job && v.state == 2 && v.phase == 8) { // the window closed: the build, its bar from the start
+        if (usb_service::page_busy()) return moved(false);
+        run.title = build_title;
+        run.bar = run.bar_step = run.bar_since = 0;
+        return start_build(m::flag_saved);
+    }
+    if (v.error == 9) return fail(prefix(), "the base is not official OS 1.2.1 (mods need its content).");
+    if (v.error == 15) return fail(prefix(), "mods' content is installed; the base has no content set.");
+    if (v.error == 10 || v.error == 7) return fail(prefix(), "the content is not official OS 1.2.1's.");
+    char d[12];
+    m::decimal(d, v.error);
+    return fail("Failed: the base's content set could not be written (", d, ").");
 }
 uint32_t building() {                           // the mod job into the spare slot (STOP: job.cancel's stop)
     m::Page& p = the_page;
@@ -450,9 +491,10 @@ uint32_t converge_follow() {
             return fail("Failed: saved mods are missing from the mod packages: see the Mods page.");
         if (const char* why = m::save_refusal(p)) return fail(why); // the toggles are the saved marks here
         usb_service::save_log_selection(sv.count, sv.expanded != 0, 0, 0);
-        return start_build(m::flag_saved);
+        return content_set();
     case sv_build: return building();
     case sv_adopting: return adopting();
+    case sv_content_set: return content_setting();
     case sv_stamp:
         if (usb_service::page_busy()) return moved(false); // the commit's window closes
         usb_service::save_log_lap(xyf::save_log::p_stamp);

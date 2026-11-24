@@ -99,7 +99,55 @@ const char* content_undo() {                                             // the 
                                "Content switch: could not start.";
 }
 uint32_t content_switch(const char* id) { return content_begin(id, true, false); }
-uint32_t adopt_start(const char* id, bool copy) { return adopt_begin(id, copy); }
+uint32_t adopt_start(const char* id, uint32_t mode) { return adopt_begin(id, mode); }
+uint32_t content_set_check(const char* id, const char*& why) {
+    why = 0;
+    if (job_running() || closing XYF_OR_MTP_BUSY || uploading()) return P::s_busy;
+    if (!a_serving()) return P::s_link;
+    U32 code = file_client::mount_ready(mounted);
+    if (code != P::s_ok) return code;
+    bool found = false;
+    if (!official_121(id, found)) {
+        why = "The base is not official OS 1.2.1, and has no content set.";
+        return found ? P::s_refused : P::s_not_found;
+    }
+    char path[file_engine::max_path];
+    join(path, xa::firmware, "/", id);
+    join(path, path, "/content.sha256");
+    const char* const probes[2] = {path, xa::state_old};
+    for (U32 k = 0; k != 2; ++k) {
+        uint8_t record[file_client::record_bytes];
+        const file_client::Reply r = file_client::stat(probes[k], record);
+        if (r.outcome) {
+            if (r.outcome == file_client::link) mounted = file_client::mounted_stale;
+            return file_client::status(r.outcome);
+        }
+        if (k == 0 && r.value == 0) return P::s_ok;                        // the base has its content set
+        if (k == 1 && r.value == 0) why = "Mods' content is installed, and the base has no content set.";
+    }
+    ContentSetWork& w = cwork();                                         // no job: its work area is free
+    uint32_t got = 0;
+    code = file_client::read_file(xyf::content::record_path, 0, true, w.page, xyf::content::head_bytes, got, mounted);
+    if (code == P::s_ok) {
+        xyf::content::State st;
+        xyf::content::parse(w.page, got, st);
+        if (st.kind != xyf::content::official) why = "Mods' content is installed, and the base has no content set.";
+    } else if (code != P::s_not_found) return code;
+    if (why) return P::s_refused;
+    // The live catalog: the official 1.2.1 one (the build reads every file; this is its quick part).
+    join(path, xa::content, "/", xyf::content::catalog);
+    xyf_core::hash::Sha256 h;
+    for (U32 at = 0;; at += got) {
+        code = file_client::read_file(path, at, true, w.page, file_client::piece_max, got, mounted);
+        if (code != P::s_ok) break;
+        h.update(w.page, got);
+        if (got < file_client::piece_max) break;
+    }
+    xyf_core::hash::Digest d;
+    if (code == P::s_not_found || (code == P::s_ok && (!h.finish(d) || !sha_equal(d.bytes, official_digest(true)))))
+        why = "The OP-XY's content is not official OS 1.2.1, and the base has no content set.";
+    return why ? P::s_refused : code;
+}
 uint32_t config_store(const char* text, uint32_t length, const char* default_id) {
     return config_begin(text, length, default_id);
 }

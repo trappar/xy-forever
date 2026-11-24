@@ -14,10 +14,24 @@
 // 16 write, 18 read back, 21 link; 8 the library unread: no catalog, or firmware/ID there but not in A's catalog, as
 // after A's scan failed, code storage; 17 with code state only for an entry A listed); detail "adopt ID" while it runs
 // and when it failed.
+// #183, the content set's mode (adopt_content, job_kind 3 too): an official OS 1.2.1 entry without content.sha256 gets
+// its content set from the live content, as `xyf_host.py library-add --content` writes it from the owner's copy. Only
+// read, before anything is written: the content state must be official (no mods' content installed); /yaffs2/content/
+// is listed (dlc/ and user/ aside: sound packs and the owner's), its paths sorted bytewise, every file hashed, and the
+// list it makes (content.sha256's exact text) must hash to official_list_sha256: the official 1.2.1 set, nothing else.
+// Then, in A's write window: firmware/ID/firmware.version written and read back, the list written to tmp/cset-ID and
+// read back (its SHA-256 again), renamed in as firmware/ID/content.sha256: the list last, so it is never there without
+// its version (a cut before it leaves only firmware.version, which nothing reads alone; the next build writes both
+// again). Phases: 1 reading (done/total: the content's bytes, as listed), 7 writing; detail "content ID". The same
+// one-job rule, slices and window as the adoption.
 namespace xa {
 const char source[] = "/yaffs2/upgrade/firmware/blackfin/bin/os.ldr";
 const char root[] = "/yaffs2/xy-forever", tmp[] = "/yaffs2/xy-forever/tmp", firmware[] = "/yaffs2/xy-forever/firmware";
 const char* const names[3] = {"os.ldr", "manifest.json", "files.sha256"};
+const char content[] = "/yaffs2/content", state_old[] = "/yaffs2/xy-forever/content-state.old";
+// The list's bounds (docs/storage/packages.md: files.sha256's 4096 entries of at most 160 path bytes).
+const U32 max_files = 4096, max_folders = 1024, max_rel = 160, pool_bytes = 0x40000u, text_bytes = 0x100000u;
+const U32 line_bytes = 64 + 2 + max_rel + 1;
 }
 enum AdoptStep : U32 {
     ad_find = 0,
@@ -34,13 +48,25 @@ enum AdoptStep : U32 {
     ad_back,
     ad_text,
     ad_rename,
+    cs_entry, // #183: the content set's steps
+    cs_state,
+    cs_list,
+    cs_open,
+    cs_read,
+    cs_compare,
+    cs_window,
+    cs_version,
+    cs_sweep,
+    cs_write,
+    cs_back,
+    cs_rename,
     ad_closing,
     ad_ended
 };
 struct AdoptSlot {
     ContentIo io;
     int in, out;
-    U32 id, step, at, error, code, started_ms, ended_ms, hash, crc, bytes, copy, sub, text_n, debris;
+    U32 id, step, at, error, code, started_ms, ended_ms, hash, crc, bytes, copy, sub, text_n, debris, total;
     xyf_core::hash::Sha256 sha;
     char target[32], detail[40], folder[96], path[128];
     char text[512];
@@ -49,7 +75,56 @@ struct AdoptSlot {
 // In the content switch's work region, as the config job (one job at a time).
 AdoptSlot& aslot() { return *reinterpret_cast<AdoptSlot*>(XYF_JOB_REGION_BEGIN + job_slot_bytes + content_slot_bytes); }
 static_assert(sizeof(AdoptSlot) < 0x10000u, "below the save log's text");
-U32 adopt_begin(const char* id, bool copy) {
+// #183: the content set's listing and list, above the save log's text (as the pack import's work: one job at a time).
+struct ContentSetWork {
+    U32 files, folders, pool_n, text_n, folder_at, skip, file_at;
+    U32 file_ref[xa::max_files];      // pool offsets of the files' paths (relative to content/), sorted bytewise
+    U32 folder_ref[xa::max_folders];  // the folders still to list, in the order found ("" the root)
+    xyf_core::hash::Sha256 list;      // over text, as it grows
+    char pool[xa::pool_bytes];
+    char text[xa::text_bytes];        // content.sha256
+    uint8_t page[file_client::piece_max];
+};
+constexpr U32 content_set_work = XYF_JOB_REGION_BEGIN + job_slot_bytes + content_slot_bytes + 0x20000u;
+static_assert(content_set_work + sizeof(ContentSetWork) <= job_work_end - mods_metadata_bytes, "below the page's work");
+ContentSetWork& cwork() { return *reinterpret_cast<ContentSetWork*>(content_set_work); }
+// The official set's digests: in the simulator, XYF_SIM_OFFICIAL_CONTENT="<list hex> <catalog hex>" (its tests'
+// synthetic content) replaces them.
+#if defined(XYF_SIM)
+bool hex_digest(const char* t, uint8_t* out) {
+    for (U32 i = 0; i != 64; ++i) {
+        const char c = t[i];
+        const U32 v = c >= '0' && c <= '9' ? U32(c - '0') : c >= 'a' && c <= 'f' ? U32(c - 'a' + 10) : 16u;
+        if (v == 16) return false;
+        out[i / 2] = uint8_t(i & 1 ? (out[i / 2] << 4) | v : v);
+    }
+    return true;
+}
+#endif
+const uint8_t* official_digest(bool catalog) {
+#if defined(XYF_SIM)
+    static uint8_t sim[64];
+    const char* e = getenv("XYF_SIM_OFFICIAL_CONTENT");
+    if (e && hex_digest(e, sim) && e[64] == ' ' && hex_digest(e + 65, sim + 32)) return catalog ? sim + 32 : sim;
+#endif
+    return catalog ? usb_service::official_catalog_sha256 : usb_service::official_list_sha256;
+}
+// An official OS 1.2.1 entry of A's catalog (its version 1.2.1, or 1.2.1+build)? 0: no catalog.
+const xyf::catalog::Item* official_121(const char* id, bool& found) {
+    const xyf::catalog::Catalog* c = xyf_boot::catalog();
+    found = false;
+    for (U32 i = 0; c && i != c->count; ++i) {
+        const xyf::catalog::Item& item = c->items[i];
+        if (!same_text(item.id, id)) continue;
+        found = true;
+        const char* v = item.version;
+        const bool version = v[0] == '1' && v[1] == '.' && v[2] == '2' && v[3] == '.' && v[4] == '1' &&
+                             (!v[5] || v[5] == '+' || v[5] == ' ');
+        return item.kind == xyf::store::kind_official && version ? &item : 0;
+    }
+    return 0;
+}
+U32 adopt_begin(const char* id, U32 mode) {
     stop_idle_gc();
     if (job_running() || closing XYF_OR_MTP_BUSY || uploading()) return P::s_busy;
     if (!a_serving()) return P::s_link;
@@ -65,8 +140,10 @@ U32 adopt_begin(const char* id, bool copy) {
     a.io.link = 0;
     a.in = a.out = -1;
     a.at = a.error = a.code = a.bytes = a.crc = a.sub = a.debris = 0;
-    a.copy = copy ? 1u : 0u;
-    a.step = copy ? ad_find : ad_closing;
+    a.copy = mode;
+    a.total = 0;
+    a.step = mode == usb_service::adopt_copy ? ad_find : mode == usb_service::adopt_content ? cs_entry : ad_closing;
+    if (mode == usb_service::adopt_content) join(a.detail, "content ", a.target);
     a.hash = xyf::state_write::id_hash(a.target);
     a.id = ++job_counter;
     a.started_ms = a.ended_ms = now();
@@ -130,6 +207,102 @@ bool adopt_stock(AdoptSlot& a) {                                         // a.sh
     xyf_core::hash::Digest d;
     return a.bytes == usb_service::stock_os_bytes && a.sha.finish(d) &&
            sha_equal(d.bytes, usb_service::stock_os_sha256);
+}
+// #183 helpers. Bytewise order of two NUL-ended paths (as LC_ALL=C sort).
+int path_order(const char* a, const char* b) {
+    for (;; ++a, ++b) {
+        const uint8_t x = uint8_t(*a), y = uint8_t(*b);
+        if (x != y || !x) return int(x) - int(y);
+    }
+}
+// rel's bytes into the pool: its offset, ~0u when it does not fit.
+U32 pool_put(ContentSetWork& w, const char* folder, const char* name, U32 n) {
+    const U32 at = w.pool_n, f = text_bytes(folder);
+    if (f + 1 + n + 1 > xa::max_rel + 1 || at + f + 1 + n + 1 > xa::pool_bytes) return ~0u;
+    char* out = w.pool + at;
+    for (U32 i = 0; i != f; ++i) *out++ = folder[i];
+    if (f) *out++ = '/';
+    for (U32 i = 0; i != n; ++i) *out++ = name[i];
+    *out++ = 0;
+    w.pool_n = U32(out - w.pool);
+    return at;
+}
+// A file's path into file_ref, kept sorted (a binary search, then one move).
+bool file_insert(ContentSetWork& w, U32 at) {
+    if (w.files == xa::max_files) return false;
+    U32 lo = 0, hi = w.files;
+    while (lo < hi) {
+        const U32 mid = (lo + hi) >> 1;
+        if (path_order(w.pool + w.file_ref[mid], w.pool + at) < 0) lo = mid + 1;
+        else hi = mid;
+    }
+    for (U32 i = w.files; i != lo; --i) w.file_ref[i] = w.file_ref[i - 1];
+    w.file_ref[lo] = at;
+    ++w.files;
+    return true;
+}
+bool same_folded(const char* a, U32 n, const char* b) { // ASCII case folded
+    for (U32 i = 0; i != n; ++i) {
+        const char x = a[i] >= 'A' && a[i] <= 'Z' ? char(a[i] + 32) : a[i];
+        if (!b[i] || x != b[i]) return false;
+    }
+    return !b[n];
+}
+// "/yaffs2/content" or "/yaffs2/content/<rel>" into out.
+bool content_path(char* out, const char* rel) {
+    return rel[0] ? join(out, xa::content, "/", rel) : join(out, xa::content, "");
+}
+// One page of folder folder_ref[folder_at]: its files and folders taken, the next page or folder next.
+void content_list_page(AdoptSlot& a, ContentSetWork& w) {
+    const char* rel = w.pool + w.folder_ref[w.folder_at];
+    if (!content_path(a.path, rel)) return adopt_fail(a, xc::e_size, P::s_refused);
+    uint32_t count = 0, more = 0, bytes = 0;
+    const U32 code = file_client::list(a.path, w.skip, w.page, sizeof(w.page), count, more, bytes, mounted);
+    if (code != P::s_ok) return adopt_fail(a, code == P::s_link ? xc::e_link : xc::e_list, code);
+    for (U32 at = 0, k = 0; k != count && at + 6 <= bytes; ++k) {
+        const uint8_t kind = w.page[at];
+        const U32 size = P::get32(w.page + at + 1), n = w.page[at + 5];
+        const char* name = reinterpret_cast<const char*>(w.page + at + 6);
+        at += 6 + n;
+        if (!n || (n == 1 && name[0] == '.') || (n == 2 && name[0] == '.' && name[1] == '.')) continue;
+        if (!rel[0] && (same_folded(name, n, "dlc") || same_folded(name, n, "user"))) continue; // packs, the owner's
+        if (kind > 1) return adopt_fail(a, xc::e_sha256, P::s_refused); // a link or a device: not the official set
+        const U32 ref = pool_put(w, rel, name, n);
+        if (ref == ~0u) return adopt_fail(a, xc::e_size, P::s_refused);
+        if (kind == 1) {
+            if (w.folders == xa::max_folders) return adopt_fail(a, xc::e_size, P::s_refused);
+            w.folder_ref[w.folders++] = ref;
+            continue;
+        }
+        if (!file_insert(w, ref)) return adopt_fail(a, xc::e_size, P::s_refused);
+        a.total += size;
+    }
+    if (more) {
+        w.skip += count;
+        return;
+    }
+    w.skip = 0;
+    ++w.folder_at;
+}
+// One line of the list ("<hex>  <path>\n") for file file_at, whose SHA-256 is d.
+bool content_line(ContentSetWork& w, const xyf_core::hash::Digest& d) {
+    static const char hex[] = "0123456789abcdef";
+    const char* rel = w.pool + w.file_ref[w.file_at];
+    const U32 n = text_bytes(rel);
+    if (w.text_n + 64 + 2 + n + 1 > xa::text_bytes) return false;
+    char* out = w.text + w.text_n;
+    for (U32 i = 0; i != 32; ++i) {
+        *out++ = hex[d.bytes[i] >> 4];
+        *out++ = hex[d.bytes[i] & 15u];
+    }
+    *out++ = ' ';
+    *out++ = ' ';
+    for (U32 i = 0; i != n; ++i) *out++ = rel[i];
+    *out++ = '\n';
+    const U32 line = U32(out - (w.text + w.text_n));
+    w.list.update(reinterpret_cast<const uint8_t*>(w.text + w.text_n), line);
+    w.text_n += line;
+    return true;
 }
 void adopt_step(AdoptSlot& a) {
     switch (a.step) {
@@ -271,6 +444,186 @@ void adopt_step(AdoptSlot& a) {
         settle_begin(); // op 9: A rescans, B fetches the catalog
         return;
     }
+    case cs_entry: { // an official OS 1.2.1 entry without its content set
+        bool found = false;
+        if (!xyf_boot::catalog()) return adopt_fail(a, xc::e_list, P::s_storage);
+        if (!official_121(a.target, found))
+            return adopt_fail(a, found ? xc::e_info : xc::e_open, found ? P::s_refused : P::s_not_found);
+        join(a.path, xa::firmware, "/", a.target);
+        join(a.path, a.path, "/content.sha256");
+        uint8_t record[file_client::record_bytes];
+        const file_client::Reply r = file_client::stat(a.path, record);
+        if (r.outcome) {
+            a.io.fail(r);
+            return adopt_fail(a, xc::e_link, P::s_link);
+        }
+        if (r.value == 0) { // it has one: nothing to do
+            a.step = ad_closing;
+            return;
+        }
+        ContentSetWork& w = cwork();
+        w.files = w.folders = w.pool_n = w.text_n = w.folder_at = w.skip = w.file_at = 0;
+        w.pool[0] = 0; // the root: ""
+        w.pool_n = 1;
+        w.folder_ref[w.folders++] = 0;
+        w.list.reset();
+        a.bytes = a.total = 0;
+        a.step = cs_state;
+        return;
+    }
+    case cs_state: { // the official state: no record (or state=official), no record mid-replace
+        uint8_t record[file_client::record_bytes];
+        const file_client::Reply r = file_client::stat(xa::state_old, record);
+        if (r.outcome) {
+            a.io.fail(r);
+            return adopt_fail(a, xc::e_link, P::s_link);
+        }
+        if (r.value == 0) return adopt_fail(a, xc::e_content, P::s_refused);
+        uint32_t got = 0;
+        const U32 code =
+            file_client::read_file(xyf::content::record_path, 0, true, a.piece, xyf::content::head_bytes, got, mounted);
+        if (code == P::s_ok) {
+            xyf::content::State st;
+            xyf::content::parse(a.piece, got, st);
+            if (st.kind != xyf::content::official) return adopt_fail(a, xc::e_content, P::s_refused);
+        } else if (code != P::s_not_found) return adopt_fail(a, code == P::s_link ? xc::e_link : xc::e_read, code);
+        a.step = cs_list;
+        return;
+    }
+    case cs_list: // one page of one folder
+        if (cwork().folder_at != cwork().folders) return content_list_page(a, cwork());
+        if (!cwork().files) return adopt_fail(a, xc::e_sha256, P::s_refused);
+        a.step = cs_open;
+        return;
+    case cs_open: {
+        ContentSetWork& w = cwork();
+        if (w.file_at == w.files) {
+            a.step = cs_compare;
+            return;
+        }
+        join(a.path, xa::content, "/", w.pool + w.file_ref[w.file_at]);
+        a.in = a.io.open(a.path, false);
+        if (a.in < 0)
+            return adopt_fail(a, a.in == -2 ? xc::e_open : xc::e_read, a.in == -2 ? P::s_not_found : P::s_storage);
+        a.sha.reset();
+        a.step = cs_read;
+        return;
+    }
+    case cs_read: { // one piece of the file: hashed; at its end, its line
+        const file_client::Reply r = file_client::read(a.in, a.piece, file_client::piece_max);
+        if (r.outcome) {
+            a.io.fail(r);
+            return adopt_fail(a, xc::e_link, P::s_link);
+        }
+        if (r.value < 0 || U32(r.value) > file_client::piece_max) return adopt_fail(a, xc::e_read, P::s_storage);
+        if (r.value) {
+            a.sha.update(a.piece, U32(r.value));
+            a.bytes += U32(r.value);
+            return;
+        }
+        const int fd = a.in;
+        a.in = -1;
+        if (a.io.close(fd) < 0) return adopt_fail(a, xc::e_read, P::s_storage);
+        xyf_core::hash::Digest d;
+        if (!a.sha.finish(d) || !content_line(cwork(), d)) return adopt_fail(a, xc::e_size, P::s_refused);
+        ++cwork().file_at;
+        a.step = cs_open;
+        return;
+    }
+    case cs_compare: { // the official 1.2.1 set, exactly
+        xyf_core::hash::Digest d;
+        if (!cwork().list.finish(d) || !sha_equal(d.bytes, official_digest(false)))
+            return adopt_fail(a, xc::e_sha256, P::s_refused);
+        a.step = cs_window;
+        return;
+    }
+    case cs_window: { // A's write window, tmp/ made
+        U32 code = enter_writes();
+        if (code == P::s_ok) code = file_client::mount_ready(mounted);
+        if (code != P::s_ok) return adopt_fail(a, code == P::s_link ? xc::e_link : xc::e_write, code);
+        storage_used = 1;
+        writes_due = 1;
+        writes_ms = now();
+        uint32_t error = 0;
+        code = file_client::change(0x26u, xa::tmp, error, mounted);
+        if (code != P::s_ok && error != file_client::eexist)
+            return adopt_fail(a, code == P::s_link ? xc::e_link : xc::e_write, code);
+        a.step = cs_version;
+        return;
+    }
+    case cs_version: { // firmware/ID/firmware.version: written, read back
+        const U32 n = sizeof(usb_service::official_version) - 1;
+        join(a.path, xa::firmware, "/", a.target);
+        join(a.path, a.path, "/firmware.version");
+        const int fd = a.io.open(a.path, true);
+        const bool put =
+            fd >= 0 && a.io.write(fd, reinterpret_cast<const uint8_t*>(usb_service::official_version), n) == int(n);
+        if (fd >= 0 && a.io.close(fd) < 0) return adopt_fail(a, xc::e_write, P::s_storage);
+        if (!put) return adopt_fail(a, xc::e_write, P::s_storage);
+        uint32_t got = 0;
+        const U32 code = file_client::read_file(a.path, 0, false, a.piece, sizeof(a.piece), got, mounted);
+        bool same = code == P::s_ok && got == n;
+        for (U32 i = 0; same && i != n; ++i) same = a.piece[i] == uint8_t(usb_service::official_version[i]);
+        if (!same) return adopt_fail(a, xc::e_verify, P::s_storage);
+        a.step = cs_sweep;
+        return;
+    }
+    case cs_sweep: // a cut run's list, then the list opened
+        join(a.folder, xa::tmp, "/cset-", a.target);
+        if (a.io.unlink(a.folder) < 0) return adopt_fail(a, xc::e_write, P::s_storage);
+        a.out = a.io.open(a.folder, true);
+        if (a.out < 0) return adopt_fail(a, xc::e_write, P::s_storage);
+        a.at = 0;
+        a.step = cs_write;
+        return;
+    case cs_write: { // one chunk of the list
+        ContentSetWork& w = cwork();
+        if (a.at != w.text_n) {
+            const U32 n = w.text_n - a.at > file_client::chunk ? file_client::chunk : w.text_n - a.at;
+            if (a.io.write(a.out, reinterpret_cast<const uint8_t*>(w.text + a.at), n) != int(n))
+                return adopt_fail(a, xc::e_write, P::s_storage);
+            a.at += n;
+            return;
+        }
+        const int fd = a.out;
+        a.out = -1;
+        if (a.io.close(fd) < 0) return adopt_fail(a, xc::e_write, P::s_storage);
+        a.in = a.io.open(a.folder, false);
+        if (a.in < 0) return adopt_fail(a, xc::e_verify, P::s_storage);
+        a.sha.reset();
+        a.at = 0;
+        a.step = cs_back;
+        return;
+    }
+    case cs_back: { // read back: its SHA-256 the official one
+        const file_client::Reply r = file_client::read(a.in, a.piece, file_client::piece_max);
+        if (r.outcome) {
+            a.io.fail(r);
+            return adopt_fail(a, xc::e_link, P::s_link);
+        }
+        if (r.value < 0 || U32(r.value) > file_client::piece_max) return adopt_fail(a, xc::e_verify, P::s_storage);
+        if (r.value) {
+            a.sha.update(a.piece, U32(r.value));
+            a.at += U32(r.value);
+            if (a.at > cwork().text_n) return adopt_fail(a, xc::e_verify, P::s_storage);
+            return;
+        }
+        const int fd = a.in;
+        a.in = -1;
+        xyf_core::hash::Digest d;
+        if (a.io.close(fd) < 0 || a.at != cwork().text_n || !a.sha.finish(d) ||
+            !sha_equal(d.bytes, official_digest(false)))
+            return adopt_fail(a, xc::e_verify, P::s_storage);
+        a.step = cs_rename;
+        return;
+    }
+    case cs_rename: // the list last: the set complete
+        join(a.path, xa::firmware, "/", a.target);
+        join(a.path, a.path, "/content.sha256");
+        if (a.io.rename(a.folder, a.path) < 0) return adopt_fail(a, xc::e_rename, P::s_storage);
+        a.step = ad_closing;
+        settle_begin(); // op 9: A rescans, B fetches the catalog
+        return;
     default: return;
     }
 }
@@ -279,7 +632,7 @@ void adopt_pump() {
     const U32 start = now();
     while (a.step < ad_closing && now() - start < job_slice_ms) adopt_step(a);
     if (a.step != ad_closing || closing) return;
-    if (!a.error) { // the default, only after a success
+    if (!a.error && a.copy != usb_service::adopt_content) { // the default, only after a success
         const U32 code = default_commit(a.hash);
         if (code != P::s_ok) {
             a.error = code == P::s_link ? xc::e_link : xc::e_write;
@@ -294,6 +647,7 @@ void adopt_pump() {
 }
 U32 adopt_phase(const AdoptSlot& a) {
     if (a.step == ad_ended) return a.error ? U32(xc::phase_failed) : U32(xc::phase_done);
+    if (a.step >= cs_entry) return a.step <= cs_compare ? 1u : 7u;
     return a.step <= ad_hash ? 1u : a.step <= ad_copy_close ? 5u : a.step <= ad_back ? 6u : 7u;
 }
 void adopt_view(JobView& v) {
@@ -301,8 +655,9 @@ void adopt_view(JobView& v) {
     v.state = job_state;
     v.id = a.id;
     v.phase = adopt_phase(a);
-    v.done = a.step == ad_hash || a.step == ad_copy || a.step == ad_back ? a.bytes : 0u;
-    v.total = v.phase == 1 || v.phase == 5 || v.phase == 6 ? usb_service::stock_os_bytes : 0u; // bytes, known ahead
+    const bool content = a.step >= cs_entry && a.step <= cs_compare;  // the content's bytes, as listed
+    v.done = a.step == ad_hash || a.step == ad_copy || a.step == ad_back || content ? a.bytes : 0u;
+    v.total = content ? a.total : v.phase == 1 || v.phase == 5 || v.phase == 6 ? usb_service::stock_os_bytes : 0u;
     v.error = a.step == ad_ended ? a.error : 0u;
     v.status = a.code;
     v.debris = a.step == ad_ended ? a.debris : 0u;

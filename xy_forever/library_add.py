@@ -4,8 +4,10 @@ Writes firmware/ID/os.ldr and manifest.json and, from the user's own extracted o
 entry's content set: firmware.version, then content.sha256 (docs/storage/packages.md: the two come together or
 not at all; the list goes last, so it is never there without its version). Mod builds (the Mods page's Save,
 `mods apply`) need their base's content.sha256. The list is computed here, at run time, from the files the user
-gives; the repository never holds official content or its hashes. Without --content the entry is still added
-(it boots and can be the default) and the tool says what is missing and how to add it.
+gives; the repository never holds official content, and of its hashes only the 1.2.1 set's digests, which the
+device checks its own content against when it writes a base's content set before a build (#183). Without --content
+the entry is still added (it boots and can be the default; the device's first build writes the set when its content
+is the official 1.2.1 set) and the tool says what is missing and how to add it.
 """
 
 import re

@@ -1,4 +1,7 @@
 #include "xyf_clock.hpp"
+#if defined(XYF_SIM)
+#include <stdlib.h>                     // getenv: the simulator's official content digests (#183)
+#endif
 #include "xyf_state_write.hpp"
 #include "usb_service.hpp"
 #include "usb_spans.hpp"

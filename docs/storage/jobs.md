@@ -62,6 +62,20 @@ phase 1 hashing, 5 copying, 6 reading back (`done`/`total` in bytes), 7 the text
 stock image, 8 (status `storage`) the library could not be read, 17 with status `state` an `opxy-121` entry A
 lists is there already, unusable (incomplete), else 16, 18, 21 as other jobs.
 
+## The base's content set (#183)
+
+The adoption writes no content set, and a mod build needs its base's `content.sha256`. So before each build the
+converge sequence (`xyf_mods_save.ipp` `content_set`) runs the same job in its content mode, which ends at once when
+the base has one. Otherwise, reading only, it checks that the base is an official OS 1.2.1 entry and that the content
+is in the official state. It lists `/yaffs2/content/` (`dlc/` and `user/` aside), sorts the paths bytewise and hashes
+every file (phase 1, `done`/`total` in bytes, "Reading OS 1.2.1 content" on the menu). The list it makes must hash to
+the official 1.2.1 set's digest (`official_list_sha256`, `target/usb_service.hpp`: facts, never the files). Then, in
+A's write window, it writes `firmware.version` and reads it back, writes the list to `tmp/cset-<id>` and reads it back,
+and renames it in as `content.sha256`, last (phase 7). Errors (status `refused`): 9 not an official OS 1.2.1 entry,
+15 not the official state, 10 not the official set, 7 more than the list holds. `detail` is `content <id>`. Before
+that, `config.set` refuses a selection whose base has no content set when the job could not make one: not OS
+1.2.1, mods' content installed, or a catalog that is not the official one.
+
 ## Inspection
 
 Protocol 1.21 adds `package.list` (one item/page, inbox/library/mod store), `state.get` (paged exact

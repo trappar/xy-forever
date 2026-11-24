@@ -290,9 +290,19 @@ const char* content_undo();
 // default_id unless it is that already ("" or 0: not changed). job_target: the entry the last mod job
 // committed into ("mods-a" / "mods-b").
 uint32_t content_switch(const char* id);
-// #178: library entry id from the stock updater's own os.ldr (usb_service_adopt.ipp; copy false: it is there, only
-// the default), then id as the default; a job (job_view; error as a switch's; status as content_switch's start).
-uint32_t adopt_start(const char* id, bool copy);
+// #178: library entry id from the stock updater's own os.ldr (usb_service_adopt.ipp; mode adopt_default: it is there,
+// only the default), then id as the default; a job (job_view; error as a switch's; status as content_switch's start).
+// #183, mode adopt_content: official OS 1.2.1 entry id's content set (firmware.version, content.sha256) from the live
+// /yaffs2/content/, only when it is the official 1.2.1 set; the default unchanged. Errors (status s_refused): e_info
+// (9) id is not an official OS 1.2.1 entry, e_content (15) the content is not in the official state (mods' content
+// installed or a switch unfinished), e_sha256 (10) it is not the official 1.2.1 set, e_size (7) too many files or a
+// path too long for a list. Done at once when the entry has its content.sha256.
+enum AdoptMode : uint32_t { adopt_default = 0, adopt_copy = 1, adopt_content = 2 };
+uint32_t adopt_start(const char* id, uint32_t mode);
+// #183: can a mod build have base id's content set? s_ok: it has one, or the live content looks official (the official
+// state, the 1.2.1 catalog) so the build's adopt_content can make it; s_refused with why (a sentence); else the status
+// (busy, link, storage). Reads only.
+uint32_t content_set_check(const char* id, const char*& why);
 // The save-time log (xyf_save_log.hpp). save_log_begin: the Save key (the times start; the build, the
 // switch and the record add theirs; the record's job writes the line); save_log_selection: what was asked;
 // save_log_lap: the part from now (xyf::save_log::Part); save_log_drop: the Save failed (no line).
@@ -359,6 +369,17 @@ static const uint32_t stock_os_bytes = 2373336u;
 static const uint8_t stock_os_sha256[32] = {0x60, 0x35, 0x8a, 0xfd, 0xaa, 0x9b, 0x58, 0xed, 0x40, 0x41, 0x16,
                                             0x02, 0xf6, 0xd5, 0xd4, 0xe1, 0xe3, 0xe0, 0x25, 0x53, 0xff, 0x2d,
                                             0xa7, 0xe2, 0x50, 0x38, 0xe7, 0x1d, 0xd0, 0x02, 0xb5, 0x2f};
+// The official 1.2.1 content set (#183): the SHA-256 of its content.sha256 (the list form of docs/storage/packages.md:
+// the 839 files of /yaffs2/content/, dlc/ and user/ aside) and of its op1_factory.json, and its firmware.version
+// bytes. Facts about teenage engineering's files, never the files: a library entry's content set is written on the
+// device only when its live content hashes to exactly this list (usb_service_adopt.ipp, the content set's mode).
+static const uint8_t official_list_sha256[32] = {0x93, 0xcc, 0xa0, 0x70, 0x27, 0xe1, 0xf6, 0x19, 0xfb, 0x00, 0xed,
+                                                 0x96, 0x47, 0x5f, 0xd6, 0x2b, 0x5e, 0xc0, 0x90, 0x36, 0x63, 0xe4,
+                                                 0xae, 0x2c, 0x1b, 0x8c, 0x4a, 0x7e, 0x6c, 0xb5, 0x48, 0xff};
+static const uint8_t official_catalog_sha256[32] = {0x36, 0xd1, 0x44, 0x44, 0xdc, 0xc1, 0x2c, 0xac, 0x8f, 0x33, 0x78,
+                                                    0x4c, 0x4d, 0x0e, 0x96, 0x07, 0x9c, 0xfa, 0x0b, 0x50, 0x42, 0xac,
+                                                    0x9e, 0xdf, 0xe3, 0x1d, 0x34, 0xcc, 0x9b, 0x30, 0x3f, 0xf0};
+static const char official_version[] = "1.2.1+0\n";
 // Image acceptance before anything is written. INSTALL: the XY Forever cold
 // descriptor must be present (unchanged). UNINSTALL: size and SHA-256 (of the
 // staged, PUT_END-verified image) must equal the stock constants exactly; no
