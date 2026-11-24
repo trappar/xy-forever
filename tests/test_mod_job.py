@@ -24,8 +24,8 @@ from pathlib import Path
 
 import pytest
 import test_modkit as TK
+from conftest import blackfin
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock
-from test_xyf_freestanding import compiler
 
 from xy_forever import modkit as M
 from xy_forever import modpatch as P
@@ -366,31 +366,20 @@ class PublishedPackages(Harness, unittest.TestCase):
 
 
 @pytest.mark.gate
+@pytest.mark.toolchain
 class BlackfinCompile(unittest.TestCase):
     """native/mod_job.cpp at the firmware's flags: no calls outside xyf_core, no BSS or data, small frames;
     compile only (the product build links it into its reservation)."""
 
     def test_freestanding(self):
-        gxx = compiler()
-        if not gxx:
-            self.skipTest('Blackfin toolchain absent')
         from xy_forever import toolchain
 
         with tempfile.TemporaryDirectory(prefix='xyf-modjob-cross-') as tmp:
             asm = Path(tmp) / 'mod_job.s'
-            subprocess.run(
-                [
-                    str(gxx),
-                    *toolchain.CXX_FLAGS,
-                    '-fstack-usage',
-                    '-S',
-                    str(ROOT / 'native/mod_job.cpp'),
-                    '-o',
-                    str(asm),
-                ],
-                check=True,
-                capture_output=True,
-                cwd=tmp,
+            blackfin(
+                self,
+                [['g++', *toolchain.CXX_FLAGS, '-fstack-usage', '-S', ROOT / 'native/mod_job.cpp', '-o', asm]],
+                tmp,
             )
             text = asm.read_text()
             calls = {c for c in re.findall(r'\bcall\s+(_[A-Za-z0-9_.]+)', text) if not c.startswith('__Z')}

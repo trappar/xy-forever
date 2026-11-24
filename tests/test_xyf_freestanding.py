@@ -2,12 +2,12 @@
 (the cold link provides no memcpy, memset or division helpers)."""
 
 import re
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
 import pytest
+from conftest import blackfin
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = (
@@ -71,60 +71,49 @@ MOD_ASSEMBLY_TREE = MOD_ASSEMBLY + ('hash', 'ldr')
 MOD_ASSEMBLY_STACK = 2048
 
 
-def compiler():
-    from xy_forever import toolchain
-
-    path = toolchain.location() / 'bin/bfin-elf-g++'
-    return path if path.exists() else None
+def compiled(test, folder, names, tmp, include=False, assemble=()):
+    """Compile each folder/<name>.cpp with FLAGS to <name>.s (and its .su) in tmp, in one container run (the
+    toolchain is in the build image); each name in assemble is also assembled to <name>.o. Returns objdump -h of
+    each assembled object."""
+    commands = [
+        [
+            'g++',
+            *FLAGS,
+            *(['-I', ROOT / 'target'] if include else []),
+            '-S',
+            ROOT / folder / (name + '.cpp'),
+            '-o',
+            name + '.s',
+        ]
+        for name in names
+    ]
+    for name in assemble:
+        commands += [['as', '-mcpu=bf707', '-o', name + '.o', name + '.s'], ['objdump', '-h', name + '.o']]
+    results = blackfin(test, commands, tmp)
+    return {name: results[len(names) + 2 * n + 1][1] for n, name in enumerate(assemble)}
 
 
 @pytest.mark.gate
+@pytest.mark.toolchain
 class FreestandingTest(unittest.TestCase):
     def test_no_library_calls_and_small_stacks(self):
-        gxx = compiler()
-        if not gxx:
-            self.skipTest('Blackfin toolchain absent')
         with tempfile.TemporaryDirectory(prefix='xyf-free-') as tmp:
+            compiled(self, 'target', MODULES, tmp, include=True)
             for name in MODULES:
-                out = Path(tmp) / (name + '.s')
-                subprocess.run(
-                    [
-                        str(gxx),
-                        *FLAGS,
-                        '-I',
-                        str(ROOT / 'target'),
-                        '-S',
-                        str(ROOT / 'target' / (name + '.cpp')),
-                        '-o',
-                        str(out),
-                    ],
-                    check=True,
-                    capture_output=True,
-                    cwd=tmp,
-                )
-                calls = set(re.findall(r'\bcall\s+(_[A-Za-z0-9_.]+)', out.read_text()))
+                text = (Path(tmp) / (name + '.s')).read_text()
+                calls = set(re.findall(r'\bcall\s+(_[A-Za-z0-9_.]+)', text))
                 external = {c for c in calls if not c.startswith('__Z')}
                 self.assertEqual(external, set(), name)
-                text = out.read_text()
                 self.assertNotRegex(text, r'\.(bss|lcomm|comm)\b', name + ' uses BSS (no zero-init in the cold link)')
                 usage = (Path(tmp) / (name + '.su')).read_text().splitlines()
                 worst = max(int(line.split('\t')[1]) for line in usage)
                 self.assertLess(worst, 1024, name)
 
     def test_tfw_extractor_is_freestanding(self):
-        gxx = compiler()
-        if not gxx:
-            self.skipTest('Blackfin toolchain absent')
         with tempfile.TemporaryDirectory(prefix='xyf-free-native-') as tmp:
+            compiled(self, 'native', EXTRACTOR, tmp)
             for name in EXTRACTOR:
-                out = Path(tmp) / (name + '.s')
-                subprocess.run(
-                    [str(gxx), *FLAGS, '-S', str(ROOT / 'native' / (name + '.cpp')), '-o', str(out)],
-                    check=True,
-                    capture_output=True,
-                    cwd=tmp,
-                )
-                text = out.read_text()
+                text = (Path(tmp) / (name + '.s')).read_text()
                 calls = set(re.findall(r'\bcall\s+(_[A-Za-z0-9_.]+)', text))
                 external = {c for c in calls if not c.startswith('__Z')}
                 self.assertLessEqual(external, set() if name in SELF_CONTAINED else SUPPLIED, name)
@@ -137,21 +126,12 @@ class FreestandingTest(unittest.TestCase):
     def test_signature_check_stack_is_bounded(self):
         """No recursion anywhere in the signature check's modules, so the sum of all their
         frames bounds the stack of any call chain through them."""
-        gxx = compiler()
-        if not gxx:
-            self.skipTest('Blackfin toolchain absent')
         total, graph = 0, {}
         with tempfile.TemporaryDirectory(prefix='xyf-free-signature-') as tmp:
+            compiled(self, 'native', SIGNATURE, tmp)
             for name in SIGNATURE:
-                out = Path(tmp) / (name + '.s')
-                subprocess.run(
-                    [str(gxx), *FLAGS, '-S', str(ROOT / 'native' / (name + '.cpp')), '-o', str(out)],
-                    check=True,
-                    capture_output=True,
-                    cwd=tmp,
-                )
                 function = None
-                for line in out.read_text().splitlines():
+                for line in (Path(tmp) / (name + '.s')).read_text().splitlines():
                     label = re.match(r'(_[A-Za-z0-9_.]+):$', line)
                     if label:
                         function = label.group(1)
@@ -160,39 +140,16 @@ class FreestandingTest(unittest.TestCase):
                     if call and function:
                         graph[function].add(call.group(1))
                 total += sum(int(line.split('\t')[1]) for line in (Path(tmp) / (name + '.su')).read_text().splitlines())
-        state = {}
-
-        def visit(function, path):
-            if state.get(function) == 'open':
-                self.fail('recursion: ' + ' -> '.join(path + [function]))
-            if state.get(function) == 'done':
-                return
-            state[function] = 'open'
-            for callee in graph.get(function, ()):
-                visit(callee, path + [function])
-            state[function] = 'done'
-
-        for function in graph:
-            visit(function, [])
+        self.assert_no_recursion(graph)
         self.assertLess(total, SIGNATURE_STACK)
 
     def test_mod_assembly_is_freestanding(self):
         """Cross-compile check (compile and assemble only; nothing is linked into a firmware build)."""
-        gxx = compiler()
-        if not gxx:
-            self.skipTest('Blackfin toolchain absent')
-        tools = gxx.parent
         total, graph = 0, {}
         with tempfile.TemporaryDirectory(prefix='xyf-free-mods-') as tmp:
+            heads = compiled(self, 'native', MOD_ASSEMBLY_TREE, tmp, assemble=MOD_ASSEMBLY)
             for name in MOD_ASSEMBLY_TREE:
-                out = Path(tmp) / (name + '.s')
-                subprocess.run(
-                    [str(gxx), *FLAGS, '-S', str(ROOT / 'native' / (name + '.cpp')), '-o', str(out)],
-                    check=True,
-                    capture_output=True,
-                    cwd=tmp,
-                )
-                text = out.read_text()
+                text = (Path(tmp) / (name + '.s')).read_text()
                 function = None
                 for line in text.splitlines():
                     label = re.match(r'(_[A-Za-z0-9_.]+):$', line)
@@ -210,21 +167,14 @@ class FreestandingTest(unittest.TestCase):
                 self.assertEqual({c for c in calls if not c.startswith('__Z')}, set(), name)
                 self.assertNotRegex(text, r'\.(bss|lcomm|comm)\b', name + ' uses BSS')
                 self.assertLess(max(frames), 1024, name)
-                subprocess.run(
-                    [str(tools / 'bfin-elf-as'), '-mcpu=bf707', '-o', str(out.with_suffix('.o')), str(out)],
-                    check=True,
-                    capture_output=True,
-                )
-                sections = subprocess.run(
-                    [str(tools / 'bfin-elf-objdump'), '-h', str(out.with_suffix('.o'))],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                ).stdout
-                for row in sections.splitlines():
+                for row in heads[name].splitlines():
                     f = row.split()
                     if len(f) > 2 and f[1].startswith(('.data', '.bss')):
                         self.assertFalse(int(f[2], 16), name + ' ' + f[1])
+        self.assert_no_recursion(graph)
+        self.assertLess(total, MOD_ASSEMBLY_STACK)
+
+    def assert_no_recursion(self, graph):
         state = {}
 
         def visit(function, path):
@@ -238,7 +188,6 @@ class FreestandingTest(unittest.TestCase):
 
         for function in graph:
             visit(function, [])
-        self.assertLess(total, MOD_ASSEMBLY_STACK)
 
 
 if __name__ == '__main__':

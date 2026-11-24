@@ -407,34 +407,26 @@ def selections(generation_dir, subsets=False):
 # ---------------------------------------------------------------- Blackfin compile check
 
 
-def cross(folder):
-    """Compile the linker sources for the Blackfin with the firmware's flags; returns a report."""
-    from . import toolchain
+def cross(folder, run=None):
+    """Compile the linker sources for the Blackfin with the firmware's flags (in the build container: run is
+    container.blackfin, or a test's wrapper of it); returns a report."""
+    from . import container, toolchain
 
-    tools = toolchain.location() / 'bin'
-    report = dict(sources={}, text_rodata=0)
+    commands = []
     for name in SOURCES:
-        asm, obj = Path(folder) / (name + '.s'), Path(folder) / (name + '.o')
-        subprocess.run(
-            [
-                str(tools / 'bfin-elf-g++'),
-                *toolchain.CXX_FLAGS,
-                '-fstack-usage',
-                '-S',
-                str(ROOT / 'native' / (name + '.cpp')),
-                '-o',
-                str(asm),
-            ],
-            check=True,
-            capture_output=True,
-            cwd=folder,
-        )
-        subprocess.run(
-            [str(tools / 'bfin-elf-as'), '-mcpu=bf707', '-o', str(obj), str(asm)], check=True, capture_output=True
-        )
-        text = asm.read_text()
+        commands += [
+            ['g++', *toolchain.CXX_FLAGS, '-fstack-usage', '-S', ROOT / 'native' / (name + '.cpp'), '-o', name + '.s'],
+            ['as', '-mcpu=bf707', '-o', name + '.o', name + '.s'],
+            ['objdump', '-h', name + '.o'],
+        ]
+    results = (run or container.blackfin)(commands, folder)
+    report = dict(sources={}, text_rodata=0)
+    for n, name in enumerate(SOURCES):
+        if any(status for status, _, _ in results[3 * n : 3 * n + 3]):
+            raise RuntimeError('%s does not compile for the Blackfin' % name)
+        text = (Path(folder) / (name + '.s')).read_text()
         calls = sorted({c for c in re.findall(r'\bcall\s+(_[A-Za-z0-9_.]+)', text) if not c.startswith('__Z')})
-        heads = subprocess.run([str(tools / 'bfin-elf-objdump'), '-h', str(obj)], capture_output=True, text=True).stdout
+        heads = results[3 * n + 2][1]
         sections = {
             m.group(1): int(m.group(2), 16) for m in re.finditer(r'^\s*\d+\s+(\S+)\s+([0-9a-f]+)\s', heads, re.M)
         }
