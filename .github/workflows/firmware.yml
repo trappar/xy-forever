@@ -1,11 +1,15 @@
 # The product firmware (#303): builds os.ldr with open-xy's darwin-arm64 toolchain-1 (a Linux build of that toolchain
 # gives other bytes, upstream's docs/toolchain.md) and keeps it, with its SHA-256, as a workflow artifact for releases
-# (#223) and nightlies (#301). It needs no stock files: the build reads its stock facts from stock_facts.json, and the
+# (#223) and canaries (#301). It needs no stock files: the build reads its stock facts from stock_facts.json, and the
 # private folder here is an empty temporary one, so no Teenage Engineering bytes are read or uploaded.
 #
 # Cost: macOS bills at ten times Linux, so this runs only when the build's inputs change (turbo.json's
 # //#firmware-build inputs, the toolchain pins, this file), a newer push cancels a run in progress, and the job does
 # nothing but the build. The toolchain is cached by its pins.
+#
+# Canaries (#301): on main (a push, or a run started on main), a Linux job publishes the verified os.ldr as
+# prerelease canary-<commit> (scripts/web_canary.py publish) unless the current canary has the same bytes. It never
+# runs for a pull request; it alone may write releases.
 name: Firmware
 
 on:
@@ -50,6 +54,8 @@ jobs:
     name: Product os.ldr (macOS)
     runs-on: macos-15
     timeout-minutes: 15
+    outputs:
+      image: ${{ steps.image.outputs.image }}
     env:
       UV_NO_SYNC: "1"   # uv run keeps the sync below: no hosttest build
     steps:
@@ -87,3 +93,30 @@ jobs:
           name: os-ldr-${{ steps.image.outputs.image }}
           path: build/artifact/
           if-no-files-found: error
+
+  canary:
+    name: Canary prerelease
+    needs: product
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      UV_NO_SYNC: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/mise
+      - run: uv sync --locked --no-group native
+      - uses: actions/download-artifact@v7
+        with:
+          name: os-ldr-${{ needs.product.outputs.image }}
+          path: ${{ runner.temp }}/artifact
+      - name: Publish the os.ldr as a canary unless the current canary has it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          uv run scripts/web_canary.py publish "$RUNNER_TEMP/artifact" --commit "$GITHUB_SHA" | tee -a "$GITHUB_STEP_SUMMARY"

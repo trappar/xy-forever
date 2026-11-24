@@ -22,6 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0   # the canary must be on main and newer than the stable release's tag
           persist-credentials: false
       - uses: ./.github/actions/mise
       - run: uv sync --locked --no-group native
@@ -34,6 +35,12 @@ jobs:
           mkdir -p web/public/release
           gh release download "v${release_version}" --repo "$GITHUB_REPOSITORY" --pattern os.ldr --output web/public/release/os.ldr
           uv run scripts/web_release.py --check
+      - name: Get the newest eligible canary, if any
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          uv run scripts/web_canary.py stage | tee -a "$GITHUB_STEP_SUMMARY"
       - run: pnpm --filter xy-forever-web run build
       - name: Check the build with Cloudflare Pages
         run: |

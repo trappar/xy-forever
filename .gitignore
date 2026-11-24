@@ -6,8 +6,9 @@ xyf.local.json
 # local status notes from before #237 (now <private>/xy-forever/status/; bootstrap moves them there)
 docs/status/
 docs/STATUS.md
-# the web app's staged release image (scripts/web_release.py): a build output
+# the web app's staged release and canary images (scripts/web_release.py, web_canary.py): build outputs
 web/public/release/
+web/public/canary/
 .venv/
 # firmware output inside the checkout (xy_forever/paths.py BUILD): Teenage Engineering bytes, never committed
 /build/
