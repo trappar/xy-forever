@@ -75,12 +75,12 @@ export function contentText(text: string | null, oldExists: boolean): string {
 }
 
 /** Package kinds in the device menu's order (GUIDE: synths, drums, samplers, effects, players, extensions). */
-const KINDS = ['synth', 'drum', 'sampler', 'effect', 'player', 'extension'] as const;
+const KINDS = ['synth', 'drum', 'sample', 'effect', 'player', 'extension'] as const;
 type Kind = (typeof KINDS)[number] | 'other';
 const KIND_LABEL: Readonly<Record<Kind, string>> = {
   synth: 'Synths',
   drum: 'Drums',
-  sampler: 'Samplers',
+  sample: 'Samplers',
   effect: 'Effects',
   player: 'Players',
   extension: 'Extensions',
