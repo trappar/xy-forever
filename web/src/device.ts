@@ -1,6 +1,7 @@
 // Device calls: the connection, opened only from a click (Connect, the Install page's Find), and TanStack Query over it.
 // Every mutation shares one scope, so the OP-XY gets one action at a time (a second waits for the first); queries read
-// what the pages show. Each outcome goes to the bug report, a failure to the notice line, and a lost link to Connect.
+// what the pages show. Each outcome goes to the bug report, a failure to the notice line; a lost link ends the
+// connection (Manage then shows Connect).
 import { MutationCache, QueryCache, QueryClient, useMutation } from '@tanstack/react-query';
 import {
   ASK_TEXT,
@@ -21,7 +22,7 @@ import { useConnection } from './connection.ts';
 import { parseConfig } from './model.ts';
 import type { SavedConfig } from './model.ts';
 import { notice } from './notice.ts';
-import { navigatePath, simPort } from './routing.ts';
+import { simPort } from './routing.ts';
 
 type DeviceMeta = { action: Action; label?: string };
 declare module '@tanstack/react-query' {
@@ -41,10 +42,7 @@ function describe(error: unknown): string {
 function failed(action: Action | undefined, error: unknown): void {
   if (action) bugReport.record(action, 'failed', error);
   const { client } = useConnection.getState();
-  if (client && !client.connected) {
-    useConnection.setState({ client: null });
-    navigatePath('/connect');
-  }
+  if (client && !client.connected) useConnection.setState({ client: null });
   notice(describe(error), 'error');
 }
 
@@ -83,7 +81,7 @@ export function useAction<V = void, T = unknown>(action: Action, work: (variable
 /** A device action or query runs. */
 export const deviceBusy = (): boolean => queryClient.isMutating() + queryClient.isFetching() > 0;
 
-/** The connection, for a page that needs one (the router sends the others to Connect). */
+/** The connection, for a page that needs one (Manage shows Connect in their place without one). */
 export function device(): Client {
   const { client } = useConnection.getState();
   if (!client) throw new Error('Not connected: connect your OP-XY first.');
@@ -113,14 +111,14 @@ export async function openDevice(
 export function adopt(found: Client): void {
   bugReport.updateStatus(found.info);
   found.onAsk((asking) => notice(asking ? `${ASK_TEXT}: it asks to allow this computer (PLAY allows).` : '', 'busy')); // #65
-  useConnection.setState({ client: found, stockRestored: false });
+  useConnection.setState({ client: found, stockRestored: false, held: false });
   if (!found.info.serial) notice(SERIAL_OFF_TEXT, 'error'); // #191: hello serial=off
 }
 
-/** Closes this app's connection. */
+/** Closes this app's connection: the owner's choice, so nothing reconnects without a click (detect.ts). */
 export async function disconnect(): Promise<void> {
   const { client } = useConnection.getState();
-  useConnection.setState({ client: null });
+  useConnection.setState({ client: null, held: true });
   await client?.close();
 }
 

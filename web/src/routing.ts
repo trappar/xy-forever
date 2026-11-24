@@ -1,7 +1,8 @@
-// The app's routes (TanStack Router): /connect (also /), /install/$stage, /device, /mods, /files, always
-// with a trailing slash so that each is a directory index on
-// static hosting. The query (?sim=PORT among it) is kept across navigation. Components load lazily: vite.config.ts
-// reads the paths it emits from this router in Node (staticPaths).
+// The app's routes (TanStack Router), in two sections (#316): Install (/install/$stage; / opens it) and Manage (/manage/
+// the OP-XY itself, /manage/mods/, /manage/files/), always with a trailing slash so that each is a directory index on
+// static hosting. The links of the earlier pages (/connect/, /device/, /mods/, /files/) lead to their Manage pages.
+// The query (?sim=PORT among it) is kept across navigation. Components load lazily: vite.config.ts reads the paths it
+// emits from this router in Node (staticPaths).
 import {
   createRootRoute,
   createRoute,
@@ -14,7 +15,6 @@ import { useConnection } from './connection.ts';
 import { INSTALL_STAGES, isInstallStage } from './install/stages.ts';
 import type { InstallStage } from './install/stages.ts';
 
-export type Page = 'connect' | 'install' | 'device' | 'mods' | 'files';
 /** ?sim=PORT: the device simulator on 127.0.0.1:PORT through the dev server's relay (development and tests). */
 export interface AppSearch {
   sim?: string;
@@ -29,47 +29,49 @@ const root = createRootRoute({
   search: { middlewares: [retainSearchParams(true)] },
   beforeLoad: ({ location }) => {
     // an uninstall in progress keeps the Device page
-    if (useConnection.getState().uninstalling && !location.pathname.endsWith('/device/'))
-      throw redirect({ to: '/device/' });
+    if (useConnection.getState().uninstalling && !location.pathname.endsWith('/manage/'))
+      throw redirect({ to: '/manage/' });
   },
   component: lazyRouteComponent(() => import('./shell.tsx'), 'AppShell'),
 });
-
-/** Device, Mods and Files need a connection: without one, Connect. */
-const connected = (): void => {
-  if (!useConnection.getState().client) throw redirect({ to: '/connect/', replace: true });
-};
 
 const home = createRoute({
   getParentRoute: () => root,
   path: '/',
   beforeLoad: () => {
-    throw redirect({ to: '/connect/', replace: true });
+    throw redirect({ to: '/install/', replace: true });
   },
 });
-const connect = createRoute({
+/** Manage: its pages need a connection; without one it shows Connect in their place (pages/manage.tsx). */
+const manage = createRoute({
   getParentRoute: () => root,
-  path: 'connect',
-  component: lazyRouteComponent(() => import('./pages/connect.tsx')),
+  path: 'manage',
+  component: lazyRouteComponent(() => import('./pages/manage.tsx')),
 });
 const device = createRoute({
-  getParentRoute: () => root,
-  path: 'device',
-  beforeLoad: connected,
+  getParentRoute: () => manage,
+  path: '/',
   component: lazyRouteComponent(() => import('./pages/device.tsx')),
 });
 const mods = createRoute({
-  getParentRoute: () => root,
+  getParentRoute: () => manage,
   path: 'mods',
-  beforeLoad: connected,
   component: lazyRouteComponent(() => import('./pages/mods.tsx')),
 });
 const files = createRoute({
-  getParentRoute: () => root,
+  getParentRoute: () => manage,
   path: 'files',
-  beforeLoad: connected,
   component: lazyRouteComponent(() => import('./pages/files.tsx')),
 });
+/** The earlier pages' links (bookmarks, the README of a release) lead to their Manage pages. */
+const moved = (path: string, to: '/manage/' | '/manage/mods/' | '/manage/files/') =>
+  createRoute({
+    getParentRoute: () => root,
+    path,
+    beforeLoad: () => {
+      throw redirect({ to, replace: true });
+    },
+  });
 const install = createRoute({ getParentRoute: () => root, path: 'install' });
 const installIndex = createRoute({
   getParentRoute: () => install,
@@ -91,11 +93,12 @@ const installStage = createRoute({
 
 const routeTree = root.addChildren([
   home,
-  connect,
-  device,
-  mods,
-  files,
   install.addChildren([installIndex, installStage]),
+  manage.addChildren([device, mods, files]),
+  moved('connect', '/manage/'),
+  moved('device', '/manage/'),
+  moved('mods', '/manage/mods/'),
+  moved('files', '/manage/files/'),
 ]);
 
 export const router = createRouter({
@@ -116,12 +119,11 @@ declare module '@tanstack/react-router' {
 
 /** The paths the static build emits an index.html for: every route, each install stage. */
 export function staticPaths(): string[] {
-  return Object.keys(router.routesByPath)
-    .flatMap((full) => {
-      const path = full.replace(/^\/|\/$/g, '');
-      return path.includes('$stage') ? INSTALL_STAGES.map((stage) => path.replace('$stage', stage)) : [path];
-    })
-    .filter((path) => path !== '');
+  const paths = Object.keys(router.routesByPath).flatMap((full) => {
+    const path = full.replace(/^\/|\/$/g, '');
+    return path.includes('$stage') ? INSTALL_STAGES.map((stage) => path.replace('$stage', stage)) : [path];
+  });
+  return [...new Set(paths)].filter((path) => path !== '');
 }
 
 /** The simulator's port from ?sim, or null for Web Serial. */
@@ -136,7 +138,7 @@ export const loadPath = typeof location === 'undefined' ? '' : location.pathname
 /** How many stages lie behind this one in the install flow (the history entry's state). */
 export const backDepth = (): number => router.state.location.state.back ?? 0;
 
-/** Goes to an app path ('/device', '/install/<stage>'); the query is kept. */
+/** Goes to an app path ('/manage/mods', '/install/<stage>'); the query is kept. */
 export function navigatePath(path: string, options: { replace?: boolean; back?: number } = {}): void {
   const stage = path.match(/^\/install\/([^/]+)/)?.[1];
   const common = { replace: options.replace ?? false, state: (s: object) => ({ ...s, back: options.back ?? 0 }) };
@@ -144,7 +146,7 @@ export function navigatePath(path: string, options: { replace?: boolean; back?: 
     void router.navigate({ to: '/install/$stage/', params: { stage }, ...common });
   else
     void router.navigate({
-      to: (path.endsWith('/') ? path : path + '/') as '/connect/' | '/device/' | '/mods/' | '/files/' | '/install/',
+      to: (path.endsWith('/') ? path : path + '/') as '/install/' | '/manage/' | '/manage/mods/' | '/manage/files/',
       ...common,
     });
 }

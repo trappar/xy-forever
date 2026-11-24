@@ -1,5 +1,6 @@
 // The Install page (#178): the flow (install/flow.ts) in one instance kept across its stages and pages, its words
-// (install/content.ts), and the app's side of it: the connection it may lend, find or open, and the hand-over to Mods.
+// (install/content.ts), and the app's side of it: the connection it may lend, find or open, and the switch to Manage
+// (detect.ts).
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { useParams } from '@tanstack/react-router';
@@ -13,12 +14,13 @@ import { ChannelChoice, ReleaseIdentity } from '@/components/channel-choice.tsx'
 import { PageHeader } from '@/components/page-header.tsx';
 import { cn } from '@/lib/utils.ts';
 import { useConnection } from '../connection.ts';
-import { adopt, canConnect, deviceBusy, openDevice } from '../device.ts';
+import { findDevice, toManage } from '../detect.ts';
+import { canConnect, openDevice } from '../device.ts';
 import { OFFICIAL_121_TFW, OFFICIAL_UPDATE_GUIDE } from '../install/checks.ts';
 import { action, stageContent } from '../install/content.ts';
 import { NO_BACK, installFlow } from '../install/flow.ts';
 import type { InstallDeps, InstallFlow, Lease } from '../install/flow.ts';
-import { loadPath, navigatePath } from '../routing.ts';
+import { loadPath } from '../routing.ts';
 
 /** This app's connection, lent (close keeps it): while it holds the port, the Install page uses it and never opens a
  * second link (two readers on one OP-XY split its replies). */
@@ -43,15 +45,10 @@ function appDeps(): InstallDeps {
       // never the chooser: this app's connection, else a granted port that answers (or the simulator)
       const mine = own();
       if (mine) return mine;
-      if (deviceBusy() || !canConnect()) return null;
-      return lease(await openDevice({ timeoutMs: 5_000, filters: RELEASE_FILTERS, choose: false }));
+      const found = await findDevice(RELEASE_FILTERS);
+      return found && lease(found);
     },
-    handoff: (found) => {
-      // installed: the connection becomes the app's, then the Mods page
-      if (useConnection.getState().client !== found.client) adopt(found.client);
-      useConnection.setState({ installed: true });
-      navigatePath('/mods');
-    },
+    handoff: (found, installed) => toManage(found.client, installed),
     onPort: (listener) => nav.serial?.addEventListener?.('connect', listener),
   };
 }
@@ -143,6 +140,13 @@ function InstallView({ flow: f }: { flow: InstallFlow }) {
         {stage === 'boot' &&
           'For an OP–XY with teenage engineering’s OS 1.2.1. You need this page in Chrome or Edge on a Mac or Windows computer, and a USB-C data cable: no other apps.'}
       </PageHeader>
+      {stage === 'boot' && (
+        <p data-testid="already-installed" className="mb-4 max-w-[62ch] rounded-lg border bg-card px-3.5 py-2.5">
+          <strong>Already have XY Forever?</strong> Switch your OP–XY on while holding PLAY and connect it by USB: this
+          site switches to Manage by itself.
+          {deps.serial && release && ' The first time on this computer, select Find my OP–XY below and choose it.'}
+        </p>
+      )}
       {!release && (
         <Card className="border-destructive/60" data-refusal="no-release">
           <CardTitle>No XY Forever release here yet</CardTitle>

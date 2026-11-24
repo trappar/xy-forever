@@ -1,7 +1,8 @@
-// The app's frame: navigation, the link status, the bug report, the installed notice, toasts and questions.
+// The app's frame: navigation (two sections, Install and Manage, with Manage's pages under it: #316), the link status
+// and Disconnect, the bug report, the installed and stock-restored notices, toasts and questions.
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Link, Outlet, useSearch } from '@tanstack/react-router';
+import { Link, Outlet, useLocation, useSearch } from '@tanstack/react-router';
 import { Toaster } from '@/components/ui/sonner.tsx';
 import { Button } from '@/components/ui/button.tsx';
 import {
@@ -17,14 +18,21 @@ import { downloadBlob } from '@/lib/download.ts';
 import { AskDialog } from './ask.tsx';
 import { bugReport } from './bug-report.ts';
 import { useConnection } from './connection.ts';
+import { disconnect, useAction } from './device.ts';
 
-const NAV = [
-  ['/connect/', 'Connect'],
+const SECTIONS = [
   ['/install/', 'Install'],
-  ['/device/', 'Device'],
-  ['/mods/', 'Mods'],
-  ['/files/', 'Files'],
+  ['/manage/', 'Manage'],
 ] as const;
+const MANAGE = [
+  ['/manage/', 'Device'],
+  ['/manage/mods/', 'Mods'],
+  ['/manage/files/', 'Files'],
+] as const;
+const LINK = 'rounded-md px-2.5 py-1.5 text-muted-foreground no-underline hover:bg-secondary hover:text-foreground';
+const ACTIVE = 'bg-secondary text-foreground shadow-[inset_2px_0_0_var(--color-primary)]';
+/** The page's name for tests and the smoke run: install, manage, manage/mods, manage/files. */
+const pageName = (to: string): string => to.slice(1, -1);
 
 export const AppShell = () => (
   <Shell>
@@ -42,29 +50,47 @@ export function Shell({ children }: { children: ReactNode }) {
           </span>
           Forever
         </div>
-        <nav aria-label="Pages" className="flex flex-row flex-wrap gap-0.5 md:flex-col">
-          {NAV.map(([to, label]) => (
-            <Link
-              key={to}
-              to={to}
-              data-page={to.slice(1, -1)}
-              className="rounded-md px-2.5 py-1.5 text-muted-foreground no-underline hover:bg-secondary hover:text-foreground"
-              activeProps={{ className: 'bg-secondary text-foreground shadow-[inset_2px_0_0_var(--color-primary)]' }}
-            >
-              {label}
-            </Link>
-          ))}
-        </nav>
+        <Nav />
         <BugReportButton />
         <LinkStatus />
       </aside>
       <main className="w-full max-w-[1100px] px-[clamp(16px,4vw,44px)] py-7">
         <InstalledNotice />
+        <StockRestoredNotice />
         {children}
       </main>
       <Toaster />
       <AskDialog />
     </div>
+  );
+}
+
+/** Install and Manage; Manage's pages show under it while it is open. */
+function Nav() {
+  const managing = useLocation({ select: (l) => l.pathname.includes('/manage/') });
+  return (
+    <nav aria-label="Pages" className="flex flex-row flex-wrap gap-0.5 md:flex-col">
+      {SECTIONS.map(([to, label]) => (
+        <div key={to} className="contents">
+          <Link to={to} data-page={pageName(to)} className={`${LINK} font-medium`} activeProps={{ className: ACTIVE }}>
+            {label}
+          </Link>
+          {to === '/manage/' &&
+            managing &&
+            MANAGE.map(([page, name]) => (
+              <Link
+                key={page}
+                to={page}
+                data-page={page === '/manage/' ? 'manage/device' : pageName(page)}
+                className={`${LINK} text-sm md:ml-3 data-[status=active]:font-medium data-[status=active]:text-foreground data-[status=active]:shadow-[inset_2px_0_0_var(--color-primary)]`}
+                activeOptions={{ exact: true }}
+              >
+                {name}
+              </Link>
+            ))}
+        </div>
+      ))}
+    </nav>
   );
 }
 
@@ -79,7 +105,28 @@ function LinkStatus() {
         }
       />
       <span data-testid="link">{connected ? `Connected${sim ? ' (simulator)' : ''}` : 'Not connected'}</span>
+      {connected && <DisconnectButton />}
     </div>
+  );
+}
+
+function DisconnectButton() {
+  const close = useAction('disconnect', disconnect);
+  return (
+    <Button size="sm" className="ml-auto" disabled={close.isPending} onClick={() => close.mutate()}>
+      Disconnect
+    </Button>
+  );
+}
+
+/** After an uninstall, until the next connection. */
+function StockRestoredNotice() {
+  const restored = useConnection((s) => s.stockRestored);
+  if (!restored) return null;
+  return (
+    <p data-testid="stock-restored" role="status" className="mb-4 rounded-lg border bg-card px-3.5 py-2.5">
+      Stock OS 1.2.1 was restored and your OP-XY was asked to restart.
+    </p>
   );
 }
 

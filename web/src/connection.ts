@@ -10,11 +10,19 @@ interface Connection {
   installed: boolean;
   /** An uninstall runs: the app stays on the Device page. */
   uninstalling: boolean;
-  /** An uninstall restored stock OS 1.2.1: Connect says so until the next connection. */
+  /** An uninstall restored stock OS 1.2.1: the app says so until the next connection. */
   stockRestored: boolean;
+  /** The owner disconnected: no look without a click (detect.ts) until the next connection or a reload. */
+  held: boolean;
 }
 
 const store = () =>
-  create<Connection>(() => ({ client: null, installed: false, uninstalling: false, stockRestored: false }));
+  create<Connection>(() => ({
+    client: null,
+    installed: false,
+    uninstalling: false,
+    stockRestored: false,
+    held: false,
+  }));
 export const useConnection: ReturnType<typeof store> = import.meta.hot?.data.connection ?? store();
 if (import.meta.hot) import.meta.hot.data.connection = useConnection;
