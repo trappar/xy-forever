@@ -1020,7 +1020,7 @@ class SimulatorTest(unittest.TestCase):
     # -- file.copy ------------------------------------------------------------------------
 
     @pytest.mark.sim
-    @pytest.mark.sim
+    @pytest.mark.gate  # a simulator UI flow (keys, three minutes of device time): the sim tier has no room
     def test_screen_saver(self):
         """Kept: Screen saver (#315): it starts after a minute of device time with no input; a USB write under it is
         answered and leaves it on; a real PLAY wakes it and goes nowhere (no boot), nor does its release; a knob turn
@@ -1036,7 +1036,8 @@ class SimulatorTest(unittest.TestCase):
             self.assertTrue(self.sim.control('realkey %d %d' % (k, pressed)).get('ok'))
             self.sim.until(lambda: log().count(line) > seen, line, 2000)
 
-        self.assertIn('saver: on at ', self.sim.until(lambda: 'saver: on at ' in log() and log(), 'the saver', 70000))
+        self.sim.advance(60000)
+        self.assertIn('saver: on at ', self.sim.until(lambda: 'saver: on at ' in log() and log(), 'the saver', 1000))
         self.assertIn('(after 60000 ms)', log())
         self.assertEqual(self.write(dev, b'under the saver', '/yaffs2/saver.txt')[0], 0)  # work goes on under it
         self.assertNotIn('saver: off', log())
@@ -1046,7 +1047,8 @@ class SimulatorTest(unittest.TestCase):
         self.sim.settle()
         self.assertNotIn('menu: continue', log())
         self.assertEqual((self.sim.status()['b'], self.sim.status()['listening']), ('running', 1))  # still the menu
-        self.sim.until(lambda: log().count('saver: on at ') == 2, 'the saver again', 70000)
+        self.sim.advance(60000)  # from the write's activity line (2 s past it)
+        self.sim.until(lambda: log().count('saver: on at ') == 2, 'the saver again', 5000)
         self.assertTrue(self.sim.control('knob 1 2').get('ok'))  # a knob turn wakes it: moves nothing
         self.sim.until(lambda: 'woken by a knob turn' in log(), 'the knob wake', 2000)
         # Settings (the last home row), Screen saver (its fifth row), - to Off (the last option), picked.
@@ -1064,7 +1066,7 @@ class SimulatorTest(unittest.TestCase):
             key(k, 1, line)
             key(k, 0, 'menu: real key %d released' % k)
         self.sim.until(lambda: 'saver=off' in self.file('/yaffs2/xy-forever/settings.txt').decode(), 'the save', 5000)
-        self.sim.advance(120000)
+        self.sim.advance(61000)
         self.assertEqual(log().count('saver: on at '), 2)
 
     def test_xyf_host_cp(self):
