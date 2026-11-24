@@ -89,6 +89,17 @@ uint32_t remote_set(uint32_t flags, const char* mods, uint32_t crc, const char*&
     p.unknown_ok = (flags & 4u) != 0;
     if (const char* why = m::save_refusal(p)) return refuse(reason, why);
     if (!config_base()) return refuse(reason, "No stock OP-XY firmware in the library.");
+    if (m::chosen(p, false) +
+        m::chosen(p, true)) { // #183: a build needs the base's content set, or the means to make it
+        const char* why = 0;
+        const uint32_t code = usb_service::content_set_check(config_base(), why);
+        if (why) return refuse(reason, why);
+        if (code != s_ok) {
+            refuse(reason, ""); // the toggles back
+            reason = "";
+            return code;
+        }
+    }
     if ((flags & 2u) && m::chosen(p, false) + m::chosen(p, true) && !(rec.state == xg::present && rec.slot[0]))
         return refuse(reason, "Nothing is built yet to boot without: set no mods instead.");
     pick.safe = flags & 2u ? 2u : 1u;

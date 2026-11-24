@@ -9,6 +9,7 @@ docs/STATUS.md
 # the web app's staged release and canary images (scripts/web_release.py, web_canary.py): build outputs
 web/public/release/
 web/public/canary/
+web/public/open-xy/
 .venv/
 # firmware output inside the checkout (xy_forever/paths.py BUILD): Teenage Engineering bytes, never committed
 /build/

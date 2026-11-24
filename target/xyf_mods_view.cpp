@@ -56,6 +56,7 @@ void building(uint16_t* fb, const Progress& p, const ui::Chrome* chrome, Frame& 
     const bool cancelling = p.cancel != 0;
     const uint32_t phase = p.job_phase > 7 ? 7 : p.job_phase;
     const uint32_t step = cancelling             ? 0xffffu :
+                          p.reading              ? 0xfffeu :
                           p.save && p.save_stage ? 8u + p.save_stage :
                           p.job_commit           ? 8u :
                           phase                  ? phase :
@@ -63,6 +64,7 @@ void building(uint16_t* fb, const Progress& p, const ui::Chrome* chrome, Frame& 
     if (full || step != f.step) {
         at = line;
         if (cancelling) put(at, end, "Cancelling...");
+        else if (p.reading) put(at, end, "Once, before the first build");
         else if (p.save && p.save_stage) put(at, end, p.save_stage == 1 ? "Installing content" : "Saving settings");
         else if (p.save && !(p.save & save_build)) put(at, end, "Checking");
         else if (p.save) {
@@ -89,9 +91,10 @@ void building(uint16_t* fb, const Progress& p, const ui::Chrome* chrome, Frame& 
         text(fb, margin, detail_y, line, grey, 1);
         if (p.job_total) {
             at = line;
-            put_number(at, end, p.job_done);
-            put(at, end, " / ");
-            put_number(at, end, p.job_total);
+            put_number(at, end, p.reading ? p.job_done >> 20 : p.job_done);   // the content read: MiB
+            put(at, end, p.reading ? " of " : " / ");
+            put_number(at, end, p.reading ? (p.job_total + 0xfffffu) >> 20 : p.job_total);
+            if (p.reading) put(at, end, " MB");
             *at = 0;
             text(fb, width - margin - text_width(line, 1), detail_y, line, grey, 1);
         }

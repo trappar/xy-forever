@@ -1,7 +1,7 @@
 // Public entry (browser and Node): the call layer, typed errors, the Web Serial transport and the
 // generated protocol module. Node's TCP transport: the `./node` entry. Developer commands and the
 // raw link: the `./dev` entry. Test-only commands exist in neither (src/v1.ts leaves them out).
-export { Client, STATE_FILES, TFW_REASONS, parseSlot, sha256 } from './client.ts';
+export { Client, RESEND_MS, STATE_FILES, TFW_REASONS, parseSlot, sha256 } from './client.ts';
 export { fileReason } from './file-reason.ts';
 export { PROTECTED_NAMES, WRITE_ROOTS, inWriteArea } from './write-area.ts';
 export { SCREEN, decodeScreen } from './screen.ts';

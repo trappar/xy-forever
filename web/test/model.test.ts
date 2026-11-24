@@ -62,17 +62,18 @@ describe('grouping', () => {
     pkg('tape', { type: 'mod', machine: 'effect', id: 'tape', name: 'Tape' }),
     pkg('ext-seq', { type: 'mod', machine: 'extension' }),
     pkg('zeta', { type: 'mod', machine: 'synth', name: 'Zeta' }),
+    pkg('grain', { type: 'mod', machine: 'sample', name: 'Grain' }),
     pkg('alpha', { type: 'mod', machine: 'synth', name: 'Alpha' }, false),
     pkg('odd', {}),
   ];
   it('groups by kind in menu order, then by name, without the base', () => {
     const groups = groupMods(held, parseConfig('mods=zeta,seq'));
-    expect(groups.map((g) => g.label)).toEqual(['Synths', 'Effects', 'Extensions', 'Other']);
+    expect(groups.map((g) => g.label)).toEqual(['Synths', 'Samplers', 'Effects', 'Extensions', 'Other']);
     expect(groups[0]!.rows.map((r) => [r.name, r.on, r.complete])).toEqual([
       ['Alpha', false, false],
       ['Zeta', true, true],
     ]);
-    expect(groups[2]!.rows[0]).toMatchObject({ id: 'seq', folder: 'ext-seq', extension: true, on: true });
+    expect(groups[3]!.rows[0]).toMatchObject({ id: 'seq', folder: 'ext-seq', extension: true, on: true });
   });
   it('leaves on/off unknown when the configuration could not be read', () => {
     expect(groupMods(held, undefined)[0]!.rows[0]!.on).toBeNull();

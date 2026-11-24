@@ -181,7 +181,17 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
 
   test('a second push sends nothing; nor does xyf-host mods push (the same layout)', async () => {
     const names = readdirSync(gen);
-    const again = await push();
+    const client = await connect();
+    const reads: string[] = [];
+    const readRange = client.readRange.bind(client);
+    vi.spyOn(client, 'readRange').mockImplementation(async (path, ...rest) => {
+      reads.push(path.slice(path.lastIndexOf('/') + 1));
+      return readRange(path, ...rest);
+    });
+    const again = await pushPackages(client, source()).finally(() => client.close());
+    // #306: each package held whole is known by its files.sha256 alone
+    expect(reads.filter((name) => name !== 'store.txt').every((name) => name === 'files.sha256')).toBe(true);
+    expect(reads.filter((name) => name === 'files.sha256').length).toBeLessThanOrEqual(names.length * 2);
     expect(again).toMatchObject({ sent: 0, skipped: names.length, files: 0, bytes: 0 });
     expect(again.packages.every((r) => r.state === 'skipped' && r.files === 0)).toBe(true);
     const run = spawnSync(venvBin('xyf-host'), ['--sim', `${sim!.address},${sim!.control}`, 'mods', 'push', gen], {

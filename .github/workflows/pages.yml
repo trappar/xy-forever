@@ -21,6 +21,7 @@ on:
       - 'uv.lock'
       - 'scripts/web_release.py'
       - 'scripts/web_canary.py'
+      - 'scripts/web_open_xy.py'
       - 'xy_forever/__init__.py'
       - 'xy_forever/paths.py'
       - 'xy_forever/release.py'
@@ -69,7 +70,13 @@ jobs:
         run: |
           set -o pipefail
           uv run scripts/web_canary.py stage | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Stage the pinned Open-XY 0.0.7 kit, without teenage engineering's material
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run scripts/web_open_xy.py stage
       - run: pnpm --filter xy-forever-web run build
+      - name: Check the build holds no teenage engineering material
+        run: uv run scripts/web_open_xy.py check web/dist
       - name: Check the build with Cloudflare Pages
         run: |
           preview_log="$RUNNER_TEMP/pages-preview.log"

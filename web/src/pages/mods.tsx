@@ -1,4 +1,5 @@
-// Mods: packages on the device grouped by kind, with their saved on/off state; add packages from a generation folder
+// Mods: Open-XY's catalog (its published kit, split into packages here: src/kit/) to choose mods from, send and save;
+// packages on the device grouped by kind, with their saved on/off state; add packages from a generation folder
 // (modkit split); remove a package or a whole set; the mods the OP-XY runs and Mod memory, saved as its Mods menu does
 // (config.set: checked and kept, or refused with the reason; built the next time XY Forever starts).
 import { useState } from 'react';
@@ -23,7 +24,9 @@ import { Progress } from '@/components/ui/progress.tsx';
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table.tsx';
 import { PageHeader } from '@/components/page-header.tsx';
 import { confirmAction } from '../ask.tsx';
+import { bugReport } from '../bug-report.ts';
 import { device, queryClient, savedConfig, useAction } from '../device.ts';
+import type { Catalog } from '../kit/catalog.ts';
 import { groupMods, human } from '../model.ts';
 import type { SavedConfig } from '../model.ts';
 import { notice } from '../notice.ts';
@@ -77,6 +80,7 @@ export default function ModsPage() {
           {data.error !== undefined && (
             <p className="mb-4 text-muted-foreground">Could not read the saved configuration ({data.error}).</p>
           )}
+          <OpenXyCard inputs={data.inputs} />
           <AddPackages />
           {data.held.length === 0 ? (
             <Card className="text-muted-foreground">No mod packages on this OP-XY yet.</Card>
@@ -89,6 +93,123 @@ export default function ModsPage() {
         </>
       )}
     </section>
+  );
+}
+
+type CatalogState = { loading: true } | { error: string } | { catalog: Catalog } | null;
+
+/** Open-XY's catalog: downloaded when asked for (fresh each time: a newer kit's entries show at once). */
+function OpenXyCard({ inputs }: { inputs: SavedInputs | null }) {
+  const [state, setState] = useState<CatalogState>(null);
+  const load = async (): Promise<void> => {
+    setState({ loading: true });
+    try {
+      const catalog = await (await import('../kit/catalog.ts')).loadCatalog();
+      bugReport.record('load_catalog', 'finished');
+      setState({ catalog });
+    } catch (error) {
+      bugReport.record('load_catalog', 'failed', error);
+      setState({ error: error instanceof Error ? error.message : String(error) });
+    }
+  };
+  const loading = state !== null && 'loading' in state;
+  return (
+    <Card id="open-xy">
+      <CardHeader>
+        <CardTitle className="flex-1">Open-XY mods</CardTitle>
+        <Button disabled={loading} onClick={() => void load()}>
+          {state && 'catalog' in state ? 'Check for new mods' : 'Show the catalog'}
+        </Button>
+      </CardHeader>
+      <CardDescription id="open-xy-status">
+        {state === null
+          ? "Choose mods from Open-XY's catalog, downloaded from open-xy.com. The OP-XY gets the ones you choose."
+          : 'loading' in state
+            ? "Downloading and checking Open-XY's catalog..."
+            : 'error' in state
+              ? state.error
+              : `Open-XY ${state.catalog.version}${state.catalog.pinned ? ' (pinned)' : ''}: ${state.catalog.packages.length - 1} mods.`}
+      </CardDescription>
+      {state && 'catalog' in state && (
+        <CatalogChoices key={state.catalog.generation} catalog={state.catalog} inputs={inputs} />
+      )}
+    </Card>
+  );
+}
+
+function CatalogChoices({ catalog, inputs }: { catalog: Catalog; inputs: SavedInputs | null }) {
+  const groups = groupMods(catalog.packages, null);
+  const same = inputs?.generation === catalog.generation;
+  const [on, setOn] = useState(() => new Set(same ? inputs.mods : []));
+  const [expanded, setExpanded] = useState(inputs?.expanded ?? false);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [status, setStatus] = useState('');
+  const chosen = groups.flatMap((g) => g.rows).filter((r) => on.has(r.folder));
+  const install = useAction(
+    'install_mods',
+    async () => {
+      const mods = chosen.map((r) => r.folder);
+      setStatus('');
+      setProgress(0);
+      const pushed = await pushPackages(device(), catalog.source, {
+        only: mods,
+        onProgress: (done, total) => setProgress(total ? done / total : 0),
+      }).finally(() => setProgress(null));
+      await refresh();
+      const sent = `Sent ${pushed.sent} package${pushed.sent === 1 ? '' : 's'} (${human(pushed.bytes)})`;
+      setStatus(`${sent}. Saving the selection...`);
+      try {
+        await configSet(device(), { mods, expanded, unverified: inputs?.unverified ?? false });
+        setStatus(
+          `${sent} and saved ${mods.length} mod${mods.length === 1 ? '' : 's'}. The OP-XY builds them the next time it starts.`,
+        );
+      } catch (error) {
+        setStatus(
+          `${sent}, but the selection is not saved${isXyfError(error, 'refused') ? `: ${error.message}` : '.'}`,
+        );
+        if (!isXyfError(error, 'refused')) throw error;
+      } finally {
+        await refresh();
+      }
+    },
+    'Sending mods to the OP-XY...',
+  );
+  const toggle = (folder: string, checked: boolean): void =>
+    setOn((now) => {
+      const next = new Set(now);
+      if (checked) next.add(folder);
+      else next.delete(folder);
+      return next;
+    });
+  return (
+    <>
+      {groups.map((g) => (
+        <div key={g.kind}>
+          <div className="pt-1.5 pb-1 text-xs tracking-widest text-primary uppercase">{g.label}</div>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-x-3.5 gap-y-1">
+            {g.rows.map((r) => (
+              <Choice key={r.folder} checked={on.has(r.folder)} onChange={(c) => toggle(r.folder, c)}>
+                <span data-mod={r.folder}>{r.name}</span>
+              </Choice>
+            ))}
+          </div>
+        </div>
+      ))}
+      <Choice checked={expanded} onChange={setExpanded}>
+        4 MiB mod memory
+      </Choice>
+      <div>
+        <Button variant="default" disabled={!inputs} onClick={() => install.mutate()}>
+          Send {chosen.length} and save
+        </Button>
+      </div>
+      {progress !== null && <Progress value={progress * 100} />}
+      <p className="text-muted-foreground" id="open-xy-result">
+        {inputs
+          ? status
+          : "This OP-XY's XY Forever cannot set mods over USB (it needs protocol 1.24): update it first."}
+      </p>
+    </>
   );
 }
 

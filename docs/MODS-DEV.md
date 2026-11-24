@@ -74,6 +74,7 @@ set (without `--yes` it is a dry run).
 
 The library needs the stock 1.2.1 firmware as an entry, with its `content.sha256`.
 Without it booting from the first row stops with "Failed: no stock OP-XY firmware in the library."
+The first start adds it; the first build writes its content set from the live content.
 `uv run xyf-host library-add ... --content DIR` adds both (DIR: the official package's
 `firmware/blackfin/content`).
 

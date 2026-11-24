@@ -413,6 +413,10 @@ class SaveModel(Base, unittest.TestCase):
             self.assertLessEqual(bar, 1000000)
             self.draw()
             self.keep(name + '.png')
+        lib.mods_reading(47 << 20, 125790852)  # #183: the base's content read, its own bar
+        self.assertEqual(lib.mods_progress(30000), 1000000 * (47 << 20) // 125790852)
+        self.draw()
+        self.keep('progress-reading-content.png')
         for name, title in (
             ('progress-safe-mode', b'Booting without mods'),
             ('progress-restore', b'Restoring Open-XY'),

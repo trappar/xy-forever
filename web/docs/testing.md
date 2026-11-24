@@ -21,9 +21,12 @@ drives the app in the system Chrome, headless, never a downloaded browser:
 - **One dev server per run.** `playwright.config.ts` starts Vite once (`webServer`, a free port passed to the
   workers); the specs share it, so a cold dependency cache is optimized once.
 - **Projects.** `app` (`e2e/app.e2e.ts`: the switch from Install to Manage, the Device page, Files, an update that restarts into the menu, the
-  offline bug report) against the simulator, Web Serial off in Chrome. `install` (`e2e/install.e2e.ts`: every
+  offline bug report; `e2e/open-xy.e2e.ts`: Open-XY's catalog, the kit and the vendored builder served by the test: a failed
+  download, a builder that cannot be loaded, and
+  with the published 0.0.7 kit from the private fixtures a newer kit's late entry, a transfer and the pinned kit) against the
+  simulator, Web Serial off in Chrome. `install` (`e2e/install.e2e.ts`: every
   refusal and guidance branch of the Install page against fake te-boot MIDI and a fake dev-menu MTP device,
-  `test/fake-devices.ts`; `e2e/install-sim.e2e.ts`: the install's end against the simulator, a stock OP-XY just
+  `test/fake-devices.ts`; `e2e/serial-reads.e2e.ts`: 3,000 file reads over the client's Web Serial transport; `e2e/install-sim.e2e.ts`: the install's end against the simulator, a stock OP-XY just
   after Track 5, through the client's fake Web Serial port, `clients/ts/test/fake-serial.ts`), Web Serial and WebUSB
   off. `bounds` (`e2e/hang-bound.e2e.ts`, only in `mise run web-e2e-bounds`: a check of the rig, so CI runs it when
   the rig's files change): a nested run of a planted hung page (`e2e/planted-hang.ts`) must fail, naming that test,

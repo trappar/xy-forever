@@ -2,9 +2,14 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { chromium } from '@playwright/test';
 import { staticPaths } from '../src/routing.ts';
+import type { Core } from '../src/kit/core.ts';
+import { PINNED_VERSION, pinnedKit } from '../src/kit/pinned.ts';
 
 const site = 'http://127.0.0.1:8788/';
 const browser = await chromium.launch({
@@ -101,6 +106,38 @@ try {
   } else {
     assert.equal((await page.request.get(site + 'canary/release.json')).status(), 404, 'No canary: a real 404');
   }
+  // #183: the Mods page's pinned Open-XY kit as the site serves it: refilled from Open-XY's repository, it passes the
+  // builder of its release (served here too) and finishes a machine with the stock catalog the builder checks.
+  const base = `${site}open-xy/${PINNED_VERSION}/`;
+  const get = async (url: string): Promise<Uint8Array> => {
+    const response = await page.request.get(url);
+    assert(response.ok(), `${url} must be served`);
+    return new Uint8Array(await response.body());
+  };
+  for (const name of ['LICENSE', 'NOTICES.txt', 'SOURCES.txt']) await get(base + name);
+  const kit = await pinnedKit(base, get);
+  const modules = await mkdtemp(join(tmpdir(), 'xyf-open-xy-'));
+  let machines = 0;
+  try {
+    for (const name of ['builder/core.mjs', 'sdk/browser/graphics.mjs', 'tooling/default_preset.json']) {
+      await mkdir(dirname(join(modules, name)), { recursive: true });
+      await writeFile(join(modules, name), await get(base + name));
+    }
+    const core = (await import(pathToFileURL(join(modules, 'builder/core.mjs')).href)) as Core;
+    const opened = await core.openKit(kit);
+    const first = opened.machines[0]!.id;
+    const files = await core.buildAssets(
+      opened,
+      [first],
+      core.decode64(opened.stockCatalog),
+      core.assignNumbers(opened, [first], null),
+    );
+    assert(files['content/op1_factory.json'], 'The pinned kit finishes a machine');
+    machines = opened.machines.length;
+  } finally {
+    await rm(modules, { recursive: true, force: true });
+  }
+  said += `, the pinned Open-XY ${PINNED_VERSION} kit (${machines} machines)`;
   console.log(`Cloudflare Pages smoke passed for release ${pin.version} (${pin.image}) and ${said}.`);
 } finally {
   await browser.close();

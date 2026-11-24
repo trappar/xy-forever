@@ -463,6 +463,7 @@ void converge_begin(uint32_t why) { // never the page: the list, its toggles and
     r.save = m::save_on;
     r.save_stage = 0;
     r.cancel = 0;
+    r.reading = 0;
     r.title = why == why_safe     ? "Booting without mods" :
               why == why_restore  ? "Restoring Open-XY" :
               why == why_power_on ? "Checking the saved setup" :

@@ -219,6 +219,26 @@ async function handshake(open: Opener, options: ConnectOptions): Promise<[Link, 
   );
 }
 
+/**
+ * Read-only commands sent once more when their reply does not come within RESEND_MS (#306): on the Web Serial path
+ * about one reply in 250-300 lost its tail before the page read it (the device sent it whole), and waiting the full
+ * timeout for it stalled a package push. A second request of the same kind gets the same answer; the first one's late
+ * reply, if any, has the old seq and is dropped. Nothing that changes the device is ever sent twice this way.
+ */
+const RESENT: ReadonlySet<string> = new Set([
+  'diag.status',
+  'file.read',
+  'screen.read',
+  'file.list',
+  'job.status',
+  'package.list',
+  'state.get',
+  'storage.space',
+  'config.get',
+]);
+/** The first try's wait for a resent command: its replies take milliseconds (at most 36 ms seen on a device). */
+export const RESEND_MS = 3_000;
+
 /** Sends one command after the cmds check; resolves with its ok fields, or throws XyfError. */
 export async function invoke(
   client: Client,
@@ -241,10 +261,7 @@ export async function invoke(
   try {
     for (;;) {
       // #65 (trust.ts): sent again while the device asks
-      const reply = await client.link.request(command.type, payload, {
-        timeoutMs: options.timeoutMs ?? command.timeoutMs,
-        signal: options.signal,
-      });
+      const reply = await requestOnce(client.link, command, payload, options);
       try {
         decoded = codec.decodeReply(reply);
       } catch (error) {
@@ -262,6 +279,24 @@ export async function invoke(
   }
   if (!decoded.ok) throw statusError(command.name, decoded.status, decoded.fields);
   return decoded.fields;
+}
+
+/** One request; a read-only one sent once more when its first reply does not come in RESEND_MS (RESENT). */
+async function requestOnce(
+  link: Link,
+  command: v1.Command,
+  payload: Uint8Array,
+  options: CallOptions,
+): Promise<Uint8Array> {
+  const timeoutMs = options.timeoutMs ?? command.timeoutMs;
+  if (RESENT.has(command.name) && timeoutMs > RESEND_MS) {
+    try {
+      return await link.request(command.type, payload, { timeoutMs: RESEND_MS, signal: options.signal });
+    } catch (error) {
+      if (!isXyfError(error, 'timeout')) throw error;
+    }
+  }
+  return link.request(command.type, payload, { timeoutMs, signal: options.signal });
 }
 
 export class Client {

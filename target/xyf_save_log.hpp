@@ -17,6 +17,11 @@ static const uint32_t max_records = 20, max_line = 1024, max_text = max_records 
 enum Part : uint32_t {
     p_list = 0,       // the page's package list and saved toggles (before the build is asked for)
     p_check,          // the save's checks: base, the slot's stamp, the request
+    p_cset_list,      // #183 the base's content set: the state and the listing
+    p_cset_open,      // its files opened and closed
+    p_cset_read,      // waiting for A's reads (each half read while the one before is hashed)
+    p_cset_sha,       // hashing (and the list's lines)
+    p_cset_write,     // the compare, the window, the two files written and read back, the rename
     p_job_base,       // mod job: base list, info, edits (TimingPart order from here)
     p_job_packages,
     p_job_catalog,
@@ -44,9 +49,10 @@ enum Part : uint32_t {
     p_count
 };
 static const char* const part_names[p_count] = {
-    "list",  "check",      "base",   "packages", "catalog", "stock",  "patch1",       "link1",       "zero",
-    "link2", "set_module", "patch2", "crc",      "content", "write",  "verify",       "image_check", "finish",
-    "away",  "in",         "clean",  "close",    "stamp",   "switch", "switch_close", "config"};
+    "list",     "check",   "cset_list", "cset_open", "cset_read", "cset_sha",     "cset_write", "base",
+    "packages", "catalog", "stock",     "patch1",    "link1",     "zero",         "link2",      "set_module",
+    "patch2",   "crc",     "content",   "write",     "verify",    "image_check",  "finish",     "away",
+    "in",       "clean",   "close",     "stamp",     "switch",    "switch_close", "config"};
 enum Kind : uint32_t { k_none = 0, k_save, k_build, k_switch };
 struct Times {
     uint32_t kind, ok, mods, expanded, added, removed;

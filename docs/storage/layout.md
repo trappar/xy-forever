@@ -21,6 +21,7 @@ it is changed, except the boot partition (`os.ldr`) and the components an offici
   tmp/job-<id>/             mods.apply's output until the commit; -old: the replaced entry; swept (below)
   tmp/pkg-v1-<token>/       host package transaction; -old: detached old package, both swept
   tmp/adopt-<id>/           the stock entry's adoption until its rename into firmware/ (#178; jobs.md); swept by the next one
+  tmp/cset-<id>             a base's content.sha256 until its rename into firmware/<id>/ (#183; jobs.md); replaced by the next
   blobs/<sha256>            verified content referenced by firmware and imported sound packs (package-transactions.md)
   tmp/put-<size>-<tag>      an upload (file.write_*, MTP SendObject) until A renames it onto its name; swept (below)
   job.txt, job.old           version-1 content intent; menu/service replay or previous-entry undo (jobs.md)

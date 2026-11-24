@@ -2,7 +2,7 @@
 // check, typed errors, timeouts, stale replies, one request at a time, cancellation, events,
 // chunk limits. No simulator.
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { Client, XyfError, decodeScreen, parseSlot, SCREEN } from '../src/index.ts';
+import { Client, RESEND_MS, XyfError, decodeScreen, parseSlot, SCREEN } from '../src/index.ts';
 import type { Transport, TransportSink } from '../src/index.ts';
 import * as v1 from '../src/v1.ts';
 
@@ -280,6 +280,68 @@ describe('calls', () => {
     const sent = dev.sent.length;
     await expect(client.stage(new Uint8Array(5001))).rejects.toMatchObject({ code: 'too_large' });
     expect(dev.sent.length).toBe(sent);
+  });
+});
+
+describe('lost and split replies (#306)', () => {
+  /** A device whose replies reach the page in pieces of 1..max bytes (seeded), as a serial port's reads may cut them. */
+  class SplittingDevice extends FakeDevice {
+    private seed = 1;
+    max = 97;
+    /** Replies whose last `cut` bytes never arrive, by request number (from 1). */
+    cuts = new Map<number, number>();
+    private n = 0;
+    override push(bytes: Uint8Array): void {
+      const cut = this.cuts.get(++this.n) ?? 0;
+      const kept = bytes.subarray(0, bytes.length - cut);
+      for (let at = 0; at < kept.length;) {
+        this.seed = (this.seed * 1103515245 + 12345) & 0x7fffffff;
+        const take = 1 + (this.seed % this.max);
+        super.push(kept.slice(at, at + take));
+        at += take;
+      }
+    }
+  }
+  const data = (seq: number): Uint8Array => Uint8Array.from({ length: 1024 }, (_, i) => (i * 7 + seq) & 0xff);
+
+  test('replies cut at any byte, many to a read: every one whole, nothing dropped', async () => {
+    const dev = new SplittingDevice((f, d) => d.reply(f, 0, data(f.seq)));
+    const client = await connected(dev);
+    for (const max of [1, 2, 7, 64, 97, 1100]) {
+      dev.max = max;
+      for (let i = 0; i < 40; i++) {
+        const before = dev.sent.length;
+        const got = await client.readRange('/yaffs2/a', 0, 1024);
+        expect(got).toEqual(data(dev.sent[before]!.seq));
+      }
+    }
+    expect(client.link.dropped).toBe(0);
+  });
+
+  test('a read whose reply loses its tail is sent once more after RESEND_MS, and answers', async () => {
+    const dev = new SplittingDevice((f, d) => d.reply(f, 0, data(f.seq)));
+    const client = await connected(dev);
+    dev.cuts.set(2, 90); // hello was the first reply: the first read's reply loses its last 90 bytes
+    vi.useFakeTimers();
+    const run = await within(RESEND_MS + 10, client.readRange('/yaffs2/a', 0, 1024));
+    expect(run.settled).toBe(true);
+    expect(await run.outcome).toEqual(data(dev.sent.at(-1)!.seq));
+    expect(dev.types().filter((t) => t === v1.TYPE['file.read'])).toHaveLength(2);
+  });
+
+  test('a write whose reply is lost is never sent twice: it times out', async () => {
+    const dev = new SplittingDevice((f, d) => d.reply(f, 0));
+    const client = await connected(dev);
+    dev.cuts.set(2, 4);
+    vi.useFakeTimers();
+    const run = await within(
+      RESEND_MS + 10,
+      client.call('file.mkdir', { path: '/yaffs2/xy-forever/x', sha256: new Uint8Array(32) }, { timeoutMs: 20_000 }),
+    );
+    expect(run.settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(await run.outcome).toMatchObject({ code: 'timeout' });
+    expect(dev.types().filter((t) => t === v1.TYPE['file.mkdir'])).toHaveLength(1);
   });
 });
 
