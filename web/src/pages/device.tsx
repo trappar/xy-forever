@@ -18,7 +18,7 @@ import type { Channel, ReleasePin } from '../install/release.ts';
 import { CONTENT_STATE, CONTENT_STATE_OLD, configText, contentText, modeText } from '../model.ts';
 import { navigatePath } from '../routing.ts';
 import { UNINSTALL_PROTOCOL, uninstallAvailable, uninstallXyf } from '../uninstall.ts';
-import { updateAvailable, updateOffer, updateXyf } from '../update.ts';
+import { updateAvailable, updateXyf } from '../update.ts';
 
 async function loadDevice() {
   const c = device();
@@ -150,7 +150,6 @@ function UpdateCard({ info }: { info: DeviceInfo }) {
   }, [update.isPending]);
   if (!stable || !target) return null;
   // what to offer: the chosen channel's image against the running one (info, re-read after an update)
-  const offer = updateOffer(info, target, stable);
   const allowed = updateAvailable(info, target, stable);
   if (!canary && !allowed && !progress) return null;
   const choose = (next: Channel): void => {
@@ -171,9 +170,7 @@ function UpdateCard({ info }: { info: DeviceInfo }) {
         <p data-testid="update-none" className="text-muted-foreground">
           {info.image === target.image
             ? `Your OP-XY runs ${releaseName(target)}.`
-            : offer === 'switch'
-              ? `Switching your OP-XY to ${channel === 'canary' ? 'Canary' : 'Stable'} is not available yet.`
-              : `${releaseName(target)} is not an update for your OP-XY.`}
+            : `${releaseName(target)} is not an update for your OP-XY.`}
         </p>
       )}
       {allowed && (
