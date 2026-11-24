@@ -1,6 +1,7 @@
 // Smoke test a production build served by `wrangler pages dev web/dist`.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
 import { staticPaths } from '../src/routing.ts';
@@ -65,9 +66,29 @@ try {
   ]);
   assert.equal(file.suggestedFilename(), 'os.ldr');
   const bytes = await readFile(await file.path());
+  const digest = (data: Buffer): string => createHash('sha256').update(data).digest('hex');
   assert.equal(bytes.length, pin.bytes);
-  assert.equal(createHash('sha256').update(bytes).digest('hex'), pin.sha256);
-  console.log(`Cloudflare Pages smoke passed for release ${pin.version} (${pin.image}).`);
+  assert.equal(digest(bytes), pin.sha256);
+  if (existsSync(new URL('../dist/release/release.json', import.meta.url)))
+    assert.deepEqual(await (await page.request.get(site + 'release/release.json')).json(), pin);
+
+  // The canary (scripts/web_canary.py stage): when this deploy has one, the site serves it and Install offers it.
+  const staged = new URL('../dist/canary/release.json', import.meta.url);
+  let said = 'no canary';
+  if (existsSync(staged)) {
+    const canary = JSON.parse(await readFile(staged, 'utf8'));
+    assert.deepEqual(await (await page.request.get(site + 'canary/release.json')).json(), canary);
+    const image = await (await page.request.get(site + 'canary/os.ldr')).body();
+    assert.equal(image.length, canary.bytes);
+    assert.equal(digest(image), canary.sha256);
+    await page.evaluate(() => sessionStorage.clear());
+    await page.goto(site + 'install/boot/');
+    await page.getByRole('radio', { name: /Canary/ }).waitFor();
+    said = `canary ${canary.commit.slice(0, 7)} (${canary.image})`;
+  } else {
+    assert.equal((await page.request.get(site + 'canary/release.json')).status(), 404, 'No canary: a real 404');
+  }
+  console.log(`Cloudflare Pages smoke passed for release ${pin.version} (${pin.image}) and ${said}.`);
 } finally {
   await browser.close();
 }

@@ -12,6 +12,16 @@ import type { Browser, Page, Locator } from '@playwright/test';
 const IMAGE = Buffer.from(Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 + 7) & 0xff));
 const SHA = createHash('sha256').update(IMAGE).digest('hex');
 const PIN = { schema: 1, version: '0.1.0', image: SHA.slice(0, 8), sha256: SHA, bytes: IMAGE.length };
+const CANARY_IMAGE = Buffer.from(IMAGE.map((b) => b ^ 0x5a));
+const CANARY_SHA = createHash('sha256').update(CANARY_IMAGE).digest('hex');
+const CANARY = {
+  ...PIN,
+  image: CANARY_SHA.slice(0, 8),
+  sha256: CANARY_SHA,
+  channel: 'canary',
+  commit: '0123456789abcdef0123456789abcdef01234567',
+  date: '2026-11-23T10:00:00Z',
+};
 const OK_121 = 'mode:bootloader;product:OP-XY;serial:X1;bl_version:1000.0.20+0;os_version:1.2.1+0';
 const STOCK = 'upgrade/firmware/blackfin/bin/os.ldr';
 const STOCK_SIZE = 'size:2373336'; // a stand-in of the stock 1.2.1 size: the page never reads it
@@ -24,8 +34,14 @@ test.beforeAll(({ browser: projectBrowser }) => {
   browser = projectBrowser;
 });
 
-/** The app with fake devices: te-boot answering with fields, an MTP device holding files (path -> test URL, size:N or text). */
-async function open(fields: string, files: Record<string, string> = {}, free = 64 * 1024 * 1024): Promise<Page> {
+/** The app with fake devices: te-boot answering with fields, an MTP device holding files (path -> test URL, size:N or
+ * text); with canary, the site also offers the test canary (canary/release.json and canary/os.ldr). */
+async function open(
+  fields: string,
+  files: Record<string, string> = {},
+  free = 64 * 1024 * 1024,
+  canary = false,
+): Promise<Page> {
   const base = process.env['XYF_E2E_URL']!; // the run's dev server (playwright.config.ts webServer)
   const page = await browser!.newPage({ acceptDownloads: true });
   await page.route('**/src/install/release.json*', (route) =>
@@ -34,6 +50,12 @@ async function open(fields: string, files: Record<string, string> = {}, free = 6
   await page.route('**/release/os.ldr', (route) =>
     route.fulfill({ contentType: 'application/octet-stream', body: IMAGE }),
   );
+  if (canary) {
+    await page.route('**/canary/release.json', (route) => route.fulfill({ json: CANARY }));
+    await page.route('**/canary/os.ldr', (route) =>
+      route.fulfill({ contentType: 'application/octet-stream', body: CANARY_IMAGE }),
+    );
+  }
   await page.goto(`${base}connect/`);
   await page.addScriptTag({
     type: 'module',
@@ -244,6 +266,10 @@ test('asks the owner to find the stock file in Explorer, then hands over our os.
   await page.close();
 
   page = await open(OK_121);
+  expect(await page.getByTestId('channel').count()).toBe(0); // no canary on this site: Stable only
+  expect(await page.getByTestId('release-identity').textContent()).toBe(
+    `Stable: XY Forever 0.1.0, image ${PIN.image}.`,
+  );
   await toTransfer(page, 'Windows');
   expect(await stage(page)).toBe('transfer');
   const download = page.waitForEvent('download');
@@ -276,5 +302,26 @@ test('keeps the stage and the chosen computer over a reload, and goes back and f
   await page.goForward();
   await atStage(page, 'transfer');
   expect(await page.getByRole('button', { name: 'Find my OP–XY' }).count()).toBe(0); // no Web Serial here: nothing to look for
+  await page.close();
+});
+
+test('installs the canary when chosen, and keeps it over a reload and a newer deploy', async () => {
+  const page = await open(OK_121, {}, undefined, true);
+  const identity = page.getByTestId('release-identity');
+  await expect(identity).toHaveText(`Stable: XY Forever 0.1.0, image ${PIN.image}.`); // Stable by default
+  await page.getByRole('radio', { name: /Canary/ }).check();
+  await expect(identity).toHaveText(
+    `Canary (experimental): XY Forever 0.1.0, image ${CANARY.image}, built 2026-11-23 from commit 0123456.`,
+  );
+  await toTransfer(page, 'Windows');
+  await atStage(page, 'transfer');
+  await page.unroute('**/canary/release.json'); // a deploy without that canary: the install keeps its image
+  await page.route('**/canary/release.json', (route) => route.fulfill({ json: { ...CANARY, commit: 'f'.repeat(40) } }));
+  await page.reload();
+  await atStage(page, 'transfer');
+  await expect(identity).toContainText(`image ${CANARY.image}`);
+  const download = page.waitForEvent('download');
+  await press(page, 'Download os.ldr');
+  expect(readFileSync((await (await download).path())!).equals(CANARY_IMAGE)).toBe(true);
   await page.close();
 });

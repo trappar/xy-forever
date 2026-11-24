@@ -21,7 +21,7 @@ import {
 import type { Verdict } from '../src/install/checks.ts';
 import { ADOPT_DETAIL, ENTRY, installState, otherImage } from '../src/install/finish.ts';
 import { InstallStop, TeBoot, copyOverMtp } from '../src/install/installer.ts';
-import { fetchRelease, pinned } from '../src/install/release.ts';
+import { fetchCanary, fetchRelease, pinned, releaseUrl, validPin } from '../src/install/release.ts';
 import type { ReleasePin } from '../src/install/release.ts';
 import { INSTALL_STAGES } from '../src/install/stages.ts';
 import { staticPaths } from '../src/routing.ts';
@@ -114,6 +114,24 @@ describe('the release pin', () => {
   it('has no release without a valid pin, and refuses a newer pin format', () => {
     expect(pinned({ schema: 1, version: '', image: '', sha256: '', bytes: 0 })).toBeNull();
     expect(() => pinned({ schema: 2, version: '', image: '', sha256: '', bytes: 0 })).toThrow(/newer/);
+  });
+  it("reads the site's canary pin, and none when it is missing or malformed", async () => {
+    const stable = await pinOf(IMAGE);
+    const canary = { ...stable, channel: 'canary', commit: 'c'.repeat(40), date: '2026-11-23T10:00:00Z' } as const;
+    const answer =
+      (body: unknown, status = 200) =>
+      async (url: string) => {
+        expect(url).toBe('/canary/release.json');
+        return new Response(JSON.stringify(body), { status });
+      };
+    expect(await fetchCanary(answer(canary))).toEqual(canary);
+    expect(await fetchCanary(answer(canary, 404))).toBeNull();
+    expect(await fetchCanary(answer(stable))).toBeNull(); // not a canary
+    expect(await fetchCanary(answer({ ...canary, commit: 'c1' }))).toBeNull();
+    expect(await fetchCanary(answer({ ...canary, image: 'ffffffff' }))).toBeNull();
+    expect(await fetchCanary(async () => new Response('<!doctype html>'))).toBeNull(); // a dev server's fallback
+    expect([releaseUrl(stable), releaseUrl(canary)]).toEqual(['/release/os.ldr', '/canary/os.ldr']);
+    expect(validPin({ ...canary, date: 'today' })).toBeNull();
   });
   it('the committed pin is well formed', () => {
     const pin = JSON.parse(readFileSync(new URL('../src/install/release.json', import.meta.url), 'utf8')) as ReleasePin;

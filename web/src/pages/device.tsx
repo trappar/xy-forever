@@ -1,21 +1,24 @@
 // Device: build, what is running, what boots next, the saved mods, the content state; Update when a newer pinned
-// release exists, and Uninstall (restores stock OS 1.2.1, then the app goes back to Connect).
-import { useState } from 'react';
+// release exists, or the site's canary (#301: the owner's channel choice, kept in this browser), and Uninstall
+// (restores stock OS 1.2.1, then the app goes back to Connect).
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { DeviceInfo } from 'xy-forever-client';
 import { Button } from '@/components/ui/button.tsx';
 import { Card, CardTitle } from '@/components/ui/card.tsx';
 import { PageHeader } from '@/components/page-header.tsx';
+import { ChannelChoice, ReleaseIdentity, useCanary } from '@/components/channel-choice.tsx';
 import { confirmAction } from '../ask.tsx';
 import { bugReport } from '../bug-report.ts';
 import { useConnection } from '../connection.ts';
 import { device, queryClient, readText, savedConfig, useAction } from '../device.ts';
-import { pinned } from '../install/release.ts';
+import { channelOf, pinned, releaseName, validPin } from '../install/release.ts';
+import type { Channel, ReleasePin } from '../install/release.ts';
 import { CONTENT_STATE, CONTENT_STATE_OLD, configText, contentText, modeText } from '../model.ts';
 import { navigatePath } from '../routing.ts';
 import { UNINSTALL_PROTOCOL, uninstallAvailable, uninstallXyf } from '../uninstall.ts';
-import { updateAvailable, updateXyf } from '../update.ts';
+import { updateAvailable, updateOffer, updateXyf } from '../update.ts';
 
 async function loadDevice() {
   const c = device();
@@ -92,31 +95,91 @@ const Fact = ({ name, fact, children }: { name: string; fact?: string; children:
   </>
 );
 
+const CHANNEL = 'xyf.channel',
+  PENDING = 'xyf.update';
+/** sessionStorage and localStorage may be unavailable (private mode): the choice then lasts this page only. */
+function stored(storage: () => Storage, key: string, value?: string | null): string | null {
+  try {
+    if (value === null) storage().removeItem(key);
+    else if (value !== undefined) storage().setItem(key, value);
+    return storage().getItem(key);
+  } catch {
+    return value ?? null;
+  }
+}
+
+/** An update started in this tab whose restart the page has not confirmed yet (a reload mid-update). */
+function pendingUpdate(): ReleasePin | null {
+  try {
+    return validPin(JSON.parse(stored(() => sessionStorage, PENDING) ?? 'null'));
+  } catch {
+    return null;
+  }
+}
+
 function UpdateCard({ info }: { info: DeviceInfo }) {
-  const release = pinned();
-  const [progress, setProgress] = useState('');
-  const update = useAction('update_xy_forever', async () => {
+  const stable = pinned();
+  const canary = useCanary();
+  const [channel, setChannel] = useState<Channel>(() =>
+    stored(() => localStorage, CHANNEL) === 'canary' ? 'canary' : 'stable',
+  );
+  const [progress, setProgress] = useState(() => {
+    // reloaded mid-update: the OP-XY's image now says whether it took the chosen one
+    const pending = pendingUpdate();
+    if (!pending) return '';
+    return info.image === pending.image
+      ? `${releaseName(pending)} is running in the menu.`
+      : `The update to ${releaseName(pending)} (image ${pending.image}) did not finish: your OP-XY runs image ${info.image ?? 'unknown'}.`;
+  });
+  const target = channel === 'canary' && canary ? canary : stable;
+  const update = useAction('update_xy_forever', async (release: ReleasePin) => {
+    stored(() => sessionStorage, PENDING, JSON.stringify(release)); // kept fixed through a reload
     try {
-      bugReport.updateStatus(await updateXyf(device(), release!, setProgress));
+      bugReport.updateStatus(await updateXyf(device(), release, stable, setProgress));
     } catch (error) {
       setProgress('');
       throw error;
+    } finally {
+      stored(() => sessionStorage, PENDING, null);
     }
     queryClient.setQueryData<DeviceData>(
       ['device'],
-      (d) => d && { ...d, info: { ...d.info, version: release!.version, image: release!.image } },
+      (d) => d && { ...d, info: { ...d.info, version: release.version, image: release.image } },
     );
-    setProgress(`XY Forever ${release!.version} is running in the menu.`);
+    setProgress(`${releaseName(release)} is running in the menu.`);
   });
-  if (!release || (!updateAvailable(info, release) && !update.isSuccess)) return null;
+  useEffect(() => {
+    if (!update.isPending) stored(() => sessionStorage, PENDING, null); // confirmed above
+  }, [update.isPending]);
+  if (!stable || !target) return null;
+  const offer = updateOffer(info, target, stable);
+  const allowed = updateAvailable(info, target, stable);
+  if (!canary && !allowed && !update.isSuccess && !progress) return null;
+  const choose = (next: Channel): void => {
+    setChannel(next);
+    stored(() => localStorage, CHANNEL, next);
+  };
   return (
     <Card>
-      <CardTitle>XY Forever {release.version} is available</CardTitle>
-      {release.notes && <p>{release.notes}</p>}
-      {!update.isSuccess && (
+      <CardTitle>{allowed ? `${releaseName(target)} is available` : 'XY Forever updates'}</CardTitle>
+      {canary && (
+        <ChannelChoice stable={stable} canary={canary} value={channel} onChange={choose} disabled={update.isPending} />
+      )}
+      {allowed && <ReleaseIdentity release={target} />}
+      {allowed && target.notes && <p>{target.notes}</p>}
+      {!allowed && !update.isPending && !update.isSuccess && (
+        <p data-testid="update-none" className="text-muted-foreground">
+          {info.image === target.image
+            ? `Your OP-XY runs ${releaseName(target)}.`
+            : offer === 'switch'
+              ? `Switching your OP-XY to ${channel === 'canary' ? 'Canary' : 'Stable'} is not available yet.`
+              : `${releaseName(target)} is not an update for your OP-XY.`}
+        </p>
+      )}
+      {allowed && !update.isSuccess && (
         <div>
-          <Button variant="default" disabled={update.isPending} onClick={() => update.mutate()}>
-            Update to {release.version}
+          <Button variant="default" disabled={update.isPending} onClick={() => update.mutate(target)}>
+            Update to {channelOf(target) === 'canary' ? releaseName(target) : target.version}
           </Button>
         </div>
       )}

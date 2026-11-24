@@ -14,7 +14,9 @@
 // remembered port as XY Forever's (docs/hardware/usb-identity.md): in the stock recovery menu it never answers as XY
 // Forever, so the look finds nothing until XY Forever runs. Once its stock entry is there and the default names a
 // library entry (the stock one, or one with mods) it hands the owner to the app's Mods page; while it sets up, or when
-// it refuses, the page shows that.
+// it refuses, the page shows that. Channel (#301): at the first stage the owner may choose the site's canary over
+// the stable release; the choice (its pin) is kept with the others and fixed until the flow starts over at that stage,
+// so a reload or a newer deploy never changes the image mid-install (a changed one is refused by its SHA-256).
 import type { Client } from 'xy-forever-client';
 import { create } from 'zustand';
 import { STOCK_WRONG } from './checks.ts';
@@ -22,8 +24,8 @@ import type { Computer, Verdict } from './checks.ts';
 import { installState, otherImage } from './finish.ts';
 import { InstallStop, TeBoot, copyOverMtp } from './installer.ts';
 import type { MidiAccess } from './installer.ts';
-import { fetchRelease, pinned } from './release.ts';
-import type { ReleasePin } from './release.ts';
+import { fetchCanary, fetchRelease, pinned, validPin } from './release.ts';
+import type { Channel, ReleasePin } from './release.ts';
 import { downloadBlob } from '../lib/download.ts';
 import { backDepth, navigatePath as navigate } from '../routing.ts';
 import { INSTALL_STAGES } from './stages.ts';
@@ -53,7 +55,9 @@ export interface InstallDeps {
   readonly find?: () => Promise<Lease | null>;
   /** Calls back when a serial port appears (Web Serial's connect event). */
   readonly onPort?: (listener: () => void) => void;
+  /** The stable release (default: the pin), and the site's canary, if any (default: fetchCanary). */
   readonly release?: ReleasePin | null;
+  readonly canary?: () => Promise<ReleasePin | null>;
 }
 
 const STORE = 'xyf.install';
@@ -97,12 +101,15 @@ export interface View {
   readonly log: readonly string[];
   /** A Mac with WebUSB: the page copies os.ldr itself. */
   readonly sendsDirectly: boolean;
+  /** The release this install copies (Stable unless the owner chose Canary), and the canary on offer. */
+  readonly release: ReleasePin | null;
+  readonly canary: ReleasePin | null;
 }
 
 export type InstallFlow = ReturnType<typeof installFlow>;
 
 export function installFlow(deps: InstallDeps) {
-  const release = deps.release === undefined ? pinned() : deps.release;
+  const stable = deps.release === undefined ? pinned() : deps.release;
   /** The page is on screen: it looks for XY Forever only then. */
   let shown = false;
   let stage: InstallStage = 'boot';
@@ -117,6 +124,9 @@ export function installFlow(deps: InstallDeps) {
   let computer: Computer | null =
     kept['computer'] === 'mac' || kept['computer'] === 'windows' ? kept['computer'] : null;
   let stop = (kept['stop'] ?? null) as Verdict | null;
+  /** The release chosen at the first stage; a kept one stays (a reload), Stable without one. */
+  let release: ReleasePin | null = (stable && validPin(kept['release'])) || stable;
+  let canary: ReleasePin | null = null;
   let busy = false,
     delivered = kept['delivered'] === true,
     formatting = kept['formatting'] === true;
@@ -145,6 +155,8 @@ export function installFlow(deps: InstallDeps) {
       fraction,
       log: [...log],
       sendsDirectly: sendsDirectly(),
+      release,
+      canary,
     };
   }
   const view = create<View>(() => snapshot());
@@ -169,7 +181,7 @@ export function installFlow(deps: InstallDeps) {
   }
   function save(): void {
     try {
-      sessionStorage.setItem(STORE, JSON.stringify({ computer, delivered, formatting, stop }));
+      sessionStorage.setItem(STORE, JSON.stringify({ computer, delivered, formatting, stop, release }));
     } catch {
       /* private mode: kept in this page only */
     }
@@ -343,6 +355,29 @@ export function installFlow(deps: InstallDeps) {
 
   const ourImage = async (): Promise<Uint8Array> => (image ??= await fetchRelease(release!));
 
+  /** The channel, at the first stage only: from there on the chosen release is fixed. */
+  function choose(channel: Channel): void {
+    if (busy || stage !== 'boot' || !stable) return;
+    const next = channel === 'canary' && canary ? canary : stable;
+    if (next.sha256 === release?.sha256) return;
+    release = next;
+    image = null;
+    save();
+    render();
+  }
+  if (stable) {
+    void (deps.canary ?? fetchCanary)().then((found) => {
+      canary = found;
+      // at the first stage, a kept release the site no longer offers goes back to Stable
+      if (stage === 'boot' && release && ![stable.sha256, found?.sha256].includes(release.sha256)) {
+        release = stable;
+        image = null;
+        save();
+      }
+      render();
+    });
+  }
+
   function click(a: Action): void {
     if (busy) return;
     switch (a.id) {
@@ -433,6 +468,7 @@ export function installFlow(deps: InstallDeps) {
     fraction = null;
     log = [];
     image = null;
+    release = stable;
     teBoot?.close();
     save();
     render();
@@ -440,8 +476,9 @@ export function installFlow(deps: InstallDeps) {
 
   return {
     deps,
-    release,
+    stable,
     view,
+    choose,
     show,
     reset,
     click,
