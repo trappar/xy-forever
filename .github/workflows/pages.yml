@@ -1,11 +1,39 @@
+# The live site follows main (#312): a push to main that changes what the site build or this deploy reads (the paths
+# below) deploys it, and the firmware workflow's Canary job starts a run on main after it publishes a canary. Pull
+# requests never deploy. The newest run cancels one in progress: it builds a newer main and stages the newest
+# eligible canary, so it deploys everything the cancelled run would have.
 name: Deploy web app to Cloudflare Pages
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'clients/ts/**'
+      - 'LICENSE'
+      - 'third_party/tiny-json/LICENSE'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'mise.toml'
+      - 'mise.lock'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'scripts/web_release.py'
+      - 'scripts/web_canary.py'
+      - 'xy_forever/__init__.py'
+      - 'xy_forever/paths.py'
+      - 'xy_forever/release.py'
+      - '.github/workflows/pages.yml'
+      - '.github/actions/**'
+      - '!web/test/**'
+      - '!web/e2e/**'
+      - '!**/*.md'
   workflow_dispatch:
 
 concurrency:
-  group: cloudflare-pages
-  cancel-in-progress: false
+  group: cloudflare-pages-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
