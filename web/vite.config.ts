@@ -38,7 +38,13 @@ const staticSite: Plugin = {
 
 export default defineConfig({
   appType: 'spa',
-  server: { host: '127.0.0.1' },
+  server: {
+    host: '127.0.0.1',
+    proxy: {
+      // Give local browsers a same-origin URL for the live kit.
+      '^/kit\\.json\\.gz(?:\\?|$)': { target: 'https://open-xy.com', changeOrigin: true },
+    },
+  },
   resolve: { alias },
   plugins: [react(), tailwindcss(), xyfRelay(), staticSite],
 });
