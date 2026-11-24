@@ -18,7 +18,7 @@ function releaseCode(version: string | null): number | null {
  * Channel switches (Stable to Canary, or Canary back to Stable's same version) are offered only once they are
  * qualified on an OP-XY (#301): until then, in development builds only.
  */
-export const SWITCHES = import.meta.env.DEV;
+const SWITCHES = import.meta.env.DEV;
 
 /**
  * Whether the connected OP-XY can move to target: 'update' (a newer version, or a newer canary of the same version),

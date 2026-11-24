@@ -20,7 +20,7 @@ export function useCanary(): ReleasePin | null {
 }
 
 /** A release's build identity: what the page will copy or install. */
-export function releaseFacts(release: ReleasePin): string {
+function releaseFacts(release: ReleasePin): string {
   const facts = `XY Forever ${release.version}, image ${release.image}`;
   return channelOf(release) === 'canary'
     ? `${facts}, built ${release.date!.slice(0, 10)} from commit ${release.commit!.slice(0, 7)}`
