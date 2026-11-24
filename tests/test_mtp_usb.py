@@ -75,14 +75,14 @@ class MtpUsbBuildGateTest(unittest.TestCase):
     def test_no_calls_no_gate(self):
         self.assertEqual(self.B.check_mtp_usb(None, 'xyf-product', {'88a35044'}), set())
 
-    def test_refused_in_product_and_unnamed_modes(self):
-        for mode in ('xyf-product', 'xyf-stage2', 'xyf-stage2-menu', 'xyf-mtp', None):
+    def test_refused_outside_the_mtp_usb_modes(self):  # 188: the product is one of them
+        for mode in ('xyf-stage2', 'xyf-stage2-menu', 'xyf-mtp', None):
             with self.assertRaises(SystemExit if self._exits() else Exception):
                 self.B.check_mtp_usb(None, mode, {'88a092ee'})
 
-    def test_kick_calls_refused_in_every_mode_but_the_test_build(self):
-        # The kicks: MTP only, first in a test build (xyf-mtp-usb).
-        for mode in [m for m in self.B.MODES if m != self.B.MTP_USB_MODE] + ['xyf-mtp']:
+    def test_kick_calls_refused_outside_the_mtp_usb_modes(self):
+        # The kicks: MTP only, in the MTP USB modes (the test build, and since 188 the product).
+        for mode in [m for m in self.B.MODES if m not in self.B.MTP_USB_MODES] + ['xyf-mtp']:
             for call in sorted(self.B.MTP_USB_KICK_CALLS):
                 with self.assertRaises(SystemExit if self._exits() else Exception, msg=(mode, call)):
                     self.B.check_mtp_usb(None, mode, {call})

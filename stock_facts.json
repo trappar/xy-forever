@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "provenance": "Facts of the stock OP-XY files (the pins in stock.json), never their bytes: size, SHA-256 and the CRC-32 of each bootloader helper the cold descriptor names (xy_forever/outer.py HELPERS); xy_forever/stock_facts.py recomputes them when the stock files are present",
+  "bootloader": {
+    "1.2.1": {
+      "sha256": "139459f2a8b7bbe5cd9432d4870a758f4e9e9d7e875ebb10701144b73f40f75d",
+      "bytes": 393216,
+      "helpers": [
+        {"address": "0x88a346a6", "length": "0x176", "crc32": "0xeefe03ba"},
+        {"address": "0x8803d000", "length": "0x2a", "crc32": "0x481c7547"},
+        {"address": "0x0803e0c0", "length": "0x82", "crc32": "0x94fcb623"}
+      ]
+    }
+  },
+  "os": {
+    "1.2.1": {
+      "sha256": "60358afdaa9b58ed40411602f6d5d4e1e3e02553ff2da7e25038e71dd002b52f",
+      "bytes": 2373336
+    }
+  }
+}

@@ -51,6 +51,7 @@ class Clean(unittest.TestCase):
             (tree / d).mkdir(parents=True)
         (tree / 'target/a.cpp').write_text(text)
         (tree / 'toolchains.json').write_text('{}')
+        (tree / 'stock_facts.json').write_text('{}')
         return tree
 
     def verified_build(self, name, tree, age):

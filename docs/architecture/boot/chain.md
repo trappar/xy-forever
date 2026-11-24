@@ -18,7 +18,7 @@ last-resort recovery.
 
 The product's outer `os.ldr` (built by `xyf_build.py`, packed by `xy_forever/outer.py`) has two load records: a ROM trampoline at `0x11a00000` and the
 cold module at `0x8ab00000` (code window to `0x8ab80000`, 16 KiB stack to `0x8ab84000`; see "Memory map" below). A cold descriptor carries the CRCs of the stock
-helpers the module calls (payload size 0). The other, offline modes still embed the stock OS payload at `0x8b000000` as a third record (`NO_EMBEDDED_MODES`).
+helpers the module calls (payload size 0; from `stock_facts.json`). The other, offline modes still embed the stock OS payload at `0x8b000000` as a third record (`NO_EMBEDDED_MODES`).
 
 ## Processors
 

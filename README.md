@@ -26,9 +26,10 @@ mise run test tests/test_setup.py tests/test_protocol_spec.py
 
 Full development setup needs no OP-XY, about six commands: `xcode-select --install`,
 `brew install mise libusb`, clone and `mise trust && mise install`, `mise run setup`, `gh auth login`
-([ONBOARDING.md](ONBOARDING.md)). `mise tasks` lists the commands. Firmware builds and device work
+([ONBOARDING.md](ONBOARDING.md)). `mise tasks` lists the commands. Device work and the offline build modes
 need the stock files from your own OP-XY on stock 1.2.1
 ([first device install](docs/operating/first-install.md)); the built-in updater cannot downgrade a 1.2.5 device.
+The product firmware builds without them, from the facts in `stock_facts.json`.
 The GitHub issues and milestones track work toward the first firmware release.
 
 ## Contributing with a coding agent
