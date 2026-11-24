@@ -1,7 +1,9 @@
 # The firmware build environment (#321): Open-XY's Blackfin toolchain built from its pinned source by its own
-# tools/gcc/build-linux.sh, plus the Python that runs xyf-build. One image per platform (linux/arm64, linux/amd64).
+# tools/gcc/build-linux.sh, plus the Python that runs xyf-build. Published for linux/amd64 and linux/arm64 by
+# .github/workflows/toolchain-image.yml; toolchains.json pins the image's digest and each platform's tool hashes, and
+# xy_forever/container.py runs every firmware build in it. A local build, to try a change:
 #
-#   docker buildx build --platform linux/arm64 -f docker/toolchain.Dockerfile -t xyf-toolchain:arm64 --load docker
+#   docker buildx build -f docker/toolchain.Dockerfile -t xyf-toolchain --load docker
 #
 # Upstream: etcetc000/open-xy at OPEN_XY (tools/gcc/build-linux.sh, linux.Dockerfile, patches; unchanged since
 # 0498de9469507b3f5d5b7a74871bf722e2a92525), the GCC/binutils fork at FORK (its release-sources.json). The base image
@@ -38,9 +40,13 @@ FROM ${DEBIAN}
 COPY --from=uv /uv /usr/local/bin/uv
 COPY --from=toolchain /opt/opxy-toolchain/out/blackfin /opt/opxy-toolchain/out/blackfin
 # mise.toml's Python, installed by uv (python-build-standalone); nothing is downloaded at run time but the wheels.
+# /opt/venv is the checkout's own venv (xy_forever/container.py mounts it) and /opt/uv-cache a named volume: open
+# to any user, as the build runs as the host's user on Linux.
 ENV UV_PYTHON_INSTALL_DIR=/opt/python
-RUN uv python install 3.15.2
+RUN uv python install 3.15.2 && mkdir -m 1777 /opt/venv /opt/uv-cache
 ENV UV_PYTHON_DOWNLOADS=never \
+    UV_CACHE_DIR=/opt/uv-cache \
+    HOME=/tmp \
     UV_PYTHON=3.15.2 \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_LINK_MODE=copy \
