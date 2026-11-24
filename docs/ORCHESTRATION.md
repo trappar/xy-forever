@@ -1,7 +1,11 @@
 # Orchestration
 
 The main agent, the **orchestrator**, works the GitHub issue queue one item at a time and keeps issues
-current. It delegates implementation when it can, or does the work itself. Read only what the task needs.
+current. With sub-agents, it never reads or edits source, tests or build scripts: it delegates every implementation
+and every question about how the code works (the developer's "why does X happen?" too) and relays the answer.
+It reads issues, PRs, CI logs, plan output and the status notes. Its jobs: issues, briefs, confirming check
+receipts (`mise run check --confirm`), pushing, device scripts, status notes, telling the developer what is
+ready. Only a session with no sub-agents at all works items itself, in sequence. Read only what the task needs.
 
 ## One item
 
@@ -12,11 +16,12 @@ current. It delegates implementation when it can, or does the work itself. Read 
    skip the check and device items.
 3. Resume interrupted work (its branch or PR), else take the first item under "Next" (milestone order, then
    issue number).
-4. Read `gh issue view <N>`. **Branch** from up-to-date `main` in its own worktree ([two agents](operating/two-agents.md)).
+4. Read `gh issue view <N>`. With sub-agents, a worker does the branch, commits and checks (4–6) from your brief.
+   **Branch** from up-to-date `main` in its own worktree ([two agents](operating/two-agents.md)).
 5. Work in small commits; after each change, `mise run test-changed` ([checks](operating/checks.md)).
 6. Once per PR, `mise run check`. Then **PR**: push, `gh pr create`, body "Closes #<N>".
-7. **CI green** (`gh pr checks <n> --watch`) is the merge check; fix failures in the branch. A check never
-   stands in for a device test.
+7. **CI green** (`gh pr checks <n> --watch`) is the merge check; fix failures in the branch (a worker's job, with
+   sub-agents). A check never stands in for a device test.
 8. Stop when a decision needs the developer, nothing is unblocked, or told to.
 
 Progress lives on GitHub (branch, PR). Comment on unfinished items so the next session can resume.
