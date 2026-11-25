@@ -80,9 +80,25 @@ __attribute__((used, noinline)) void crash_show() {
         if (result.presents != sent) return;
     }
 }
+// #314: while B's menu runs, dynamic branch prediction (SYSCFG.BPEN, bit 8) and interrupt self-nesting (SNEN, bit 2)
+// are off, and the stock start's value (0x306, 11a0009e) is back before the menu ends. With either on, B stopped for
+// good during the on-device content read once a host had connected, within seconds to minutes; with both off it
+// did not. The stock dispatcher (11a01570) has no workaround for anomaly 19000054 (prediction during self-nested
+// interrupts); why each alone still fails is not known (#314).
+volatile uint32_t syscfg_saved __attribute__((section(".data"))) = 0;
+void syscfg_set(uint32_t clear, uint32_t set) {
+    uint32_t m, v;
+    __asm__ volatile("CLI %0;" : "=d"(m) : : "memory");
+    __asm__ volatile("CSYNC; %0 = SYSCFG;" : "=d"(v) : : "memory");
+    if (clear) syscfg_saved = v & 0x104u;
+    v = (v & ~clear) | set;
+    __asm__ volatile("SYSCFG = %0; CSYNC;" : : "d"(v) : "memory");
+    __asm__ volatile("STI %0;" : : "d"(m) : "memory");
+}
 void crash_on() {
     where_screen = 1;                               // key_ui_where.ipp: a long wait may paint its code from here
     if (crash_armed) return;
+    syscfg_set(0x104u, 0);
     crash_record.taken = 0;
     crash_saved = word(evt3);                       // the stock code reads it too (88a33b98)
     *reinterpret_cast<volatile uint32_t*>(evt3) = reinterpret_cast<uint32_t>(&xyf_crash_vector);
@@ -95,6 +111,7 @@ void crash_off() {
     *reinterpret_cast<volatile uint32_t*>(evt3) = crash_saved;
     __asm__ volatile("CSYNC;" : : : "memory");
     crash_armed = 0;
+    syscfg_set(0, syscfg_saved);
 }
 #if defined(XYF_CRASH_TRIGGER)
 // Test build xyf-crash-trigger only (#102; xyf_build.py refuses it in any other mode): one chosen fault from
