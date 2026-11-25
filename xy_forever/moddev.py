@@ -274,8 +274,20 @@ def add_arguments(sub):
     d.add_argument('--verbose', action='store_true', help='also the connection, every package and the jobs')
 
 
+STOPPED = 130  # the exit code after Ctrl-C (128 + SIGINT)
+
+
 def command(args, connect, out=print):
-    """connect(timeout, log=, waiting=) -> (device, port, hello text), as xyf_host.connect."""
+    """connect(timeout, log=, waiting=) -> (device, port, hello text), as xyf_host.connect. Ctrl-C anywhere (the wait
+    for the power cycle included): one line, exit code 130."""
+    try:
+        return run(args, connect, out)
+    except KeyboardInterrupt:
+        out('mods dev: stopped')
+        return STOPPED
+
+
+def run(args, connect, out=print):
     try:
         gen, package = resolve(args.package_dir, args.only)
         MS.local_set(gen, [package])
@@ -305,9 +317,6 @@ def command(args, connect, out=print):
         return dev_once(dev, args, gen, package, out, detail)
     except StartupNotReady as error:
         out('mods dev: %s' % error)
-        return 1
-    except KeyboardInterrupt:
-        out('mods dev: stopped')
         return 1
     except MS.Refused as error:
         out('mods dev: %s' % error)

@@ -13,6 +13,7 @@ import struct
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import pytest
 import test_sim_content_switch as CS
@@ -212,6 +213,20 @@ class Host(unittest.TestCase):
         self.assertEqual(
             (ok, why), (False, 'the OP-XY stayed in its menu: Installing content failed: Continue again repairs it.')
         )
+
+    def test_ctrl_c_while_waiting_for_the_power_cycle(self):
+        """Ctrl-C in the wait for the OP-XY (or later): one plain line, exit code 130, no traceback."""
+        lines = []
+
+        def connect(timeout, log, waiting):
+            waiting()
+            raise KeyboardInterrupt
+
+        gen = Path(__file__).resolve().parent / 'nonexistent'
+        with mock.patch.object(moddev, 'resolve', lambda *_: (gen, 'alpha')), mock.patch.object(MS, 'local_set'):
+            args = SimpleNamespace(package_dir=gen, only=None, base=None, unverified=False, wait=1.0)
+            self.assertEqual(moddev.command(args, connect, out=lines.append), 130)
+        self.assertEqual(lines, [moddev.POWER, 'mods dev: stopped'])
 
     def test_resolve_takes_one_mod(self):
         with self.assertRaisesRegex(MS.Refused, 'neither'):
