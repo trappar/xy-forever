@@ -1,4 +1,4 @@
-// ESLint (`mise run lint`; the pre-commit hook): the TypeScript of web/ and clients/ts, scripts/*.mjs and xy_forever/*.mjs.
+// ESLint (`mise run lint`; the pre-commit hook): the TypeScript of web/ and clients/ts, and scripts/*.mjs.
 // typescript-eslint's recommended rules without type information (fast: no program to build); the type checks are
 // tsc's (`mise run web-test`). Prettier owns the layout. typescript-eslint loads TypeScript 6's API (the root
 // package.json aliases typescript to @typescript/typescript6): TypeScript 7 has no JS API yet.

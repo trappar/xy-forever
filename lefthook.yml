@@ -19,7 +19,6 @@ pre-commit:
         - "web/**/*"
         - "clients/ts/**/*"
         - "scripts/*.mjs"
-        - "xy_forever/*.mjs"
         - "eslint.config.mjs"
       stage_fixed: true
       run: >-

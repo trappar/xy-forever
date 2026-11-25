@@ -129,7 +129,7 @@ description = "Check the generated protocol files (--write: regenerate)"
 usage = 'flag "--write" help="regenerate instead of checking"'
 run = 'uv run scripts/protogen.py {% if usage.write %}{% else %}--check{% endif %}'
 
-# Lint and format: ruff and vulture (Python), ESLint, Prettier and knip (web/, clients/ts, scripts/*.mjs, xy_forever/*.mjs; knip: unused
+# Lint and format: ruff and vulture (Python), ESLint, Prettier and knip (web/, clients/ts, scripts/*.mjs; knip: unused
 # files, exports and dependencies), clang-format (first-party C++; .clang-format-ignore keeps third_party/ and generated headers out). Configs: pyproject.toml [tool.ruff],
 # eslint.config.mjs, .prettierrc.json, knip.json, .clang-format. The pre-commit hook (lefthook.yml) runs the same on staged files.
 [tasks.lint]
@@ -142,7 +142,7 @@ run = ["uv run --no-sync ruff check --quiet", "uv run --no-sync ruff format --ch
 
 [tasks."lint:ts"]
 hide = true
-run = ["pnpm exec eslint --max-warnings 0 .", "pnpm exec prettier --check --log-level warn web clients/ts 'scripts/*.mjs' 'xy_forever/*.mjs' eslint.config.mjs", "pnpm exec knip"]
+run = ["pnpm exec eslint --max-warnings 0 .", "pnpm exec prettier --check --log-level warn web clients/ts 'scripts/*.mjs' eslint.config.mjs", "pnpm exec knip"]
 
 [tasks."lint:cpp"]
 hide = true
@@ -153,7 +153,7 @@ description = "Format every file in place: ruff (and its import order), Prettier
 run = [
   "uv run --no-sync ruff check --select I --fix --quiet",
   "uv run --no-sync ruff format --quiet",
-  "pnpm exec prettier --write --log-level warn web clients/ts 'scripts/*.mjs' 'xy_forever/*.mjs' eslint.config.mjs",
+  "pnpm exec prettier --write --log-level warn web clients/ts 'scripts/*.mjs' eslint.config.mjs",
   "git ls-files -z -co --exclude-standard -- '*.cpp' '*.hpp' '*.ipp' '*.h' | xargs -0 uv run --no-sync clang-format -i",
 ]
 

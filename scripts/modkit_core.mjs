@@ -7,7 +7,7 @@
 // (module.bin, link.json: globals, services, extensions, numbers, sizes) and the patched os.ldr.
 // A job with expanded: true links, patches and builds assets with the 4 MiB option (core.memoryKit).
 // Host only: no device, no network.
-//   node xy_forever/modkit_core.mjs --core OPEN_XY/builder/core.mjs --jobs jobs.json --out results.json
+//   node scripts/modkit_core.mjs --core OPEN_XY/builder/core.mjs --jobs jobs.json --out results.json
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
