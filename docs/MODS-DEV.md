@@ -2,7 +2,7 @@
 
 For people who write Open-XY mods (machines and extensions) and want to try them on an OP-XY running XY Forever,
 with no XY Forever checkout: Open-XY builds the firmware, and `xyf` (the `xy-forever` package on PyPI) checks it, puts
-it on the OP-XY with its content and boots it once. An agent can run every step but the power cycle. What each output
+it on the OP-XY with its content and boots it once. Any other full firmware image works too. An agent can run every step but the power cycle. What each output
 line means and what to do on each failure: the package's page, [pypi/README.md](../pypi/README.md).
 
 ## What you need
@@ -35,16 +35,21 @@ xyf dev ../builds/mine-001
 ```
 
 Each build needs a new `--out` folder (or `--overwrite`). `xyf dev` takes that folder (it holds `candidate/os.ldr` and
-`candidate/content/`). It first checks the image is Open-XY's assembly of stock OS 1.2.1: the stock records, the
-edits of Open-XY's profile, one module record, nothing else. Then one line per step, each with its time:
+`candidate/content/`), any folder holding an `os.ldr` (and optionally `content/`), or an `os.ldr` itself. It first
+checks what XY Forever checks before it boots a library image (an OS image, its size, entry point and where it
+writes) and refuses early in plain words. It says which it is: `Open-XY build on 1.2.1` when the image is exactly
+Open-XY's build on the stock OS (compared with `xyf stock-os`'s copy and the checkout's profile), else `custom image`.
+Then one line per step, each with its time:
 
 - `Power the OP-XY off, then on holding PLAY (let go at the logo)`: only when the OP-XY is off or in its OS; then
   `[wait]` once its XY Forever menu answers.
-- `[push]`: the build as library entry `xyf-dev`, with its content; the official content is on the OP-XY already.
+- `[push]`: the image as library entry `xyf-dev`, with its content files over the official set (none: the official
+  content); the official content is on the OP-XY already.
 - `[boot]`: its content installed, the OS starts with it, once.
 - `total`. Exit code 0 only when the build booted; a refusal says why in plain words (exit 2).
 
-Nothing saved changes: the next plain power-on goes back to your own setup. `xyf dev --watch ../builds` repeats this
+Nothing saved changes: the next plain power-on goes back to your own setup. If an image does not start or crashes,
+power on holding PLAY: the XY Forever menu opens whatever was booted, ready for the next `xyf dev`. `xyf dev --watch ../builds` repeats this
 for each new build in that folder (or the folder itself, rebuilt), until Ctrl-C. From outside the checkout, add
 `--sdk OPEN_XY` (Open-XY's profile of OS 1.2.1 is read from it).
 
@@ -59,7 +64,7 @@ naming both protocols and where to update; one newer than it speaks asks for `pi
 
 - **Memory:** the mods share one region of fixed size (Open-XY's profile). `sdk.py build` refuses a build over it.
 - **Content:** a build may not replace official content files (the device refuses the switch); the catalog,
-  `op1_factory.json`, is the one it extends.
+  `op1_factory.json`, is the one it may replace.
 - **The push** sends the whole `os.ldr` (about 2.3 MB) each time a build changes it.
 - **A fresh OP-XY** with no mods ever saved has no content list of OS 1.2.1 yet: save mods once on its Mods page.
 
