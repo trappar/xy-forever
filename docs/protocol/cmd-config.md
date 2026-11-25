@@ -31,10 +31,10 @@ On an error: the status only. Errors: `bad_request`, `unsupported`, `busy`, `lin
 
 Save the mod selection, safe mode and Mod memory (built at the next boot). As if the Mods page's toggles were flipped on the device. The first request reads the
 package list fresh and answers `busy` until that is done: send the same request again. It then checks that the selection can be built (every name a package of
-the set, within Mod memory, a stock base in the library, which has its content set or can get it at the build: an official OS 1.2.1 entry, the content official, or an op1_factory.json the build can put back, #331)
-and answers `refused` with the reason, changing nothing; or `ok`, and the record is written at the next quiet moment as a flip on the page is (`config.get`
-`saving`). It never builds and never changes the default: the next boot converges to it (docs/storage/state.md). `busy` also while the device converges, a job
-runs, or a flip on the page is not written yet.
+the set, within Mod memory, a stock base in the library, which has its content set or can get it at the build: an official OS 1.2.1 entry, the content official,
+or an op1_factory.json the build can put back, #331) and answers `refused` with the reason, changing nothing; or `ok`, and the record is written at the next
+quiet moment as a flip on the page is (`config.get` `saving`). It never builds and never changes the default: the next boot converges to it
+(docs/storage/state.md). `busy` also while the device converges, a job runs, or a flip on the page is not written yet.
 
 | Request field (41 to 2088 bytes) | Type | Meaning |
 |---|---|---|
