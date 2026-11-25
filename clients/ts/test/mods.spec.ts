@@ -51,6 +51,7 @@ import {
   removePackage,
 } from '../src/node.ts';
 import { STORE_FILE, STORE_TEXT, storedName } from '../src/modstore.ts';
+import { COMMANDS } from '../src/v1.ts';
 import type { ApplyRequest, JobStatus, PackageResult } from '../src/node.ts';
 import { REPO, control, makeModBase, makeModSet, simOpener, venvBin } from './simulators.ts';
 import { countSim } from './cpu-setup.ts';
@@ -224,6 +225,45 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
       sent: 1,
       files: [...packageFiles().keys()].filter((path) => path.startsWith('alpha/')).length,
     });
+    assertStored();
+  });
+
+  test('#327: a staged file damaged after its write stops the publish, hashed on the device or read back', async () => {
+    rmSync(stored, { recursive: true, force: true });
+    for (const hashes of [true, false])
+      for (const how of ['flip', 'truncate']) {
+        const client = await connect();
+        if (!hashes) {
+          const answers = client.info.hello.answers.bind(client.info.hello);
+          vi.spyOn(client.info.hello, 'answers').mockImplementation(
+            (type) => type !== COMMANDS['file.hash'].type && answers(type),
+          );
+        }
+        const reads: string[] = [];
+        const readRange = client.readRange.bind(client);
+        vi.spyOn(client, 'readRange').mockImplementation(async (path, ...rest) => {
+          reads.push(path);
+          return readRange(path, ...rest);
+        });
+        const write = client.writeFile.bind(client);
+        vi.spyOn(client, 'writeFile').mockImplementation(async (path, data, options) => {
+          const done = await write(path, data, options);
+          if (path.includes('/pkg-v1-') && path.endsWith('/catalog.txt')) {
+            const file = join(sim!.root, path.slice('/yaffs2/'.length));
+            const body = readFileSync(file);
+            if (how === 'truncate') truncateSync(file, body.length - 1);
+            else
+              writeFileSync(file, Buffer.concat([body.subarray(0, 1), Buffer.from([body[1]! ^ 1]), body.subarray(2)]));
+          }
+          return done;
+        });
+        await expect(pushPackages(client, source()), `${hashes} ${how}`).rejects.toThrow('package read-back differs');
+        await client.close();
+        expect(existsSync(join(stored, 'alpha'))).toBe(false);
+        expect(reads.some((path) => path.includes('/pkg-v1-'))).toBe(!hashes);
+        await control(sim!.control, 'advance 11000');
+      }
+    await push();
     assertStored();
   });
 

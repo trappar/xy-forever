@@ -77,7 +77,7 @@ const KINDS: readonly EntryKind[] = ['file', 'folder', 'other'];
 const COPY_RATE = 10_000;
 
 type ChangeCommand = 'file.write_staged' | 'file.delete' | 'file.rmdir' | 'file.mkdir' | 'file.rename' | 'file.copy';
-type FileCommand = 'file.read' | 'file.list' | ChangeCommand;
+type FileCommand = 'file.read' | 'file.hash' | 'file.list' | ChangeCommand;
 
 export interface Staged {
   readonly size: number;
@@ -408,6 +408,16 @@ export class Client {
       options.onProgress?.(done, null);
       if (data.length < step) return concat(parts);
     }
+  }
+
+  /**
+   * The SHA-256 of the file stored at path: hashed on the OP-XY (file.hash, 1.32), so nothing comes back over USB;
+   * before 1.32, read back whole (readFile) and hashed here. size: the bytes expected (the device's time limit).
+   */
+  async fileSha256(path: string, size: number, options: TransferOptions = {}): Promise<Uint8Array> {
+    if (!this.infoNow.hello.answers(v1.COMMANDS['file.hash'].type)) return sha256(await this.readFile(path, options));
+    const call = { signal: options.signal, timeoutMs: options.timeoutMs ?? 60_000 + Math.ceil(size / 20) };
+    return (await this.fileCall('file.hash', { path }, path, call)).sha256;
   }
 
   /** The raw framebuffer (SCREEN.bytes); decodeScreen() turns it into pixels. */

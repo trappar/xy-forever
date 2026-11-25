@@ -4,7 +4,7 @@
 // each with info.txt and files.sha256 listing every file of the package. On the device it goes to
 // MODS_ROOT/<generation>/<package>/<stored name>, the flat store (modstore.ts; #124: the dev menu's MTP depth
 // limit; an older tree lists as older). Only the file methods are used. A push skips a package the device holds
-// whole: every stored file with its size and the same files.sha256 (`verify` reads every file back). Within a package files.sha256 is
+// whole: every stored file with its size and the same files.sha256 (`verify` checks every file's SHA-256). Within a package files.sha256 is
 // written last and deleted first whenever anything in the package changes, so a package folder holding
 // files.sha256 has every listed file; stored files it no longer names go after it.
 // Building (applyMods, as `xyf-host mods apply --wait | cancel`): the host asks the device to assemble
@@ -239,9 +239,7 @@ export async function pushPackages(
         files.every((file) => existing.files.get(file.stored) === file.data.length);
       for (const file of same ? files : []) {
         if (!options.verify && file.stored !== LIST) continue;
-        await session.command(1);
-        const back = await client.readFile(`${folder}/${file.stored}`, call);
-        if (back.length !== file.data.length || back.some((byte, index) => byte !== file.data[index])) {
+        if (!(await session.holds(`${folder}/${file.stored}`, file.data))) {
           same = false;
           break;
         }
