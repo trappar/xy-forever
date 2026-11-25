@@ -18,7 +18,7 @@ bool transfer_type(U32 type) {
            type == P::t_write_begin || type == P::t_write_data || type == P::t_write_end;
 }
 bool serial_traffic() { return serial_ms && now() - (serial_ms & ~1u) <= serial_recent_ms; }
-bool host_transfer() { return transfer_ms && now() - (transfer_ms & ~1u) < host_activity_ms; }
+bool host_requested() { return host_framed && now() - host_frame_ms < host_activity_ms; }
 uint32_t menu_pause_us() {
 #if defined(XYF_MTP_USB)
     if (loop_from) return mtp_pause_us;
@@ -225,7 +225,6 @@ static U32 home_receive_chunk() {
 #endif
         host_framed = 1;
         host_frame_ms = now(); // the USB mark
-        if (transfer_type(type)) transfer_ms = host_frame_ms | 1u; // the screen saver waits (host_transfer)
         if (transfer_type(type) || type == P::t_screen) serial_ms = host_frame_ms | 1u; // the short pause
         bool off = false; // #191: USB mode MTP refuses it
 #if defined(XYF_SETTINGS)

@@ -1023,7 +1023,7 @@ class SimulatorTest(unittest.TestCase):
     @pytest.mark.gate  # a simulator UI flow (keys, three minutes of device time): the sim tier has no room
     def test_screen_saver(self):
         """Kept: Screen saver (#315): it starts after a minute of device time with no input; a USB write ends it and
-        it starts again a minute after that work; a real PLAY wakes it and goes nowhere (no boot), nor does its release; a knob turn
+        it starts again a minute after that work; any serial request (a status one) ends it too; a real PLAY wakes it and goes nowhere (no boot), nor does its release; a knob turn
         wakes it too; the next key is the menu's. Screen saver: Off on the Settings page applies at once (it never
         starts again) and is saved."""
         dev = self.connect(startup_ready=True)
@@ -1037,19 +1037,25 @@ class SimulatorTest(unittest.TestCase):
             self.sim.until(lambda: log().count(line) > seen, line, 2000)
 
         self.sim.advance(60000)
-        self.assertIn('saver: on at ', self.sim.until(lambda: 'saver: on at ' in log() and log(), 'the saver', 1000))
+        # from the connection's last request (2 s past it: activity too)
+        self.assertIn('saver: on at ', self.sim.until(lambda: 'saver: on at ' in log() and log(), 'the saver', 5000))
         self.assertIn('(after 60000 ms)', log())
         self.assertEqual(self.write(dev, b'ends the saver', '/yaffs2/saver.txt')[0], 0)  # work: it ends
         self.sim.until(lambda: 'busy after' in log(), 'the saver ended by the write', 1000)
         self.sim.advance(60000)  # from the write's activity line (2 s past it)
         self.sim.until(lambda: log().count('saver: on at ') == 2, 'the saver after the write', 5000)
+        status = log().count('busy after')
+        self.assertEqual(dev.call(P.STATUS)[0], 0)  # any request, a status one too, ends it
+        self.sim.until(lambda: log().count('busy after') > status, 'the saver ended by a status request', 1000)
+        self.sim.advance(60000)
+        self.sim.until(lambda: log().count('saver: on at ') == 3, 'the saver after the status request', 5000)
         key(51, 1, 'woken by key 51')  # PLAY wakes it: nothing else
         key(51, 0, 'saver: key 51 released: goes nowhere')
         self.sim.settle()
         self.assertNotIn('menu: continue', log())
         self.assertEqual((self.sim.status()['b'], self.sim.status()['listening']), ('running', 1))  # still the menu
         self.sim.advance(60000)
-        self.sim.until(lambda: log().count('saver: on at ') == 3, 'the saver again', 1000)
+        self.sim.until(lambda: log().count('saver: on at ') == 4, 'the saver again', 1000)
         self.assertTrue(self.sim.control('knob 1 2').get('ok'))  # a knob turn wakes it: moves nothing
         self.sim.until(lambda: 'woken by a knob turn' in log(), 'the knob wake', 2000)
         # Settings (the last home row), Screen saver (its fifth row), - to Off (the last option), picked.
@@ -1068,7 +1074,7 @@ class SimulatorTest(unittest.TestCase):
             key(k, 0, 'menu: real key %d released' % k)
         self.sim.until(lambda: 'saver=off' in self.file('/yaffs2/xy-forever/settings.txt').decode(), 'the save', 5000)
         self.sim.advance(61000)
-        self.assertEqual(log().count('saver: on at '), 3)
+        self.assertEqual(log().count('saver: on at '), 4)
 
     def test_xyf_host_cp(self):
         """Kept: Client smoke test: the xyf_host.py CLI copies a file end to end. xyf-host cp SRC DST --sim: a file; cp -r a folder with a subfolder (mkdir + file.copy per

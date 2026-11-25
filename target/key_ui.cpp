@@ -547,7 +547,7 @@ extern "C" void xy_forever_key_ui() {
                     const bool frame = xyf::saver::pass(
                         saver, xyf::clock::ms(), xyf::settings::saver_ms(xy_forever::usb_service::settings().saver),
                         xyf::saver::holds(app, xy_forever::usb_service::trust_prompt()) || build ||
-                            xy_forever::usb_service::host_activity() != 0 || xy_forever::usb_service::host_transfer());
+                            xy_forever::usb_service::host_activity() != 0 || xy_forever::usb_service::host_requested());
                     if (saver.on) dirty = frame;
                     else if (frame) dirty = 1;
                 }
