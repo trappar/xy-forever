@@ -75,10 +75,13 @@ export class PackageSession {
   async write(path: string, data: Uint8Array): Promise<void> {
     await this.command(1);
     await this.client.writeFile(path, data, this.options);
-    const back = await this.client.readFile(path, this.options);
+  }
+  /** Does the file stored at path hold data? By its SHA-256: hashed on the device (1.32), else read back over USB. */
+  async holds(path: string, data: Uint8Array): Promise<boolean> {
+    await this.command(1);
     const expected = await sha256(data),
-      actual = await sha256(back);
-    if (actual.some((byte, index) => byte !== expected[index])) throw new Error(`package read-back differs: ${path}`);
+      actual = await this.client.fileSha256(path, data.length, this.options);
+    return actual.length === expected.length && actual.every((byte, index) => byte === expected[index]);
   }
   async erase(path: string): Promise<void> {
     for (const entry of await this.entries(path)) {
@@ -97,8 +100,12 @@ export class PackageSession {
     if (!/^[\x20-\x7e]{1,127}$/.test(name) || /[\\:]/.test(name) || /[. ]$/.test(name) || /bootloader/i.test(name))
       throw new Error('unsafe package name');
     const scratch = await this.scratch();
-    for (const [name, data] of [...files].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
-      await this.write(`${scratch}/${name}`, data);
+    const sorted = [...files].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    // Each write_end checked its bytes and their on-device read-back; then the whole staged result, as stored now,
+    // before the one publishing rename (#327: hashed on the device, not read back over USB, from 1.32).
+    for (const [name, data] of sorted) await this.write(`${scratch}/${name}`, data);
+    for (const [name, data] of sorted)
+      if (!(await this.holds(`${scratch}/${name}`, data))) throw new Error(`package read-back differs: ${name}`);
     const existing = await remoteTree(this.client, target, this.options);
     await this.command(1);
     if (existing) await this.client.renamePath(target, `${scratch}-old`, this.options);

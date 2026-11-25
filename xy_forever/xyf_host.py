@@ -15,7 +15,7 @@ Usage (macOS /dev/cu.usbmodem*):
   uv run xyf-host ls /yaffs2/xy-forever [--json]   list a folder: type, size, name
   uv run xyf-host get /yaffs2/PATH LOCAL       copy a file to the computer (any size; size and ranges checked)
   uv run xyf-host put LOCAL /yaffs2/xy-forever/PATH   copy a file to the OP-XY (up to the staging limit,
-                                               read back and compared; --no-verify skips the read-back)
+                                               its SHA-256 checked, on the device from 1.32; --no-verify skips it)
   uv run xyf-host rm /yaffs2/PATH              delete a file (or an empty folder with --dir)
   uv run xyf-host mkdir /yaffs2/PATH           create a folder (its parent must exist)
   uv run xyf-host mv /yaffs2/xy-forever/a.txt /yaffs2/xy-forever/b.txt   move or rename
@@ -241,13 +241,14 @@ def run(argv):
     getp = sub.add_parser('get', help='copy a device file to the computer (ranged reads; size and ranges checked)')
     getp.add_argument('remote')
     getp.add_argument('local', type=Path)
-    putp = sub.add_parser('put', help='copy a file onto the OP-XY (streamed into tmp/, read back, renamed onto it)')
+    putp = sub.add_parser('put', help='copy a file onto the OP-XY (streamed into tmp/, checked, renamed onto it)')
     putp.add_argument('local', type=Path)
     putp.add_argument('remote')
     putp.add_argument(
         '--no-verify',
         action='store_true',
-        help='skip the read-back over USB (the device still compares the CRC-32 it reads back)',
+        help="skip the stored file's SHA-256 check (hashed on the device from 1.32, else a read-back over USB; "
+        'the device still compares the CRC-32 it reads back)',
     )
     rmp = sub.add_parser('rm', help='delete a device file (--dir: an empty folder)')
     rmp.add_argument('path')
@@ -699,9 +700,11 @@ def files_command(dev, hello, args):
         return code
     seconds = time.monotonic() - start
     if not args.no_verify:
-        code, back = dev.read_all(args.remote, limit=len(data) + READ_RANGE)
-        if code or back != data:
-            print('put %s: NOT verified: read back %s, %d B' % (args.remote, P.status_name(code), len(back)))
+        code, same = host_write.holds(
+            dev, args.remote, data, lambda path: dev.read_all(path, limit=len(data) + READ_RANGE)
+        )
+        if not same:
+            print('put %s: NOT verified: %s, SHA-256 differs' % (args.remote, P.status_name(code)))
             return code or 1
     print(
         'put %s: %d B in %.2f s (%.1f KiB/s)%s'
@@ -710,7 +713,7 @@ def files_command(dev, hello, args):
             len(data),
             seconds,
             len(data) / 1024.0 / max(seconds, 1e-6),
-            '' if args.no_verify else '; read back identical',
+            '' if args.no_verify else '; stored SHA-256 identical',
         )
     )
     return 0

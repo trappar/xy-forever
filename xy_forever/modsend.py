@@ -122,8 +122,9 @@ def package_line(result):
 def push_package(dev, session, folder, name, files, verify=False):
     """One package of a push. Up to date (nothing sent) when the device holds the same stored files, by name and size,
     and the same files.sha256: one read (stored names carry each file's SHA-256; files.sha256 is published last and
-    lists every file's), every file read back only with verify. Otherwise only the files whose content changed are
-    sent; the others move over from the published package on the device (package_store publish keep)."""
+    lists every file's), every file checked only with verify (its SHA-256, hashed on the device from 1.32). Otherwise
+    only the files whose content changed are sent; the others move over from the published package on the device
+    (package_store publish keep)."""
     stored = modstore.stored_files(name, files)
     physical = {stored_name: data for stored_name, _, data in stored}
     existing = remote_tree(dev, folder)
@@ -131,7 +132,10 @@ def push_package(dev, session, folder, name, files, verify=False):
     remote = session.read(folder + '/' + LIST, optional=True) if LIST in held else None
     same = held == {n: len(d) for n, d in physical.items()} and remote == physical[LIST]
     if same and verify:
-        same = all(session.read(folder + '/' + rel) == data for rel, data in physical.items())
+        same = all(
+            session.sha256(folder + '/' + rel, len(data)) == hashlib.sha256(data).digest()
+            for rel, data in physical.items()
+        )
     result = dict(name=name, of=len(stored), sent=0, bytes=0, paths=[], removed=0)
     if same:
         return result

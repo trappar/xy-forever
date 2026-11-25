@@ -12,6 +12,7 @@ from test_ldr import image
 
 from xy_forever import package_store as S
 from xy_forever import sim, xyf_entry
+from xy_forever import usb_proto as P
 from xy_forever import xyf_host as host
 
 
@@ -43,8 +44,8 @@ class CountSession(S.Session):
             self.simulator.control('cut')
             raise Cut()
 
-    def write(self, *args):
-        super().write(*args)
+    def put(self, *args):
+        super().put(*args)
         self.after()
 
     def change(self, *args):
@@ -113,6 +114,59 @@ class Packages(unittest.TestCase):
             self.assertEqual((blobs / sha).exists(), rel != 'factory.bin')
             if rel != 'absent.bin':
                 self.assertEqual((self.root / 'content' / rel).read_bytes(), sources[rel])
+
+    @pytest.mark.sim  # #327: the device's file.hash replaces the host's read-backs; older builds still read back
+    def test_a_damaged_stored_file_is_caught_on_both_paths(self):
+        """A stored file changed or cut short after its write (file.write_end checked it) is caught by the next check:
+        hashed on the device (file.hash, 1.32) or, on a build without it, read back over USB. publish checks the whole
+        staging before its rename (nothing published); write checks each file. Undamaged, the new path reads no
+        staged file back."""
+        root, target = self.root, S.LIBRARY + '/package-damaged'
+        files = package('damaged', {'display/a.svg': b'a'})
+        reads = []
+
+        def damage(path, how):
+            stored = root / path[len('/yaffs2/') :]
+            body = stored.read_bytes()
+            stored.write_bytes(body[:-1] if how == 'truncate' else body[:7] + bytes([body[7] ^ 1]) + body[8:])
+
+        class Damage(S.Session):
+            how = None
+
+            def put(self, path, data):
+                super().put(path, data)
+                if self.how and path.endswith('/os.ldr'):
+                    damage(path, self.how)
+
+            def read(self, path, optional=False):
+                reads.append(path)
+                return super().read(path, optional)
+
+        for hashes in (True, False):
+            if not hashes:  # a build before 1.32
+                self.dev.hello_info.cmds &= ~(1 << P.ids.HASH_FILE)
+            for how in ('flip', 'truncate'):
+                with self.subTest(hashes=hashes, how=how):
+                    reads.clear()
+                    with self.assertRaisesRegex(S.StoreError, 'staged package changed: os.ldr'):
+                        with Damage(self.dev) as session:
+                            session.how = how
+                            session.publish(target, files)
+                    self.assertFalse((root / 'xy-forever/firmware/package-damaged').exists())
+                    self.assertEqual(any('/pkg-v1-' in path for path in reads), not hashes)
+                    with self.assertRaisesRegex(S.StoreError, 'read-back SHA-256 differs'):
+                        with Damage(self.dev) as session:
+                            session.how = how
+                            session.write(S.TMP + '/damaged/os.ldr', files['os.ldr'])
+            with self.subTest(hashes=hashes, how=None):
+                reads.clear()
+                with Damage(self.dev) as session:
+                    session.publish(target, files)
+                stored = root / 'xy-forever/firmware/package-damaged'
+                self.assertEqual({rel: (stored / rel).read_bytes() for rel in files}, files)
+                self.assertEqual(any('/pkg-v1-' in path for path in reads), not hashes)
+                with S.Session(self.dev) as session:
+                    session.remove(target)
 
     @pytest.mark.sweep  # parked: a serial chain of simulator restarts, the run's critical path
     def test_cut_between_every_add_remove_and_gc_step(self):

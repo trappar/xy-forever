@@ -6,7 +6,9 @@ Part of [Package files](packages.md). Packages are admitted strictly; reading a 
 
 `library-add`, `mods push` and the browser's package push build the complete package under
 `tmp/pkg-v1-<token>/`, check its manifest and sorted file list, verify every file, then publish by one
-directory rename. A replacement first renames the old folder to `tmp/pkg-v1-<token>-old`; a removal
+directory rename. Each upload's `file.write_end` checks the bytes received (CRC-32, SHA-256) and its on-device
+read-back (CRC-32); then every staged file, as stored, is checked by SHA-256 before the rename: hashed on the device
+(`file.hash`, 1.32), or read back over USB from older builds (#327). A replacement first renames the old folder to `tmp/pkg-v1-<token>-old`; a removal
 renames the package into `tmp/` before deleting its tree. After a cut the target is old, new or absent,
 never a partially admitted package. An absent default opens the menu. State slots are unchanged.
 The native assembly job uses its existing `tmp/job-<id>/` and the same rename-away/rename-in order.

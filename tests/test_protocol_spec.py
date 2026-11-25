@@ -311,6 +311,7 @@ class SpecDataTest(unittest.TestCase):
                 ('file.read', 'path'),
                 ('file.write_staged', 'path'),
                 ('file.write_begin', 'path'),
+                ('file.hash', 'path'),
                 ('tfw.check', 'path'),
                 ('tfw.check_role', 'path'),
                 ('file.list', 'path'),

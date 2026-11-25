@@ -288,6 +288,7 @@ static U32 home_receive() {
         else if (type == P::t_write_begin) write_begin(seq, payload, length);
         else if (type == P::t_write_data) write_data(seq, payload, length);
         else if (type == P::t_write_end) write_end(seq);
+        else if (type == P::t_hash_file) hash_file(seq, payload, length);
 #endif
 #if defined(XYF_TFW_CHECK)
         else if (type == P::t_tfw_check) tfw_check(seq, payload, length);
