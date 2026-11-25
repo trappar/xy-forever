@@ -104,6 +104,8 @@ def session(name, args, work, out=print, connect=None):
         waited.append(time.monotonic())
         out(moddev.POWER)
 
+    from xy_forever.device_client import PortBusy
+
     start = time.monotonic()
     detail = (lambda line: out('  ' + line)) if getattr(args, 'verbose', False) else (lambda line: None)
     try:
@@ -111,6 +113,9 @@ def session(name, args, work, out=print, connect=None):
     except Incompatible as error:
         out('%s: %s' % (name, error))
         return 2
+    except PortBusy as error:  # another program holds the port: no power cycle helps
+        out('%s: %s' % (name, error.code))
+        return 1
     except SystemExit as error:  # device_client.connect: no XY Forever menu within --wait
         if waited:
             out(

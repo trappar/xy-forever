@@ -553,6 +553,19 @@ class DevicePassTest(unittest.TestCase):
         self.assertIsNone(self.folder)
         self.assertEqual(self.keepalive.started, [])
 
+    def test_a_held_port_names_its_holder_and_never_asks_for_a_power_cycle(self):
+        held = "the OP-XY's serial port /dev/cu.x is in use by Google Chrome (PID 7632): click Disconnect in the XY Forever page"
+
+        class Held(FakeDevice):
+            def command(self, argv, timeout, **limits):
+                self.calls.append(' '.join(argv))
+                return dp.PORT_BUSY, '', held + '\n'
+
+        self.assertEqual(self.run_pass(dev=Held()), dp.EXIT_NEED)
+        self.assertEqual(self.out.splitlines(), ['NEED: ' + held])
+        self.assertNotIn('PLAY', self.out)
+        self.assertIsNone(self.folder)
+
     def test_default_stages_in_order_all_pass(self):
         self.assertEqual(self.run_pass(dev=with_121(FakeDevice())), dp.EXIT_PASS)
         order = [r['stage'] for r in self.summary['steps']]

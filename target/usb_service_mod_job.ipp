@@ -97,13 +97,18 @@ bool job_running() {
     return pack_import_active || menu_pack_active || job_state == job_busy || package_active || blob_collecting ||
            reporting;
 }
+// The file client held by a transfer: an MTP operation in flight, or a serial read stream's open file
+// (usb_service_read_stream.ipp). job_blocks takes only MTP's: a stream request continues its own stream, and every other
+// request ends it before it runs (home_receive).
 #if defined(XYF_MTP_SESSION)
 bool mtp_busy(); // an MTP operation in flight
-#define XYF_OR_MTP_BUSY || mtp_busy()
-#define XYF_AND_NOT_MTP_BUSY &&!mtp_busy()
+#define XYF_OR_MTP_BUSY || mtp_busy() || read_stream_held()
+#define XYF_AND_NOT_MTP_BUSY &&!mtp_busy() && !read_stream_held()
+#define XYF_AND_NOT_MTP_ONLY &&!mtp_busy()
 #else
-#define XYF_OR_MTP_BUSY // the product: the same tokens as before
-#define XYF_AND_NOT_MTP_BUSY
+#define XYF_OR_MTP_BUSY || read_stream_held()
+#define XYF_AND_NOT_MTP_BUSY &&!read_stream_held()
+#define XYF_AND_NOT_MTP_ONLY
 #endif
 void stop_idle_gc();
 bool job_blocks(U32 type) { // also while settle_begin's op 9 is out
@@ -112,31 +117,33 @@ bool job_blocks(U32 type) { // also while settle_begin's op 9 is out
         stop_idle_gc();
     if (package_active &&
         (type == P::t_package_list || type == P::t_state_get || type == P::t_storage_space || type == P::t_read_file ||
-         type == P::t_hash_file || type == P::t_list_dir || type == P::t_delete_file || type == P::t_remove_dir ||
-         type == P::t_make_dir || type == P::t_rename_file || type == P::t_write_begin || type == P::t_write_data ||
-         type == P::t_write_end)) {
+         type == P::t_hash_file || type == P::t_read_stream || type == P::t_list_dir || type == P::t_delete_file ||
+         type == P::t_remove_dir || type == P::t_make_dir || type == P::t_rename_file || type == P::t_write_begin ||
+         type == P::t_write_data || type == P::t_write_end)) {
         package_ms = now();
         package_file = 1;
         return false;
     }
     if (recovery_pending && !boot_probe_active() && !rehearsal_active() && !job_running() &&
-        !closing XYF_AND_NOT_MTP_BUSY) {
-        if (type == P::t_read_file || type == P::t_hash_file || type == P::t_list_dir) return false;
+        !closing XYF_AND_NOT_MTP_ONLY) {
+        if (type == P::t_read_file || type == P::t_hash_file || type == P::t_read_stream || type == P::t_list_dir)
+            return false;
         // Only the readonly scan: preserve every write-window, held-request and original boot-path check.
         if (!writes_due && mounted != file_client::mounted_stale && !file_client::left_out() && menu_link::usb_idle() &&
             (type == P::t_reboot || type == P::t_continue || type == P::t_library_boot))
             return false;
     }
     if (!boot_probe_active() && !rehearsal_active() && !job_running() && !recovery_pending &&
-        !closing XYF_AND_NOT_MTP_BUSY)
+        !closing XYF_AND_NOT_MTP_ONLY)
         return false;
     return type == P::t_package_list || type == P::t_state_get || type == P::t_storage_space ||
-           type == P::t_read_file || type == P::t_hash_file || type == P::t_put_begin || type == P::t_put_data ||
-           type == P::t_put_end || type == P::t_file_write || type == P::t_list_dir || type == P::t_delete_file ||
-           type == P::t_remove_dir || type == P::t_make_dir || type == P::t_rename_file || type == P::t_copy_file ||
-           type == P::t_install || type == P::t_write_begin || type == P::t_write_data || type == P::t_write_end ||
-           type == P::t_uninstall || type == P::t_reboot || type == P::t_continue || type == P::t_library_boot ||
-           type == P::t_mods_apply || type == P::t_mtp_test || type == P::t_set_default || type == P::t_tfw_check;
+           type == P::t_read_file || type == P::t_hash_file || type == P::t_read_stream || type == P::t_put_begin ||
+           type == P::t_put_data || type == P::t_put_end || type == P::t_file_write || type == P::t_list_dir ||
+           type == P::t_delete_file || type == P::t_remove_dir || type == P::t_make_dir || type == P::t_rename_file ||
+           type == P::t_copy_file || type == P::t_install || type == P::t_write_begin || type == P::t_write_data ||
+           type == P::t_write_end || type == P::t_uninstall || type == P::t_reboot || type == P::t_continue ||
+           type == P::t_library_boot || type == P::t_mods_apply || type == P::t_mtp_test || type == P::t_set_default ||
+           type == P::t_tfw_check;
 }
 // String helpers (no library calls).
 U32 text_bytes(const char* s) {

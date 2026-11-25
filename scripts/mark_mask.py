@@ -22,9 +22,10 @@ def curve(width, height, stroke):
         d = 1 + math.sin(t) ** 2
         raw.append((math.cos(t) / d, math.sin(t) * math.cos(t) / d))
     xs, ys = [p[0] for p in raw], [p[1] for p in raw]
-    sx = (width - stroke - 1) / (max(xs) - min(xs))
-    sy = (height - stroke - 1) / (max(ys) - min(ys))
-    return [((x - min(xs)) * sx + stroke / 2 + 0.5, (y - min(ys)) * sy + stroke / 2 + 0.5) for x, y in raw]
+    x0, y0 = min(xs), min(ys)  # once: per point they made this quadratic (most of the test's time)
+    sx = (width - stroke - 1) / (max(xs) - x0)
+    sy = (height - stroke - 1) / (max(ys) - y0)
+    return [((x - x0) * sx + stroke / 2 + 0.5, (y - y0) * sy + stroke / 2 + 0.5) for x, y in raw]
 
 
 @functools.cache

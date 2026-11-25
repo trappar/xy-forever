@@ -10,10 +10,10 @@
 // and bouncing off the edges, its colour changing at each bounce. Any key press or knob turn ends it and does nothing
 // else: that press, and its key's release, go nowhere (PLAY never boots from it); the menu then shows its current
 // state. It runs only while nothing happens: a question or an error on screen (holds) and any work (USB work:
-// key_ui's host_activity, a job or a request that changes something, MTP traffic; a build or a content change on the
-// device) count as activity: they end it and it starts again only after the idle time with none. (A host that only
-// polls, HELLO and status, is not activity: an open web app would keep it off.) So its frames (#288: each blocks
-// the menu loop ~15 ms in the stock transfer) never take time from work. Under the saver the menu's other redraws
+// key_ui's host_activity, a job, MTP traffic, and any serial request at all, HELLO and status included; a build or a
+// content change on the device) count as activity: they end it and it starts again only after the idle time with
+// none. So its frames (#288: each blocks the menu loop ~15 ms in the stock transfer) never take time from a host's
+// requests; the hosts send none while nothing happens (no idle polling), so an open web app does not keep it off. Under the saver the menu's other redraws
 // wait for the wake (key_ui: one full redraw then). A frame after the first redraws only the mark's old and new boxes
 // (draw: the columns it touched, for the cache flush).
 namespace xyf { namespace saver {

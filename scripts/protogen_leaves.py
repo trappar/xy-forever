@@ -8,7 +8,7 @@ CMD_LEAVES = (  # (first type, last type, file, title)
     (0x10, 0x13, 'cmd-stage.md', 'staging commands'),
     (0x14, 0x17, 'cmd-files.md', 'file commands'),
     (0x18, 0x19, 'cmd-file-move.md', 'file move and copy commands'),
-    (0x1A, 0x1F, 'cmd-file-stream.md', 'streamed writes and file hashes'),
+    (0x1A, 0x1F, 'cmd-file-stream.md', 'streamed reads and writes, file hashes'),
     (0x20, 0x3F, 'cmd-boot.md', 'boot and device commands'),
     (0x40, 0x43, 'cmd-library.md', 'library commands'),
     (0x44, 0x47, 'cmd-jobs.md', 'job commands'),

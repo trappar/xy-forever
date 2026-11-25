@@ -1567,6 +1567,15 @@ export class Hello {
   answers(type: number): boolean {
     return this.cmds === null || ((this.cmds >> BigInt(type)) & BigInt(1)) === BigInt(1);
   }
+
+  /**
+   * Requests a tool may keep in flight for file.read_stream and file.write_data (1.33 `pipe`; 1 before), and with
+   * more than 1 their pieces take MAX_DATA bytes.
+   */
+  get pipe(): number {
+    const value = Number(/^[0-9]+$/.test(this.keys['pipe'] ?? '') ? this.keys['pipe'] : '1');
+    return value > 0 ? Math.min(value, MAX_PIPE) : 1;
+  }
 }
 
 export function parseHello(text: string): Hello {

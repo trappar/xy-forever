@@ -8,10 +8,22 @@ bool mtp_seen() { return composite_on && (mtp_busy() || (last_commands && now() 
 const U32 mtp_pause_us = 500;
 uint64_t loop_from __attribute__((section(".data"))) = 0;
 #endif
+// Serial requests one after another (a transfer, a screenshot) were each answered one menu-loop pass later: the pass's
+// 5 ms pause was the whole of a request's ~5.2 ms on the device (2026-11-24, N = 500: hello 5.16 ms, a 1 KiB file.read
+// 5.75 ms). While transfer requests come (serial_traffic: a file transfer's or screen.read, one within
+// serial_recent_ms) the pause is serial_pause_us, as mtp_pause_us around MTP traffic. Every pass still runs its turns.
+const U32 serial_recent_ms = 300, serial_pause_us = 500;
+bool transfer_type(U32 type) {
+    return type == P::t_read_file || type == P::t_read_stream || type == P::t_hash_file || type == P::t_put_data ||
+           type == P::t_write_begin || type == P::t_write_data || type == P::t_write_end;
+}
+bool serial_traffic() { return serial_ms && now() - (serial_ms & ~1u) <= serial_recent_ms; }
+bool host_requested() { return host_framed && now() - host_frame_ms < host_activity_ms; }
 uint32_t menu_pause_us() {
 #if defined(XYF_MTP_USB)
     if (loop_from) return mtp_pause_us;
 #endif
+    if (serial_traffic()) return serial_pause_us;
 #if defined(XYF_TFW_CHECK) && defined(XYF_USB_FILE_WRITE)
     if (pack_import_extracting()) return 500u;        // #279: the import runs between passes
 #endif
@@ -150,6 +162,7 @@ uint32_t home_pump() {
         job_pump();                                        // a slice of the mod job
         boot_sweep_turn();                                 // #3: leftover tmp/job-* folders, a step per pass
         stream_turn();                                     // #4: a streamed write left without data
+        read_stream_turn();                                // a read stream left without requests
         settle_turn();                                     // a window close still out
         if (writes_due && !job_running() XYF_AND_NOT_MTP_BUSY && now() - writes_ms > storage_server::window_settle_ms)
             settle_writes();
@@ -169,7 +182,18 @@ uint32_t home_pump() {
 #endif
     return home_receive();
 }
+// A pass takes up to rx_chunks_per_pass reads of what the receive ring already holds (it never waits for more): a 4 KiB
+// request (pipe=) whole, and the requests a tool sent ahead of their replies, each answered in this pass.
+const U32 rx_chunks_per_pass = 4;
+static U32 home_receive_chunk();
 static U32 home_receive() {
+    for (U32 k = 0; k != rx_chunks_per_pass; ++k) {
+        if (const U32 leave = home_receive_chunk()) return leave;
+        if (!cdc_available()) break;
+    }
+    return 0;
+}
+static U32 home_receive_chunk() {
     Result& r = result;
     const U32 avail = cdc_available();
     if (!avail) {
@@ -196,9 +220,13 @@ static U32 home_receive() {
         const U32 length = P::frame_length(parser);
         ++r.frames;
         r.last_type = type;
+#if defined(XYF_USB_FILE_WRITE)
+        if (type != P::t_read_stream) read_stream_forget(); // a read stream's file closed before anything else
+#endif
         host_framed = 1;
-        host_frame_ms = now();                         // the USB mark
-        bool off = false;                                              // #191: USB mode MTP refuses it
+        host_frame_ms = now(); // the USB mark
+        if (transfer_type(type) || type == P::t_screen) serial_ms = host_frame_ms | 1u; // the short pause
+        bool off = false; // #191: USB mode MTP refuses it
 #if defined(XYF_SETTINGS)
         off = type != P::t_hello && serial_refuses(type);
 #endif
@@ -206,11 +234,11 @@ static U32 home_receive() {
             host_change = line;
             host_change_ms = host_frame_ms;
 #if defined(XYF_USB_FILE_WRITE) && defined(XYF_MTP_SESSION)
-            if (mtp_on) mslot().responder.invalidate();    // speed: MTP's cached object facts (mtp_responder.hpp)
+            if (mtp_on) mslot().responder.invalidate(); // speed: MTP's cached object facts (mtp_responder.hpp)
 #endif
         }
 #if defined(XYF_SERVICE_SCREEN)
-        key_ui::host_view();                                           // drawn before a long request runs
+        key_ui::host_view(); // drawn before a long request runs
 #endif
         U32 leave = 0;
         if (type == P::t_hello) {
@@ -221,13 +249,13 @@ static U32 home_receive() {
 #if defined(XYF_TFW_CHECK) && defined(XYF_USB_FILE_WRITE)
             if (!pack_import_active)
 #endif
-                if (!s2_tried) stage2_load();                  // once per boot, before the reply
+                if (!s2_tried) stage2_load(); // once per boot, before the reply
             hello(seq);
 #if defined(XYF_MTP_USB)
-            composite_hello();                         // the composite stays this boot; mark 11, marks end
+            composite_hello(); // the composite stays this boot; mark 11, marks end
 #endif
         } else if (!home_greeted) status_only(type, seq, P::s_state);
-        else if (off) status_only(type, seq, P::s_serial_off);         // #191: answered at once, nothing done
+        else if (off) status_only(type, seq, P::s_serial_off); // #191: answered at once, nothing done
 #if defined(XYF_SETTINGS)
         else if (const U32 refused = trust_refuses(type)) status_only(type, seq, refused); // #65: asks, or not allowed
 #endif
@@ -289,6 +317,7 @@ static U32 home_receive() {
         else if (type == P::t_write_data) write_data(seq, payload, length);
         else if (type == P::t_write_end) write_end(seq);
         else if (type == P::t_hash_file) hash_file(seq, payload, length);
+        else if (type == P::t_read_stream) read_stream(seq, payload, length);
 #endif
 #if defined(XYF_TFW_CHECK)
         else if (type == P::t_tfw_check) tfw_check(seq, payload, length);

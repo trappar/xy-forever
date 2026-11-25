@@ -58,6 +58,21 @@ U32 cdc_read(uint8_t* out, U32 n) {
 }
 int cdc_write(const uint8_t* data, U32 n) { return stock<0x88a132f6u, int>(0u, data, n); }
 #endif
+// hello pipe= (1.33): how many file.read_stream / file.write_data requests a tool may keep in flight, and with more
+// than one their pieces take max_data bytes. Our composite's serial queues 8 KiB of requests (its OUT urbs held while
+// the ring is full) and sends each reply as one IN urb; the stock serial fallback has a 2 KiB receive ring and 512-byte
+// writes (Test 034's 4 KiB request overflowed it; Test 038's 4 KiB reply hung B on it): one at a time, 1 KiB pieces.
+// The simulator's TCP endpoint is the composite's, unless XYF_SIM_STOCK_SERIAL is set (the fallback's limits).
+U32 pipe_depth() {
+#if defined(XYF_SIM)
+    return getenv("XYF_SIM_STOCK_SERIAL") ? 1u : U32(P::max_pipe);
+#elif defined(XYF_MTP_USB)
+    return composite_on ? U32(P::max_pipe) : 1u;
+#else
+    return 1u;
+#endif
+}
+U32 stream_piece() { return pipe_depth() > 1 ? U32(P::max_data) : read_range_max; }
 // Test 032: the stock bootloader's USB-serial transport (L1 11a03b6e) leaves its
 // receive callback 11a03e04 registered at [0x880734c0]; the CDC receive
 // completion (88a130f2) calls it for every packet and it drains the ring into

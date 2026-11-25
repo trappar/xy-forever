@@ -130,6 +130,8 @@ bool home_usb() { return menu_usb != 0; }
 // The menu's USB mark and activity line (usb_service.hpp).
 volatile U32 host_framed __attribute__((section(".data"))) = 0;          // a valid frame arrived this boot
 volatile U32 host_frame_ms __attribute__((section(".data"))) = 0;        // now() at the last one
+// now() | 1 at the last file transfer request or screen.read (serial_traffic); 0: none this boot.
+volatile U32 serial_ms __attribute__((section(".data"))) = 0;
 volatile U32 host_change __attribute__((section(".data"))) = 0;          // the last changing request's line
 volatile U32 host_change_ms __attribute__((section(".data"))) = 0;
 enum HostLine : U32 {

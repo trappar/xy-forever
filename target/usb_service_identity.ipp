@@ -73,8 +73,9 @@ void image_hash_some(U32 limit) {
 void image_step() { image_hash_some(image_slice); }
 void image_finish() { image_hash_some(boot_source_max); }
 
-// The hello text with this boot's image, (#65) Ask before USB control and its question's state, and (#191) whether
-// USB mode leaves serial on: the compiled text says image=unknown, confirm=1, trust=none and serial=on (usb_proto_ids.hpp).
+// The hello text with this boot's image, (#65) Ask before USB control and its question's state, (#191) whether
+// USB mode leaves serial on and (1.33) the requests in flight: the compiled text says image=unknown, confirm=1,
+// trust=none, serial=on and pipe=4 (usb_proto_ids.hpp).
 constexpr bool starts(const char* t, const char* k) { return !*k || (*t == *k && starts(t + 1, k + 1)); }
 constexpr U32 length(const char* s) { return *s ? 1 + length(s + 1) : 0; }
 constexpr U32 key_value(const char* t, const char* key, U32 i = 0) {   // where key's value starts; ~0u: no such key
@@ -82,7 +83,9 @@ constexpr U32 key_value(const char* t, const char* key, U32 i = 0) {   // where 
 }
 const U32 image_at = key_value(XYF_USBP_HELLO_TEXT, ";image="),
           confirm_at = key_value(XYF_USBP_HELLO_TEXT, ";confirm="),
-          trust_at = key_value(XYF_USBP_HELLO_TEXT, ";trust="), serial_at = key_value(XYF_USBP_HELLO_TEXT, ";serial=");
+          trust_at = key_value(XYF_USBP_HELLO_TEXT, ";trust="), serial_at = key_value(XYF_USBP_HELLO_TEXT, ";serial="),
+          pipe_at = key_value(XYF_USBP_HELLO_TEXT, ";pipe=");   // one digit (pipe_depth)
+static_assert(P::max_pipe < 10, "pipe= is one digit");
 U32 hello_text(uint8_t* p, U32 n, U32 room) {
     image_finish();
     const char* text = XYF_USBP_HELLO_TEXT;
@@ -97,6 +100,10 @@ U32 hello_text(uint8_t* p, U32 n, U32 room) {
     for (U32 i = 0; text[i] && n != room; ++i) {
         if (i == confirm_at) {
             p[n++] = uint8_t(confirm);
+            continue;
+        }
+        if (i == pipe_at) {
+            p[n++] = uint8_t('0' + pipe_depth());
             continue;
         }
         if (i == trust_at || i == serial_at) {

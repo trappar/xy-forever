@@ -7,10 +7,12 @@ Protocol (docs/PROTOCOL.md): the HELLO reply's `cmds` lists the commands the dev
 any other. A device without `cmds` (pre-v1, build 153 and earlier) is assumed to answer every 1.0 command.
 """
 
+import errno
 import hashlib
 import os
 import socket
 import struct
+import subprocess
 import sys
 import time
 import zlib
@@ -21,9 +23,10 @@ from xy_forever.transport import SerialPort, TcpPort, device_ports, sim_address
 
 # Test 034: the stock CDC receive ring holds 0x800 bytes and the device drains it
 # 256 bytes per poll; a 4 KiB PUT_DATA frame overflowed it (no reply). One
-# 1 KiB frame (+ 20 bytes framing) is in flight at a time.
+# 1 KiB frame (+ 20 bytes framing) is in flight at a time, unless hello says pipe= above 1 (1.33).
 PUT_CHUNK = 1024
-READ_RANGE = 1024  # device read_range_max (Test 038: 4 KiB replies hung)
+READ_RANGE = 1024  # device read_range_max (Test 038: 4 KiB replies hung B on the stock serial; file.read keeps it)
+RESEND_S = 3.0  # Device.pipeline: the last request in flight is sent once more when its reply has not come in this
 INSTALL_TIMEOUT = 900.0  # host bound for one INSTALL (v3 link sessions have no device cap)
 COPY_RATE = 10000.0  # file.copy: the host waits its timeout plus 1 s per this many bytes
 SLOTS = ('/yaffs2/xy-forever/state-a.txt', '/yaffs2/xy-forever/state-b.txt')
@@ -112,6 +115,59 @@ class Device:
                     return struct.unpack_from('<I', body)[0], body[4:]
         raise TimeoutError('no reply to 0x%02x within %.1f s' % (kind, timeout))
 
+    def pipeline(self, kind, payloads, depth, timeout):
+        """(status, body) of each request in payloads (an iterable), in order, with up to depth requests in flight
+        (protocol 1.33, hello pipe=: file.read_stream, file.write_data and stage.data only; depth 1 is one at a time).
+        The device answers in order, so a reply that is missing while a later one came was lost on the way: that request
+        is sent once more (all three answer a resend), as is the last one when its reply has not come in RESEND_S. Closing
+        the generator early leaves the requests still out unanswered: their replies are dropped as stale. The caller
+        sends the first request of a transfer with call() (the #65 question)."""
+        payloads = iter(payloads)
+        out = []  # [seq, payload, sent at, resent], oldest first
+        early = {}  # seq -> (status, body) of a reply that came before the oldest's
+
+        def send(entry):
+            self.seq = self.seq % 255 + 1
+            entry[0], entry[2] = self.seq, time.monotonic()
+            self.t.write(P.encode(kind, self.seq, entry[1]))
+
+        def fill():
+            while len(out) < depth:
+                payload = next(payloads, None)
+                if payload is None:
+                    return
+                out.append([0, payload, 0.0, False])
+                send(out[-1])
+
+        fill()
+        while out:
+            head = out[0]
+            if head[0] in early:
+                yield early.pop(head[0])
+                out.pop(0)
+                fill()
+                continue
+            waited = time.monotonic() - head[2]
+            if waited > (timeout if head[3] else min(timeout, RESEND_S)):
+                if head[3]:
+                    raise TimeoutError('no reply to 0x%02x within %.1f s' % (kind, timeout))
+                head[3] = True
+                send(head)
+                continue
+            for k, seq, body in self.parser.feed(self.t.read(0.05)):
+                if k == P.LOG | P.REPLY and seq == 0:
+                    self._log_frame(body)
+                    continue
+                at = next((i for i, e in enumerate(out) if e[0] == seq), None)
+                if k != kind | P.REPLY or at is None:
+                    continue  # stale
+                if len(body) < 4:
+                    raise OSError('short reply')
+                early[seq] = struct.unpack_from('<I', body)[0], body[4:]
+                if at and out[0][0] not in early and not out[0][3]:
+                    out[0][3] = True  # a later reply came first: the oldest's was lost
+                    send(out[0])
+
     def hello(self):
         code, body = self.call(P.HELLO)
         text = body.decode('ascii', 'replace')
@@ -126,7 +182,11 @@ class Device:
         return code, body
 
     def read_all(self, path, limit=16 << 20, progress=None):
-        """Any size: ranged reads until a short range."""
+        """Any size: from 1.33 a read stream (file.read_stream: the file kept open, hello pipe= pieces in flight), before
+        ranged reads (file.read); until a short piece."""
+        info = self.hello_info
+        if info is not None and not info.pre_v1 and info.answers(P.ids.READ_STREAM):
+            return self.read_stream(path, limit, progress)
         data = bytearray()
         while len(data) < limit:
             code, body = self.read_file(path, len(data))
@@ -139,18 +199,60 @@ class Device:
                 return 0, bytes(data)
         return P.STATUS_NAMES.index('too_large'), bytes(data)
 
+    def read_stream(self, path, limit=16 << 20, progress=None):
+        """read_all over file.read_stream (1.33): max_data pieces with up to pipe in flight (max_read, one at a time,
+        on the stock serial fallback)."""
+        depth = self.hello_info.pipe
+        piece = P.ids.MAX_DATA if depth > 1 else READ_RANGE
+        head = path.encode() + b'\0'
+        timeout = P.ids.COMMANDS[P.ids.READ_STREAM]['timeout_ms'] / 1000.0
+        code, body = self.call(P.ids.READ_STREAM, head + struct.pack('<II', 0, piece), timeout=timeout)
+        data = bytearray(body)
+        if code or len(body) < piece:
+            if progress and not code:
+                progress(len(data))
+            return code, bytes(data)
+        offsets = range(piece, limit + piece, piece)
+        replies = self.pipeline(
+            P.ids.READ_STREAM, (head + struct.pack('<II', at, piece) for at in offsets), depth, timeout
+        )
+        try:
+            for code, body in replies:
+                if code:
+                    return code, bytes(data)
+                data += body
+                if progress:
+                    progress(len(data))
+                if len(body) < piece:
+                    return 0, bytes(data)
+                if len(data) >= limit:
+                    break
+        finally:
+            replies.close()
+        return P.STATUS_NAMES.index('too_large'), bytes(data)
+
     def stage(self, data, progress=None):
         sha = hashlib.sha256(data).digest()
         code, _ = self.call(P.PUT_BEGIN, struct.pack('<II', len(data), zlib.crc32(data) & 0xFFFFFFFF) + sha)
         if code:
             return code
-        for offset in range(0, len(data), PUT_CHUNK):
-            chunk = data[offset : offset + PUT_CHUNK]
-            code, body = self.call(P.PUT_DATA, struct.pack('<I', offset) + chunk)
-            if code:
-                return code
-            if progress:
-                progress(offset + len(chunk), len(data))
+        depth = self.hello_info.pipe if self.hello_info is not None else 1
+        step = P.ids.MAX_DATA if depth > 1 else PUT_CHUNK  # 1.33 pipe=: max_data pieces, several in flight
+        offsets = range(0, len(data), step)
+        payloads = (struct.pack('<I', at) + data[at : at + step] for at in offsets)
+        replies = (
+            self.pipeline(P.PUT_DATA, payloads, depth, 5.0)
+            if depth > 1
+            else (self.call(P.PUT_DATA, p) for p in payloads)
+        )
+        try:
+            for offset, (code, _) in zip(offsets, replies):
+                if code:
+                    return code
+                if progress:
+                    progress(min(offset + step, len(data)), len(data))
+        finally:
+            replies.close()
         code, _ = self.call(P.PUT_END, timeout=10.0)
         return code
 
@@ -299,6 +401,48 @@ def current_state(slot_bytes):
 
 
 T0 = time.monotonic()
+BUSY_S = 3.0  # connect: a port another program holds this long without a break is reported, never waited out
+
+
+class PortBusy(SystemExit):
+    """connect(): the OP-XY's serial port is held by another program (its open refused: EBUSY on macOS and Linux,
+    access denied on Windows). The device itself is fine: no power cycle helps; the other program has to let go."""
+
+
+def port_busy(error):
+    """Whether an open's OSError means another program holds the port."""
+    if isinstance(error, PermissionError) or getattr(error, 'errno', None) in (errno.EBUSY, errno.EACCES, errno.EPERM):
+        return True
+    text = str(error).lower()
+    return 'busy' in text or 'access is denied' in text or 'permissionerror' in text
+
+
+def port_holders(port, run=subprocess.run):
+    """[(name, pid)] of the other processes that have port open, as lsof tells (macOS, Linux); [] when it cannot."""
+    if sys.platform == 'win32' or port.startswith('sim:'):
+        return []
+    try:
+        listed = run(['lsof', '-F', 'pc', port], capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    holders, pid = [], None
+    for line in listed.stdout.splitlines():
+        if line.startswith('p') and line[1:].isdigit():
+            pid = int(line[1:])
+        elif line.startswith('c') and pid is not None and pid != os.getpid():
+            holders.append((line[1:], pid))
+            pid = None
+    return holders
+
+
+def busy_text(port, holders):
+    """What to tell the user when another program holds the OP-XY's port: who, when the system can tell, and how to
+    free it (no power cycle: the device is fine)."""
+    who = ', '.join('%s (PID %d)' % holder for holder in holders) or 'another program'
+    return (
+        "the OP-XY's serial port %s is in use by %s: click Disconnect in the XY Forever page or close it (or the other "
+        'tool using the port), then run this again' % (port, who)
+    )
 
 
 def log(message):
@@ -316,7 +460,7 @@ def connect(timeout, hello_every=0.5, hello_window=8.0, log=log, waiting=None):
     deadline = time.monotonic() + (min(timeout, bounds.SIM_CONNECT_S) if SIM else timeout)
     if not SIM:
         device_lock.hold(timeout)
-    seen = None
+    seen, busy_since = None, None
 
     def wait_once():
         nonlocal waiting
@@ -337,8 +481,15 @@ def connect(timeout, hello_every=0.5, hello_window=8.0, log=log, waiting=None):
             transport = open_port(port)
         except OSError as error:
             log('open %s failed: %s' % (port, error))
+            if not port_busy(error):
+                busy_since = None
+            elif busy_since is None:
+                busy_since = time.monotonic()
+            elif time.monotonic() - busy_since >= BUSY_S or time.monotonic() + 0.3 >= deadline:
+                raise PortBusy(busy_text(port, port_holders(port))) from None
             pause(0.3)
             continue
+        busy_since = None
         dev, sent, received = Device(transport), 0, 0
         window = min(deadline, time.monotonic() + hello_window)
         try:

@@ -9,7 +9,7 @@ import type { Trace } from './link.ts';
 import type { Opener, Transport } from './transport.ts';
 import { keyValues, readLibraryEntry } from './package-records.ts';
 import { SCREEN } from './screen.ts';
-import { writeStream } from './stream.ts';
+import { sendPieces, writeStream } from './stream.ts';
 import { inWriteArea } from './write-area.ts';
 import { RETRY_MS, type Trust } from './trust.ts';
 import { fileReason } from './file-reason.ts';
@@ -77,7 +77,7 @@ const KINDS: readonly EntryKind[] = ['file', 'folder', 'other'];
 const COPY_RATE = 10_000;
 
 type ChangeCommand = 'file.write_staged' | 'file.delete' | 'file.rmdir' | 'file.mkdir' | 'file.rename' | 'file.copy';
-type FileCommand = 'file.read' | 'file.hash' | 'file.list' | ChangeCommand;
+type FileCommand = 'file.read' | 'file.read_stream' | 'file.hash' | 'file.list' | ChangeCommand;
 
 export interface Staged {
   readonly size: number;
@@ -228,6 +228,7 @@ async function handshake(open: Opener, options: ConnectOptions): Promise<[Link, 
 const RESENT: ReadonlySet<string> = new Set([
   'diag.status',
   'file.read',
+  'file.read_stream',
   'screen.read',
   'file.list',
   'job.status',
@@ -397,8 +398,12 @@ export class Client {
     return (await this.fileCall('file.read', { path, offset, length }, path, options)).data;
   }
 
-  /** A whole file of any size, in ranges of info.limits.read bytes until a short one. */
+  /**
+   * A whole file of any size, until a short piece: from 1.33 a read stream (file.read_stream: the file kept open on
+   * the device, MAX_DATA pieces with hello `pipe` of them in flight), before in ranges of info.limits.read bytes.
+   */
   async readFile(path: string, options: TransferOptions = {}): Promise<Uint8Array> {
+    if (this.infoNow.hello.answers(v1.COMMANDS['file.read_stream'].type)) return this.readStream(path, options);
     const step = this.infoNow.limits.read;
     const parts: Uint8Array[] = [];
     for (let done = 0; ;) {
@@ -408,6 +413,48 @@ export class Client {
       options.onProgress?.(done, null);
       if (data.length < step) return concat(parts);
     }
+  }
+
+  private async readStream(path: string, options: TransferOptions): Promise<Uint8Array> {
+    const depth = this.infoNow.hello.pipe;
+    const step = depth > 1 ? v1.MAX_DATA : this.infoNow.limits.read;
+    const first = (await this.fileCall('file.read_stream', { path, offset: 0, length: step }, path, options)).data;
+    const parts: Uint8Array[] = [first];
+    let done = first.length;
+    options.onProgress?.(done, null);
+    if (first.length < step) return concat(parts);
+    const codec = v1.codecs['file.read_stream'] as unknown as AnyCodec;
+    const command = v1.COMMANDS['file.read_stream'];
+    let next = step,
+      ended = false;
+    const pipeline = this.link.pipeline(command.type, {
+      depth,
+      timeoutMs: options.timeoutMs ?? command.timeoutMs,
+      resendMs: RESEND_MS,
+      signal: options.signal,
+      next: () => {
+        const payload = codec.encodeRequest({ path, offset: next, length: step });
+        next += step;
+        return payload;
+      },
+      reply: (payload) => {
+        const decoded = codec.decodeReply(payload);
+        if (!decoded.ok) throw statusError(command.name, decoded.status, decoded.fields);
+        const data = decoded.fields['data'] as Uint8Array;
+        parts.push(data);
+        done += data.length;
+        options.onProgress?.(done, null);
+        ended = data.length < step;
+        return !ended;
+      },
+    });
+    try {
+      await pipeline;
+    } catch (error) {
+      throw plainFileError(error, path);
+    }
+    if (!ended) throw new XyfError('protocol', `file.read_stream ${path}: the read ended early`);
+    return concat(parts);
   }
 
   /**
@@ -446,17 +493,7 @@ export class Client {
     }
     const staged: Staged = { size: data.length, crc32: v1.crc32(data), sha256: await sha256(data) };
     await this.call('stage.begin', staged, options);
-    const chunk = Math.min(v1.PUT_CHUNK, this.infoNow.limits.payload - 4);
-    for (let at = 0; at < data.length; at += chunk) {
-      const piece = data.subarray(at, at + chunk);
-      const { received } = await this.call('stage.data', { offset: at, data: piece }, options);
-      if (received !== at + piece.length) {
-        throw new XyfError('protocol', `stage.data: the device has ${received} bytes, expected ${at + piece.length}`, {
-          command: 'stage.data',
-        });
-      }
-      options.onProgress?.(at + piece.length, data.length);
-    }
+    await sendPieces(this, 'stage.data', data, options); // 1.33: MAX_DATA pieces, hello pipe of them in flight
     await this.call('stage.end', undefined, options);
     return staged;
   }

@@ -201,7 +201,7 @@ describe('calls', () => {
   });
 
   test('cancel: in flight, before sending, and between chunks', async () => {
-    const dev = new FakeDevice((f, d) => d.reply(f, 0, new Uint8Array(1024), 50));
+    const dev = new FakeDevice((f, d) => d.reply(f, 0, new Uint8Array(v1.MAX_DATA), 50)); // a whole read_stream piece
     const client = await connected(dev);
     const inFlight = new AbortController();
     setTimeout(() => inFlight.abort(), 10);
@@ -342,6 +342,128 @@ describe('lost and split replies (#306)', () => {
     await vi.advanceTimersByTimeAsync(20_000);
     expect(await run.outcome).toMatchObject({ code: 'timeout' });
     expect(dev.types().filter((t) => t === v1.TYPE['file.mkdir'])).toHaveLength(1);
+  });
+});
+
+describe('read streams and pipelined writes (1.33, hello pipe)', () => {
+  const FILE = Uint8Array.from({ length: 5 * v1.MAX_DATA + 1234 }, (_, i) => (i * 31 + 7) & 0xff);
+  const le = (b: Uint8Array, at: number): number => new DataView(b.buffer, b.byteOffset).getUint32(at, true);
+  /** A device that streams FILE (file.read_stream, file.read) and takes a streamed write into written. */
+  class FileDevice extends FakeDevice {
+    written = new Uint8Array(0);
+    received = 0;
+    cuts = new Map<number, number>(); // reply number (hello is 1) -> bytes lost at its end
+    private n = 0;
+    constructor(hello: string = PRODUCT_HELLO) {
+      super((f, d) => (d as FileDevice).answer(f), hello);
+    }
+    answer(f: v1.Frame): void {
+      const p = f.payload;
+      if (f.type === v1.TYPE['file.read_stream'] || f.type === v1.TYPE['file.read']) {
+        const offset = le(p, p.length - 8),
+          length = le(p, p.length - 4);
+        this.reply(f, 0, FILE.subarray(offset, offset + length));
+      } else if (f.type === v1.TYPE['file.write_begin'] || f.type === v1.TYPE['stage.begin']) {
+        this.written = new Uint8Array(le(p, f.type === v1.TYPE['stage.begin'] ? 0 : p.length - 40));
+        this.received = 0;
+        this.reply(f, 0);
+      } else if (f.type === v1.TYPE['stage.end']) {
+        this.reply(f, 0);
+      } else if (f.type === v1.TYPE['file.write_data'] || f.type === v1.TYPE['stage.data']) {
+        const offset = le(p, 0),
+          piece = p.subarray(4);
+        if (offset === this.received) {
+          this.written.set(piece, offset);
+          this.received += piece.length;
+        } else if (offset + piece.length > this.received) return this.reply(f, v1.STATUS.range);
+        this.reply(f, 0, le32(this.received));
+      } else if (f.type === v1.TYPE['file.write_end'])
+        this.reply(f, 0, cat(le32(this.received), le32(v1.crc32(this.written)), le32(0)));
+      else this.reply(f, v1.STATUS.unsupported);
+    }
+    override push(bytes: Uint8Array): void {
+      const cut = this.cuts.get(++this.n) ?? 0;
+      super.push(bytes.subarray(0, bytes.length - cut));
+    }
+    count(type: number): number {
+      return this.sent.filter((f) => f.type === type).length;
+    }
+  }
+  const STREAM = v1.TYPE['file.read_stream'];
+
+  test('a read stream: MAX_DATA pieces, pipe of them in flight, the whole file in order', async () => {
+    const dev = new FileDevice();
+    const client = await connected(dev);
+    expect(client.info.hello.pipe).toBe(v1.MAX_PIPE);
+    expect(await client.readFile('/yaffs2/a')).toEqual(FILE);
+    expect(dev.mostOutstanding).toBe(v1.MAX_PIPE);
+    expect(dev.sent.filter((f) => f.type === STREAM).every((f) => le(f.payload, f.payload.length - 4) === 4096)).toBe(
+      true,
+    );
+    expect(dev.count(v1.TYPE['file.read'])).toBe(0);
+  });
+
+  test('older devices: file.read in max_read ranges; pipe=1: read_stream pieces of max_read, one at a time', async () => {
+    const old = new FileDevice(withoutCommand(PRODUCT_HELLO.replace(';pipe=4', ''), STREAM));
+    expect(await (await connected(old)).readFile('/yaffs2/a')).toEqual(FILE);
+    expect([old.count(STREAM), old.count(v1.TYPE['file.read']), old.mostOutstanding]).toEqual([0, 22, 1]);
+    const fallback = new FileDevice(PRODUCT_HELLO.replace(';pipe=4', ';pipe=1'));
+    const client = await connected(fallback);
+    expect(await client.readFile('/yaffs2/a')).toEqual(FILE);
+    expect([fallback.count(STREAM), fallback.mostOutstanding]).toEqual([22, 1]);
+    await client.writeFile('/yaffs2/b', FILE);
+    expect(fallback.written).toEqual(FILE);
+    expect([fallback.count(v1.TYPE['file.write_data']), fallback.mostOutstanding]).toEqual([22, 1]);
+  });
+
+  test('#306: a reply in flight loses its tail: sent once more as soon as a later one comes, the file whole', async () => {
+    const dev = new FileDevice();
+    dev.cuts.set(3, 90); // hello, the first piece (sent alone), then the second piece's reply is cut
+    const client = await connected(dev);
+    expect(await client.readFile('/yaffs2/a')).toEqual(FILE);
+    expect(dev.count(STREAM)).toBe(6 + 3 + 1); // the pieces, the three sent past the end, the resend
+  });
+
+  test('#306: the last reply in flight loses its tail: sent once more after RESEND_MS', async () => {
+    const dev = new FileDevice();
+    const client = await connected(dev);
+    dev.cuts.set(8, 90); // the reply that ends the file (piece 6), the last of those in flight
+    vi.useFakeTimers();
+    const run = await within(RESEND_MS + 10, client.readFile('/yaffs2/a'));
+    expect(run.settled).toBe(true);
+    expect(await run.outcome).toEqual(FILE);
+  });
+
+  test('a pipelined write: MAX_DATA pieces in flight; a lost reply is sent again and the device keeps its bytes', async () => {
+    const dev = new FileDevice();
+    const client = await connected(dev);
+    dev.cuts.set(4, 6); // after hello and write_begin: the second piece's reply
+    const progress: number[] = [];
+    expect(await client.writeFile('/yaffs2/b', FILE, { onProgress: (done) => progress.push(done) })).toMatchObject({
+      written: FILE.length,
+    });
+    expect(dev.written).toEqual(FILE);
+    expect(progress).toEqual([4096, 8192, 12288, 16384, 20480, FILE.length]);
+    expect(dev.count(v1.TYPE['file.write_data'])).toBe(6 + 1);
+    expect(dev.mostOutstanding).toBe(v1.MAX_PIPE);
+  });
+
+  test('staging: MAX_DATA pieces, pipe of them in flight', async () => {
+    const dev = new FileDevice();
+    const client = await connected(dev);
+    await client.stage(FILE);
+    expect(dev.written).toEqual(FILE);
+    expect([dev.count(v1.TYPE['stage.data']), dev.mostOutstanding]).toEqual([6, v1.MAX_PIPE]);
+  });
+
+  test('a piece the device refuses stops the write: the error, no write_end', async () => {
+    const dev = new FileDevice();
+    const client = await connected(dev);
+    const answer = dev.answer.bind(dev);
+    dev.answer = (f) =>
+      f.type === v1.TYPE['file.write_data'] && le(f.payload, 0) === 8192 ? dev.reply(f, v1.STATUS.storage) : answer(f);
+    await expect(client.writeFile('/yaffs2/b', FILE)).rejects.toMatchObject({ code: 'storage' });
+    expect(dev.count(v1.TYPE['file.write_end'])).toBe(0);
   });
 });
 
