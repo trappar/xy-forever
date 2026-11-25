@@ -73,8 +73,8 @@ uint32_t open_write(const char* path, int& fd, volatile uint32_t& mounted, uint3
 }
 
 uint32_t write_more(int fd, const uint8_t* bytes, uint32_t size, uint32_t& written, volatile uint32_t& mounted) {
-    for (U32 done = 0; done != size;) {
-        const U32 n = size - done < chunk ? size - done : chunk;
+    for (U32 done = 0; done != size;) {                                  // piece_max per request, as MTP's writes
+        const U32 n = size - done < piece_max ? size - done : piece_max;
         const Reply w = write(fd, bytes + done, n);                      // op 0x2b
         if (w.outcome) return failed(w, mounted);
         if (w.value != int(n)) return xyf::usbp::s_storage;
@@ -90,7 +90,8 @@ uint32_t close_write(int fd, volatile uint32_t& mounted) {
     return c.value ? xyf::usbp::s_storage : xyf::usbp::s_ok;
 }
 
-uint32_t read_crc(const char* path, uint32_t size, uint32_t& total, uint32_t& crc, volatile uint32_t& mounted) {
+uint32_t read_crc(const char* path, uint32_t size, uint32_t& total, uint32_t& crc, volatile uint32_t& mounted,
+                  uint8_t* buffer) {
     total = 0;
     crc = 0;
     Reply o = open(path, 0);                                             // op 0x29, read-only
@@ -98,15 +99,17 @@ uint32_t read_crc(const char* path, uint32_t size, uint32_t& total, uint32_t& cr
     if (o.value < 0) return xyf::usbp::s_not_found;
     U32 code = xyf::usbp::s_ok;
     uint8_t chunk_bytes[chunk];
+    uint8_t* const into = buffer ? buffer : chunk_bytes;
+    const U32 piece = buffer ? piece_max : chunk;
     for (U32 guard = 0; guard != (size >> 10) + 4; ++guard) {
-        const Reply g = read(o.value, chunk_bytes, chunk);               // op 0x2a
+        const Reply g = read(o.value, into, piece);                      // op 0x2a
         if (g.outcome) return failed(g, mounted);
         if (g.value < 0) {
             code = xyf::usbp::s_storage;
             break;
         }
         if (!g.value) break;
-        crc = xyf::crc::update(crc, chunk_bytes, U32(g.value));
+        crc = xyf::crc::update(crc, into, U32(g.value));
         total += U32(g.value);
     }
     const Reply cl = close(o.value);

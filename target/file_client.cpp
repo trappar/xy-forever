@@ -194,10 +194,12 @@ void place(const char* path) {
 }
 
 // A partition-class request built and submitted (done), or why not.
+volatile U32 mounts_sent __attribute__((section(".data"))) = 0;   // mount_epoch
 Reply partition_out(Stock121PeerSession*& session, U32 op, U32 a0, U32 a1, U32 a2) {
     Reply why;
     U32* request = claim(session, why, op);
     if (!request) return why;
+    if (op == 8 || op == 9) mounts_sent = mounts_sent + 1;              // A's handles for B may change (mount_epoch)
     stock<0x889f87d4u, void>(request, op, a0, a1, a2);                  // partition class
     return submit(*session, op, a0);
 }
@@ -288,6 +290,7 @@ uint32_t identity() {
 }
 
 Reply mount() { return partition(8, 0, 0, 0); }
+uint32_t mount_epoch() { return mounts_sent; }
 Reply unmount() { return partition(9, 0, 0, 0); }
 bool left_out() { return left_session != 0; }
 Reply left_poll(bool wait) {

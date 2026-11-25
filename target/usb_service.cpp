@@ -119,6 +119,7 @@ bool rehearsal_active();
 #if defined(XYF_USB_FILE_WRITE)
 #include "usb_service_file_write.ipp" // FILE_DELETE/RMDIR/MKDIR/RENAME/COPY/LIST/WRITE
 #include "usb_service_stream.ipp" // FILE_WRITE_BEGIN/DATA/END (#4)
+#include "usb_service_read_stream.ipp" // FILE_READ_STREAM
 #include "usb_service_storage_io.ipp"
 #include "usb_service_mod_job.ipp" // the mod assembly job on B
 #include "usb_service_save_log.ipp" // the save-time log

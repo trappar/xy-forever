@@ -540,7 +540,7 @@ extern "C" void xy_forever_key_ui() {
 #endif
             if (xyf::saver::pass(sim_saver, device_ms(), timeout,
                                  xyf::saver::holds(sim_app, usb_service::trust_prompt()) || build ||
-                                     usb_service::host_activity() != 0)) {
+                                     usb_service::host_activity() != 0 || usb_service::host_transfer())) {
                 if (!was) {
                     sim_saver_frames = 0;
                     xyf_sim::log("saver: on at %u ms (after %u ms)", device_ms(), timeout);

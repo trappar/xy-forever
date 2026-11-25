@@ -125,7 +125,8 @@ void write_end(uint8_t seq) {
         else if (code == P::s_ok && (!stream_hash().finish(digest) || !sha_equal(digest.bytes, stream_sha)))
             code = P::s_sha;
         uint32_t total = 0;
-        if (code == P::s_ok) code = file_client::read_crc(stream_tmp, stream_size, total, stream_back, mounted);
+        if (code == P::s_ok)   // 4 KiB reads into the reply buffer (free until the reply)
+            code = file_client::read_crc(stream_tmp, stream_size, total, stream_back, mounted, files + 64);
         if (code == P::s_ok && (total != stream_size || stream_back != stream_crc)) code = P::s_crc;
         if (code == P::s_ok) code = file_client::rename(stream_tmp, stream_target, stream_error, mounted, true);
         if (code != P::s_ok && mounted != file_client::mounted_stale) file_client::remove_partial(stream_tmp, mounted);

@@ -919,11 +919,11 @@ class SimulatorTest(unittest.TestCase):
     def test_storage_full_and_write_failure(self):
         """Kept: Fault: a full storage and a failed write are reported, nothing half-written."""
         dev = self.connect(startup_ready=True)
-        data = bytes(3000)
-        for fault, value in (('space', 1500), ('fail_write', 2)):  # the second 1 KiB write fails
+        data = bytes(10000)
+        for fault, value in (('space', 6000), ('fail_write', 2)):  # the second 4 KiB write fails
             self.sim.set(fault, value)
             code, written, _ = self.write(dev, data, BASE + 'log/full.bin')
-            self.assertEqual((code, written), (ids.S_STORAGE, 1024))
+            self.assertEqual((code, written), (ids.S_STORAGE, 4096))
             self.sim.set('space', -1)
             self.assertEqual(dev.read_file(BASE + 'state-a.txt')[0], 0)  # A back read-only, still serving
         self.assertEqual(self.write(dev, data, BASE + 'log/full.bin')[0], 0)
@@ -932,7 +932,7 @@ class SimulatorTest(unittest.TestCase):
     def test_power_cut_between_storage_operations(self):
         """Kept: Power cut between storage operations: the next start is clean."""
         dev = self.connect(startup_ready=True)
-        data = bytes(range(256)) * 12  # 3 KiB: mkdir, create, 3 writes, close, ...
+        data = bytes(range(256)) * 40  # 10 KiB: mkdir, create, 3 writes of 4 KiB at most, close, ...
         path = BASE + 'log/cut/file.bin'
         ops = self.sim.status()['storage_ops']
         self.sim.set('cut_after', 3)  # mkdir log/cut, create file.bin, first write
@@ -940,7 +940,7 @@ class SimulatorTest(unittest.TestCase):
             self.write(dev, data, path)
         status = self.wait(lambda s: s['cuts'] == 1 and s['listening'], what='power cut and restart')
         self.assertEqual((status['storage_ops'], status['power_ons']), (ops + 3, 2))
-        self.assertEqual(self.file(path), data[:1024])  # what reached storage before the cut stays
+        self.assertEqual(self.file(path), data[:4096])  # what reached storage before the cut stays
         dev = self.connect()
         self.assertEqual(dev.read_file(BASE + 'state-a.txt')[0], 0)
         self.assertEqual(self.write(dev, data, path)[0], 0)

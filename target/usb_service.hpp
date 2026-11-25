@@ -223,6 +223,9 @@ uint32_t home_pump();
 // #144: the menu loop's pause after a pass (us): 5 ms, shorter while MTP traffic is active. drawn(start): a redraw
 // that began at start (cycles), counted in MTP's timing while that traffic is active.
 uint32_t menu_pause_us();
+// A file transfer request (file.read, file.read_stream, file.hash, stage.data, file.write_*) came within
+// host_activity_ms: the screen saver counts it as activity (key_ui), so its frames take no time from the transfer.
+bool host_transfer();
 void drawn(uint64_t start);
 // b: the menu has USB on. A lost link then keeps the menu: USB still answers (commands
 // that need a get link) until a power cycle; b never resets itself on it.

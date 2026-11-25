@@ -191,6 +191,9 @@ static const uint32_t max_page = 64;
 uint32_t list(const char* path, uint32_t skip, uint8_t* out, uint32_t capacity, uint32_t& count, uint32_t& more,
               uint32_t& bytes, volatile uint32_t& mounted);
 void release(volatile uint32_t& mounted);                           // op 9 when mounted
+// Counts every op 8 and op 9 sent (op 9 closes B's files on A, so an fd kept across requests is valid only while
+// this stays the same; file.read_stream).
+uint32_t mount_epoch();
 // B's op-8 state ready for raw requests (the mod job's file calls): a stale mount closed first (op 9),
 // then op 8 when not mounted. s_ok, else the status (link, storage).
 uint32_t mount_ready(volatile uint32_t& mounted);
@@ -212,7 +215,7 @@ uint32_t change(uint32_t op, const char* path, uint32_t& error, volatile uint32_
 // existing file at to is replaced in one step (A checks the upload's size; a folder there: EISDIR).
 uint32_t rename(const char* from, const char* to, uint32_t& error, volatile uint32_t& mounted, bool over = false);
 // Streamed writes (#4, file.write_*), FILE_WRITE's steps: open_write = op 8 when needed, mkdir -p below
-// /yaffs2/, open "wb" (fd); write_more = chunk writes (written counts on); close_write; read_crc = open
+// /yaffs2/, open "wb" (fd); write_more = piece_max writes (written counts on); close_write; read_crc = open
 // read-only, read to EOF (at most size + 3 KiB) with CRC-32, close. mounted as write_file.
 Reply stage_blob_link(const char* temporary, const uint8_t* hash, bool seal);
 Reply copy_blob_piece();
@@ -224,7 +227,9 @@ uint32_t open_write(const char* path, int& fd, volatile uint32_t& mounted, uint3
 uint32_t make_folders(const char* path, volatile uint32_t& mounted);  // open_write's mkdir -p alone (mounted)
 uint32_t write_more(int fd, const uint8_t* bytes, uint32_t size, uint32_t& written, volatile uint32_t& mounted);
 uint32_t close_write(int fd, volatile uint32_t& mounted);
-uint32_t read_crc(const char* path, uint32_t size, uint32_t& total, uint32_t& crc, volatile uint32_t& mounted);
+// buffer: piece_max bytes for piece_max reads (0: 1 KiB reads into the stack).
+uint32_t read_crc(const char* path, uint32_t size, uint32_t& total, uint32_t& crc, volatile uint32_t& mounted,
+                  uint8_t* buffer = 0);
 // COPY, the checks before B reads the source: op 8 when needed, then a stat of the target (as
 // file.list's; found: s_state, error eexist) and of its folder (missing: s_not_found, error enoent).
 // mounted as read_file (stale: op 9 first, in read mode).

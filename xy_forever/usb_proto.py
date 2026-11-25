@@ -60,11 +60,12 @@ def answered(switches):
 STAGE2_LOADED = 'XYF_STAGE2_LOADED'  # the run-time switch of stage2.info
 
 
-def hello_text(version, image, mode, switches, stage2=0, confirm=1, trust='none', serial='on'):
+def hello_text(version, image, mode, switches, stage2=0, confirm=1, trust='none', serial='on', pipe=None):
     """The hello text such a build sends (the device composes it from usb_proto_ids.hpp): version its release
     version, image its 8 hex digits (None: `unknown`, as compiled); stage2: the loaded stage 2's version (0:
     none; then stage2.info is not in cmds); confirm: Ask before USB control (#65; 1 as compiled, the default); trust:
-    its question's state (none, asking, allowed, refused); serial: off with USB mode MTP (#191; on as compiled)."""
+    its question's state (none, asking, allowed, refused); serial: off with USB mode MTP (#191; on as compiled); pipe:
+    the requests in flight (max_pipe as compiled; 1 on the stock serial fallback)."""
     bits = answered(set(switches) | ({STAGE2_LOADED} if stage2 else set()))
     dev = any(bits >> t & 1 for t, c in ids.COMMANDS.items() if c['cls'] == 'dev')
     values = dict(
@@ -77,6 +78,7 @@ def hello_text(version, image, mode, switches, stage2=0, confirm=1, trust='none'
         confirm=str(confirm),
         trust=trust,
         serial=serial,
+        pipe=str(ids.MAX_PIPE if pipe is None else pipe),
     )
     items = [ids.HELLO_PREFIX]
     for name, _, source, text in ids.HELLO_KEYS:
@@ -104,6 +106,13 @@ class Hello:
 
     def answers(self, kind):
         return self.pre_v1 or bool(self.cmds >> kind & 1)
+
+    @property
+    def pipe(self):
+        """Requests a tool may keep in flight for file.read_stream and file.write_data (1.33 `pipe`; 1 before), and
+        with more than 1 their pieces take max_data bytes."""
+        value = self.keys.get('pipe', '1')
+        return min(int(value), ids.MAX_PIPE) if value.isdigit() and int(value) > 0 else 1
 
     def describe(self):
         if self.pre_v1:

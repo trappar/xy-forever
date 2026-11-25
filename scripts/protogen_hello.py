@@ -5,8 +5,9 @@ import itertools
 
 # hello key sources besides a fixed value or constant: release and mode from the build (C macros below);
 # set at run time: image (compiled `unknown`), confirm (#65, compiled 1: the default), trust (#65, compiled `none`),
-# serial (#191, compiled `on`) and stage2 (compiled 0, so the last key).
-HELLO_SOURCES = ('version', 'release', 'image', 'mode', 'cmds', 'dev', 'confirm', 'trust', 'serial', 'stage2')
+# serial (#191, compiled `on`), pipe (#327, compiled max_pipe: 1 on the stock serial fallback) and stage2
+# (compiled 0, so the last key).
+HELLO_SOURCES = ('version', 'release', 'image', 'mode', 'cmds', 'dev', 'confirm', 'trust', 'serial', 'pipe', 'stage2')
 TRUST_WORDS = ('none', 'asking', 'allowed', 'refused')  # usb_service_trust.ipp trust_word
 SERIAL_WORDS = ('on', 'off')  # usb_service_identity.ipp hello_text
 STAGE2_DIGITS = 10  # a u32 in decimal
@@ -25,6 +26,7 @@ RUNTIME_BYTES = dict(
     confirm=1,
     trust=max(map(len, TRUST_WORDS)),
     serial=max(map(len, SERIAL_WORDS)),
+    pipe=1,
 )
 
 
@@ -103,6 +105,8 @@ def render_cpp_hello(spec):
             pieces.append(';%s=%s' % (key['name'], word))
         elif source in ('stage2', 'confirm'):  # usb_service.cpp: the loaded stage 2's version, the setting
             pieces.append(';%s=%d' % (key['name'], source == 'confirm'))
+        elif source == 'pipe':  # usb_service_identity.ipp: 1 on the stock serial fallback
+            pieces.append(';%s=%d' % (key['name'], {k['name']: k['value'] for k in spec['constants']}['max_pipe']))
         else:
             pieces += [';%s=' % key['name'], ('macro', BUILD_MACROS.get(source, 'XYF_USBP_CMDS'))]
     merged = []
