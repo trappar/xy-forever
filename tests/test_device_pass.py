@@ -98,6 +98,7 @@ class FakeDevice:
         self.writes, self.window = 0, dict(b_window=0, b_windows=0, b_catalogs=0)
         self.catalog = b''
         self.dirs = set()  # folders made with mkdir
+        self.version = 4  # the USB1 result block's version STATUS reports
         image = bytes(range(256)) * 40  # 10,240 B
         self.files = {
             BASE + 'state-a.txt': slot(self.default, self.seq),
@@ -112,7 +113,7 @@ class FakeDevice:
     def status(self):
         self.frames += 2
         usb = dict(
-            version=4,
+            version=self.version,
             role=1,
             frames=self.frames,
             crash_restarts=self.crash,
@@ -624,6 +625,20 @@ class DevicePassTest(unittest.TestCase):
         self.assertFalse(self.dev.hold)
         self.assertEqual(self.dev.crash, 0)
         self.assertNotIn('guard', {r['stage'] for r in self.summary['steps']})
+
+    def test_a_device_on_a_newer_service_version_is_updated(self):
+        """#314: USB1 version 6 (and any later one) passes the check, so the pass installs over its own builds."""
+        build = self.build()
+        for version in (6, 7):
+            dev = FakeDevice(hello=V1_HELLO)
+            dev.version = version
+            with patch.object(dp.host, 'load_build', return_value=(b'image', ['b', 'LDR ok'])):
+                code = self.run_pass(['--install', str(build), '--stages', 'read'], dev=dev)
+            self.assertEqual(code, dp.EXIT_PASS, self.out)
+            self.assertIn('install %s --yes-install' % build, dev.calls)
+        for usb in (dict(version=3, role=1), dict(version=6, role=0), dict(role=1)):
+            with self.assertRaisesRegex(dp.StepFail, 'unexpected service'):
+                dp.service_check(usb)
 
     def test_the_guard_test_option_is_gone(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):

@@ -81,6 +81,21 @@ uint32_t crc32(uint32_t address, uint32_t bytes) {
 }
 uint8_t byte(uint32_t address) { return *reinterpret_cast<const volatile uint8_t*>(address); }
 uint32_t word(uint32_t address) { return *reinterpret_cast<const volatile uint32_t*>(address); }
+// A system MMR read (0x2000_0000 up: DMA, SPI, SEC, ports) with the workaround for the ADSP-BF70x silicon anomaly
+// 19000058, "System MMR Reads Can Cause Core Hang" (#314): under rare timing, depending on where the load sits and
+// the instruction prefetch, such a read hangs the core; the anomaly list's workaround is the read buffered on both
+// sides by NOPs and aligned to an 8-byte boundary. Analog Devices' toolchain applies it to every system MMR read
+// (the stock 1.2.1 code has NOP; NOP; NOP around each one, e.g. 11a00262); our GCC does not. Core MMRs
+// (0x1fc0_0000 up: IPEND, IMASK, EVT) and writes are not affected. .p2align pads with zero halfwords, which are
+// NOPs on Blackfin. B's menu loop reads the display DMA's status at every frame (dma_idle).
+__attribute__((always_inline)) inline uint32_t smmr_read32(uint32_t address) {
+    uint32_t value;
+    __asm__ volatile("NOP; NOP; NOP;\n\t.p2align 3\n\t%0 = [%1];\n\tNOP; NOP; NOP;"
+                     : "=d"(value)
+                     : "a"(address)
+                     : "memory");
+    return value;
+}
 uint32_t cycles_div1024() {
     uint32_t low, high;
     __asm__ volatile("%0 = CYCLES; %1 = CYCLES2;" : "=d"(low), "=d"(high));
@@ -306,7 +321,7 @@ extern "C" void xy_forever_key_ui() {
     const uint32_t painted = paint_stack();
     xy_forever::usb_service::stack_watch(painted);   // STATUS reports the mark live
     r.framebuffer = word(framebuffer);
-    r.dma_stat_entry = word(display_dma_stat);
+    r.dma_stat_entry = smmr_read32(display_dma_stat);
     r.display_entry = byte(smc_dma_active) | uint32_t(byte(frame_pending)) << 8;
     show(0, "Starting key link...");
     r.stages |= stage_display;
