@@ -4,6 +4,7 @@ those as Python 3.11, and the staged folder holds the inputs and nothing else. T
 and the run against a stand-in OP-XY are the PyPI workflow's (.github/workflows/pypi.yml), not the suite's."""
 
 import ast
+import json
 import tempfile
 import tomllib
 import unittest
@@ -15,7 +16,6 @@ import xyf_dist as D
 ROOT = Path(__file__).resolve().parents[1]
 # Imports of a module outside the package, each inside a function no xyf command reaches.
 LAZY = {
-    ('modkit', 'modpatch'): 'modkit prove-patch',
     ('modsend', 'modindex'): 'xyf-host mods fetch',
     ('paths', 'xyf_build'): 'paths.verified_build',
 }
@@ -66,13 +66,31 @@ class ContentsTest(unittest.TestCase):
             files = sorted(str(p.relative_to(out)) for p in out.rglob('*') if p.is_file())
             self.assertEqual(
                 files,
-                sorted(
-                    ['pyproject.toml', 'README.md', 'LICENSE', D.DRIVER] + ['xy_forever/%s.py' % m for m in D.modules()]
-                ),
+                sorted(['pyproject.toml', 'README.md', 'LICENSE'] + ['xy_forever/%s.py' % m for m in D.modules()]),
             )
             self.assertIn('\nversion = "0.2.0.dev7"', (out / 'pyproject.toml').read_text())
         for path in D.inputs():
             self.assertTrue((ROOT / path).exists(), path)
+
+    def test_the_facts_it_carries(self):
+        """dev_entry's stock OS 1.2.1 pin and image capacity are the repository's."""
+        from xy_forever import dev_entry, host_install
+
+        facts = json.loads((ROOT / 'stock_facts.json').read_text())
+        found = [v for v in _walk(facts) if v.get('sha256') == dev_entry.STOCK_SHA256]
+        self.assertEqual([v['bytes'] for v in found], [dev_entry.STOCK_BYTES])
+        self.assertEqual(dev_entry.CAPACITY, host_install.IMAGE_CAPACITY)
+
+
+def _walk(value):
+    """Every dict inside value."""
+    if isinstance(value, dict):
+        yield value
+        for v in value.values():
+            yield from _walk(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from _walk(v)
 
 
 class VersionTest(unittest.TestCase):

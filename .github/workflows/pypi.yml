@@ -1,14 +1,15 @@
-# The developer package `xy-forever` on PyPI (#284; docs/operating/pypi.md). Every run builds it and checks it
-# (scripts/xyf_dist.py check: installed on Python 3.11, `xyf --help`, every module imported, the protocol mismatch
-# against a stand-in OP-XY). It publishes only when its inputs changed: a push to main publishes a pre-release
-# (NEXT.devN), an XY Forever release (a published non-prerelease, tag v*) the next normal version, then tags it
-# xyf-vX.Y.Z. A pull request never publishes.
+# The developer package `xy-forever` on PyPI (#284; docs/operating/pypi.md). Every run builds it on Linux and checks
+# the same wheel on Linux and Windows (scripts/xyf_dist.py check: installed on Python 3.11, `xyf --help`, every module
+# imported, the protocol mismatch against a stand-in OP-XY). It publishes only when its inputs changed: a push to main
+# publishes a pre-release (NEXT.devN), an XY Forever release (a published non-prerelease, tag v*) the next normal
+# version, then tags it xyf-vX.Y.Z. A pull request never publishes.
 #
 # Publishing uses PyPI trusted publishing (OIDC): the PyPI publisher names this repository, this file and the `pypi`
 # environment, so no token is stored. The publish job gets id-token only, and contents: write only for the tag.
 #
-# Cost: Linux only, on the paths below; the paths filter is broad (all of xy_forever/), the plan step decides from
-# the package's exact inputs. A newer push cancels a pull request's run.
+# Cost: Linux, plus one short Windows job (twice Linux's minutes: uv only, no mise, no repository environment), on
+# the paths below; the paths filter is broad (all of xy_forever/), the plan step decides from the package's exact
+# inputs. A newer push cancels a pull request's run.
 name: PyPI
 
 on:
@@ -61,15 +62,31 @@ jobs:
           UV_PYTHON_DOWNLOADS: automatic   # mise.toml says never; this one environment needs 3.11
         run: uv run scripts/xyf_dist.py check dist --python 3.11
       - uses: actions/upload-artifact@v7
-        if: steps.plan.outputs.publish == 'true'
         with:
           name: xyf-dist
           path: dist/
           if-no-files-found: error
 
+  windows:
+    name: Check the package on Windows
+    needs: package
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: xyf-dist
+          path: dist/
+      - name: Check (installed on Python 3.11)
+        run: uv run --no-project --python 3.13 scripts/xyf_dist.py check dist --python 3.11
+
   publish:
     name: Publish to PyPI
-    needs: package
+    needs: [package, windows]
     if: >-
       needs.package.outputs.publish == 'true' &&
       ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'release')

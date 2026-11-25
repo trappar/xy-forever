@@ -5,8 +5,8 @@
     uv run scripts/xyf_dist.py plan --event EVENT [--before SHA]     version= and publish= lines (GITHUB_OUTPUT)
     uv run scripts/xyf_dist.py version [--dev]                       the next normal version (or this commit's dev one)
 
-The package's inputs: pypi/ (its pyproject.toml, README.md), LICENSE and the modules pypi/pyproject.toml lists, with
-xy_forever/modkit_core.mjs. build copies them into a fresh folder (the version written into its pyproject.toml) and
+The package's inputs: pypi/ (its pyproject.toml, README.md), LICENSE and the modules pypi/pyproject.toml lists. build
+copies them into a fresh folder (the version written into its pyproject.toml) and
 runs `uv build` there: an sdist, then the wheel built from that sdist, so the sdist builds on its own.
 
 check takes the wheel and sdist in DIR: the wheel holds exactly the listed files and stays small; a new virtual
@@ -36,8 +36,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT = ROOT / 'pypi'
 TAG = 'xyf-v'
-DRIVER = 'xy_forever/modkit_core.mjs'
-WHEEL_LIMIT = 200 * 1024  # bytes: the wheel is source only (about 130 KB)
+WHEEL_LIMIT = 150 * 1024  # bytes: the wheel is source only (about 90 KB)
 ZERO = '0' * 40  # github.event.before of a new branch
 
 
@@ -51,7 +50,7 @@ def modules():
 
 def inputs():
     """Every path whose content goes into the package (relative to the repository)."""
-    return ['pypi', 'LICENSE', DRIVER] + ['xy_forever/%s.py' % m for m in modules()]
+    return ['pypi', 'LICENSE'] + ['xy_forever/%s.py' % m for m in modules()]
 
 
 def git(*args):
@@ -119,7 +118,6 @@ def stage(out, release=None):
     (out / 'pyproject.toml').write_text(project)
     shutil.copy2(PROJECT / 'README.md', out / 'README.md')
     shutil.copy2(ROOT / 'LICENSE', out / 'LICENSE')
-    shutil.copy2(ROOT / DRIVER, out / DRIVER)
     for name in modules():
         shutil.copy2(ROOT / 'xy_forever' / (name + '.py'), out / 'xy_forever' / (name + '.py'))
     return out
@@ -140,6 +138,8 @@ class StandIn:
     HELLO = 'XYF1;service=usb;role=b;proto=1.21;version=0.0.9;image=00000000;mode=product'
 
     def __init__(self):
+        if str(ROOT) not in sys.path:  # run without the repository's environment (the Windows check)
+            sys.path.insert(0, str(ROOT))
         from xy_forever import usb_proto as P  # the repository's: the frames the OP-XY sends
 
         self.P = P
@@ -178,7 +178,7 @@ def check(folder, python='3.11'):
     wheel, failures = wheels[0], []
     with zipfile.ZipFile(wheel) as z:
         names = {n for n in z.namelist() if '.dist-info/' not in n}
-    want = {DRIVER} | {'xy_forever/%s.py' % m for m in modules()}
+    want = {'xy_forever/%s.py' % m for m in modules()}
     if names != want:
         failures.append('wheel files: extra %s, missing %s' % (sorted(names - want), sorted(want - names)))
     if wheel.stat().st_size > WHEEL_LIMIT:
@@ -186,14 +186,14 @@ def check(folder, python='3.11'):
     with tempfile.TemporaryDirectory(prefix='xyf-check-') as tmp:
         venv = Path(tmp) / 'venv'
         subprocess.run(['uv', 'venv', '--quiet', '--no-project', '--python', python, str(venv)], check=True)
-        subprocess.run(
-            ['uv', 'pip', 'install', '--quiet', '--python', str(venv / 'bin/python'), str(wheel)], check=True
-        )
+        scripts = venv / ('Scripts' if os.name == 'nt' else 'bin')
+        exe = '.exe' if os.name == 'nt' else ''
+        python_bin, xyf = str(scripts / ('python' + exe)), str(scripts / ('xyf' + exe))
+        subprocess.run(['uv', 'pip', 'install', '--quiet', '--python', python_bin, str(wheel)], check=True)
         env = dict(os.environ, XYF_NO_DEVICE='1')
         env.pop('XYF_SIM', None)
-        xyf, python_bin = str(venv / 'bin/xyf'), str(venv / 'bin/python')
         code, out = run([xyf, '--help'], env)
-        if code or 'dev' not in out or 'logs' not in out:
+        if code or not all(command in out for command in ('stock-os', 'dev', 'logs')):
             failures.append('xyf --help: exit %d\n%s' % (code, out))
         code, out = run([xyf, '--version'], env)
         if code or wheel.name.split('-')[1] not in out:

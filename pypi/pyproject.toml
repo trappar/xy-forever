@@ -5,14 +5,13 @@
 [project]
 name = "xy-forever"
 version = "0.1.0"   # the lowest the next normal version may be: scripts/xyf_dist.py version picks the real one
-description = "Try your Open-XY mod on an OP-XY running XY Forever: xyf dev, xyf logs"
+description = "Boot your Open-XY build once on an OP-XY running XY Forever: xyf stock-os, xyf dev, xyf logs"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"   # Open-XY's sdk.py's
 dependencies = [
-    "pyelftools>=0.31",   # the kit's objects (modkit.py)
-    "pyserial>=3.5",      # finding the OP-XY's serial port (transport.py)
+    "pyserial>=3.5",   # the OP-XY's serial port: finding it, and on Windows opening it (transport.py)
 ]
 keywords = ["op-xy", "open-xy", "xy-forever", "teenage engineering", "mods"]
 classifiers = [
@@ -20,6 +19,7 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Topic :: Multimedia :: Sound/Audio",
@@ -42,14 +42,14 @@ build-backend = "hatchling.build"
 packages = ["xy_forever"]
 
 [tool.xyf]
-# The package's modules (xy_forever/NAME.py) besides modkit_core.mjs. They run on Python 3.11 too: ../pyproject.toml
+# The package's modules (xy_forever/NAME.py). They run on Python 3.11 too: ../pyproject.toml
 # lints them as 3.11 (per-file-target-version; tests/test_xyf_dist.py keeps both lists equal), and the PyPI workflow
 # runs the installed package on 3.11.
 modules = [
     "__init__",
     "bounds",
-    "build_formats",
     "depth",
+    "dev_entry",
     "device_client",
     "device_lock",
     "host_trust",
@@ -57,8 +57,6 @@ modules = [
     "ldr",
     "moddev",
     "modconfig",
-    "modkit",
-    "modkit_read",
     "modsend",
     "modsend_local",
     "modstore",
