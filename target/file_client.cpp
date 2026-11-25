@@ -273,6 +273,12 @@ void log_end(uint32_t entry, uint32_t outcome, int32_t value, uint32_t error, ui
     e[3] = (error & 0xffffu) | (took < 0xffffu ? took : 0xffffu) << 16;
 }
 void log_note(uint32_t op, uint32_t argument) { log_end(log_add(op, argument), done, 0, 0); }
+uint32_t log_last(uint32_t* entry) {
+    if (!request_log.count) return 0;
+    const U32* e = request_log.entry[(request_log.count - 1) & (log_entries - 1)];
+    for (U32 w = 0; w != 4; ++w) entry[w] = e[w];
+    return 1;
+}
 uint32_t log_copy(uint32_t* out) {
     const U32 held = request_log.count < log_entries ? request_log.count : log_entries;
     for (U32 i = 0; i != held; ++i) {

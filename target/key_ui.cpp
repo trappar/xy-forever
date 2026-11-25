@@ -350,6 +350,9 @@ extern "C" void xy_forever_key_ui() {
             bool shown_lost = false;                     // the status line already shows the lost link
 #endif
             for (;;) {
+#if defined(XYF_USB_SERVICE)
+                hang_beat = hang_beat + 1;                  // #314: the menu loop moves (the hang screen's tick)
+#endif
 #if defined(XYF_ONE_SESSION) && defined(XYF_USB_SERVICE)
                 // #314: a frame the stock poll may stop B on goes on screen first (where_screen: the menu's present)
                 if (const uint32_t f = xy_forever::knob_input::watch(ms_since(r.start_cycles)))
@@ -609,6 +612,11 @@ extern "C" void xy_forever_key_ui() {
 
 namespace xy_forever { namespace key_ui {
 void crash_disarm() { crash_off(); }
+#if defined(XYF_USB_SERVICE)
+void hang_hold(bool on) { hang_held = on ? 1u : 0u; }
+#else
+void hang_hold(bool) {}
+#endif
 #if defined(XYF_CRASH_TRIGGER)
 bool crash_armed_now() { return crash_armed != 0; }
 void crash_fault(uint32_t kind) {

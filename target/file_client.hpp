@@ -140,6 +140,7 @@ uint32_t log_add(uint32_t op, uint32_t argument);
 void log_end(uint32_t entry, uint32_t outcome, int32_t value, uint32_t error, uint32_t flags = 0);
 void log_note(uint32_t op, uint32_t argument);
 uint32_t log_copy(uint32_t* out);
+uint32_t log_last(uint32_t* entry);   // #314: the newest entry (4 words) without a copy of the log; 0: none yet
 // #7: only the dedicated read-only diagnostic uses these. A gates every raw request independently.
 Reply boot_probe(uint32_t operation);
 Reply tfw_probe(const char* path, uint32_t operation);
