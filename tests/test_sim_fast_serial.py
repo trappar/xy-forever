@@ -115,7 +115,7 @@ class FastSerialTest(unittest.TestCase):
         dev.t.write = spy
         return kinds
 
-    @pytest.mark.sim
+    @pytest.mark.gate  # the 1.32 path's 2.3 MB (about 14000 requests to A): the sim tier has no room
     def test_a_2_3_mb_image_moves_with_a_fraction_of_the_link_traffic(self):
         """Kept: the throughput measure: a 2.3 MB image written and read back whole, both ways, the new path
         (max_data pieces, pipe in flight, the file kept open) against the 1.32 path on the same device; device time and
