@@ -72,9 +72,19 @@ every file (phase 1, `done`/`total` in bytes, "Reading OS 1.2.1 content" on the 
 the official 1.2.1 set's digest (`official_list_sha256`, `target/usb_service.hpp`: facts, never the files). Then, in
 A's write window, it writes `firmware.version` and reads it back, writes the list to `tmp/cset-<id>` and reads it back,
 and renames it in as `content.sha256`, last (phase 7). Errors (status `refused`): 9 not an official OS 1.2.1 entry,
-15 not the official state, 10 not the official set, 7 more than the list holds. `detail` is `content <id>`. Before
-that, `config.set` refuses a selection whose base has no content set when the job could not make one: not OS
-1.2.1, mods' content installed, or a catalog that is not the official one.
+15 not the official state, 10 not the official set, 22 an `op1_factory.json` that cannot be put back (below), 7 more
+than the list holds. `detail` is `content <id>`. Before that, `config.set` refuses a selection whose base has no
+content set when the job could not make one: not OS 1.2.1, mods' content installed, or a catalog that is neither the
+official one nor one it can put back.
+
+An OP-XY that had Open-XY (#331): Open-XY's builder leaves its machines' presets, screens and aux presets beside the
+official files and inserts their entries into `op1_factory.json` after the official ones of `engine_types`, `fx_types`
+and `seq_types`; it has no uninstall. So the job reads only the official paths (`target/xyf_official_content.hpp`:
+each path's SHA-256 prefix, facts) and leaves every other file where it is, outside the set. A catalog that is not the
+official one is put back by keeping each of those lists' official entries; only a result with the official SHA-256
+counts, else error 22 ("op1_factory.json can't be repaired"). The device's copy is then saved as
+`op1_factory.replaced.json` and the official bytes replace it, both after `firmware.version`, each written under an
+upload's name (`tmp/put-…`), read back and renamed over its file: a cut leaves the old file or the new one.
 A boot once (`menu.converge` mode 2, `xyf dev`, #284) runs the job first too, on the base `mods.apply` would take, since
 its content switch needs a stock entry's set; its error 15 there (mods' content installed) goes on to the switch, which
 uses the saved official list.

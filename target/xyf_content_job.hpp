@@ -45,7 +45,8 @@ enum Error : uint32_t {                                  // job.status `error` v
     e_write = 16,
     e_rename = 17,
     e_verify = 18,
-    e_link = 21
+    e_link = 21,
+    e_catalog = 22   // #331, a base's content set: op1_factory.json changed past putting back the official one
 };
 enum Refusal : uint32_t {                                // job.status `code` with e_content
     r_not_official = 1,   // the live catalog is not a stock entry's official one

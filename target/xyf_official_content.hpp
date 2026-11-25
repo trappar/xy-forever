@@ -8,7 +8,7 @@
 namespace xyf { namespace official {
 // The content set's paths (content.sha256's, relative to /yaffs2/content/), each as the first four bytes of its
 // SHA-256, big-endian, sorted. The content set's job reads only these: files another tool left beside them
-// (Open-XY's presets, screens and aux presets) stay out of the set. tests/test_sim_content_set.py checks the table
+// (Open-XY's presets, screens and aux presets) stay out of the set. tests/test_official_content.py checks the table
 // against the private 1.2.1 manifest.
 static const uint32_t path_count = 839;
 static const uint32_t path_hashes[path_count] = {
@@ -139,13 +139,14 @@ static const uint32_t list_count = 3;
 static const List lists[list_count] = {{"engine_types", 13}, {"fx_types", 6}, {"seq_types", 3}};
 static const uint32_t catalog_max = 16384;   // the largest op1_factory.json restored (the mod job's bound)
 
-inline bool space(uint8_t c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
-inline uint32_t skip_space(const uint8_t* t, uint32_t n, uint32_t i) {
+// Inlined: the build's call audit accepts only calls whose target address loads beside them.
+inline __attribute__((always_inline)) bool space(uint8_t c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
+inline __attribute__((always_inline)) uint32_t skip_space(const uint8_t* t, uint32_t n, uint32_t i) {
     while (i < n && space(t[i])) ++i;
     return i;
 }
 // One past the string at i (t[i] is '"'), or 0.
-inline uint32_t string_end(const uint8_t* t, uint32_t n, uint32_t i) {
+inline __attribute__((always_inline)) uint32_t string_end(const uint8_t* t, uint32_t n, uint32_t i) {
     for (++i; i < n; ++i) {
         if (t[i] == '\\') ++i;
         else if (t[i] == '"') return i + 1;
@@ -153,7 +154,7 @@ inline uint32_t string_end(const uint8_t* t, uint32_t n, uint32_t i) {
     return 0;
 }
 // One past the value at i, or i when there is none. Only its nesting is checked: the caller's hash decides.
-inline uint32_t value_end(const uint8_t* t, uint32_t n, uint32_t i) {
+inline __attribute__((always_inline)) uint32_t value_end(const uint8_t* t, uint32_t n, uint32_t i) {
     const uint32_t start = i;
     uint32_t depth = 0;
     while (i < n) {
@@ -174,7 +175,7 @@ inline uint32_t value_end(const uint8_t* t, uint32_t n, uint32_t i) {
     }
     return depth ? start : i;
 }
-inline bool same_key(const uint8_t* t, uint32_t n, const char* key) {
+inline __attribute__((always_inline)) bool same_key(const uint8_t* t, uint32_t n, const char* key) {
     uint32_t i = 0;
     for (; i != n && key[i]; ++i)
         if (t[i] != uint8_t(key[i])) return false;

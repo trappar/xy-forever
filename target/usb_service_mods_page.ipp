@@ -140,18 +140,23 @@ uint32_t content_set_check(const char* id, const char*& why) {
         if (st.kind != xyf::content::official) why = "Mods' content is installed, and the base has no content set.";
     } else if (code != P::s_not_found) return code;
     if (why) return P::s_refused;
-    // The live catalog: the official 1.2.1 one (the build reads every file; this is its quick part).
-    join(path, xa::content, "/", xyf::content::catalog);
+    // The live catalog: the official 1.2.1 one, or one the build puts back (#331). The build reads every file; this
+    // is its quick part.
     xyf_core::hash::Sha256 h;
+    w.catalog_n = 0;
     for (U32 at = 0;; at += got) {
-        code = file_client::read_file(path, at, true, w.page, file_client::piece_max, got, mounted);
+        code = file_client::read_file(xa::live_catalog, at, true, w.page, file_client::piece_max, got, mounted);
         if (code != P::s_ok) break;
         h.update(w.page, got);
+        if (w.catalog_n + got > xyf::official::catalog_max) w.catalog_n = xyf::official::catalog_max + 1;
+        else
+            for (U32 i = 0; i != got; ++i) w.catalog[w.catalog_n++] = w.page[i];
         if (got < file_client::piece_max) break;
     }
     xyf_core::hash::Digest d;
-    if (code == P::s_not_found || (code == P::s_ok && (!h.finish(d) || !sha_equal(d.bytes, official_digest(true)))))
-        why = "The OP-XY's content is not official OS 1.2.1, and the base has no content set.";
+    if (code == P::s_not_found) why = "The OP-XY's content is not official OS 1.2.1, and the base has no content set.";
+    else if (code == P::s_ok && (!h.finish(d) || !sha_equal(d.bytes, official_digest(true))) && !catalog_put_back(w))
+        why = "The OP-XY's op1_factory.json can't be repaired: copy in OS 1.2.1's own.";
     return why ? P::s_refused : code;
 }
 uint32_t config_store(const char* text, uint32_t length, const char* default_id) {

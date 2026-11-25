@@ -314,6 +314,7 @@ uint32_t content_setting() {
     }
     if (v.error == 9) return fail(prefix(), "the base is not official OS 1.2.1 (mods need its content).");
     if (v.error == 15) return fail(prefix(), "mods' content is installed; the base has no content set.");
+    if (v.error == 22) return fail(prefix(), "op1_factory.json can't be repaired. Copy in OS 1.2.1's own."); // #331
     if (v.error == 10 || v.error == 7) return fail(prefix(), "the content is not official OS 1.2.1's.");
     char d[12];
     m::decimal(d, v.error);
