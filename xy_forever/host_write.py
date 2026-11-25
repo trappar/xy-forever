@@ -57,6 +57,31 @@ def streams(dev):
     return info is None or info.answers(P.ids.WRITE_BEGIN)
 
 
+def hashes(dev):
+    """The device hashes a stored file itself (file.hash, 1.32): a check needs no read-back over USB."""
+    info = getattr(dev, 'hello_info', None)
+    return info is not None and not info.pre_v1 and info.answers(P.ids.HASH_FILE)
+
+
+def stored_sha256(dev, path, size=0):
+    """(status, SHA-256) of the file stored at path, hashed on the device (file.hash, 1.32); size: the bytes expected
+    (the time the host waits)."""
+    code, body = dev.call(P.ids.HASH_FILE, path.encode('utf-8') + b'\0', timeout=60.0 + size / 20000.0)
+    return code, body[4:36]
+
+
+def holds(dev, path, data, read):
+    """(status, whether the file stored at path holds exactly data): compared by SHA-256, hashed on the device from 1.32
+    (stored_sha256), before it read back whole over USB with read(path) -> (status, bytes)."""
+    want = hashlib.sha256(data).digest()
+    if hashes(dev):
+        code, sha = stored_sha256(dev, path, len(data))
+    else:
+        code, back = read(path)
+        sha = hashlib.sha256(back).digest()
+    return code, not code and sha == want
+
+
 def write_staged(dev, path, data, progress=None):
     """Before 1.18 (the throughput table's "before" row): stage, then file.write_staged (in place, staging-sized)."""
     code = dev.stage(data, progress)

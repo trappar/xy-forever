@@ -79,7 +79,7 @@ There is no guard (watchdog) and no command for one: a hang needs a power cycle;
 ```sh
 uv run xyf-host ls /yaffs2/xy-forever [--json]       # type, size, name (paged; any folder size)
 uv run xyf-host get /yaffs2/xy-forever/log/x.bin x.bin   # any size; size (ls) and 4 ranges re-read
-uv run xyf-host put x.bin /yaffs2/xy-forever/x.bin   # <= HELLO stage= (7 MiB); read back [--no-verify]
+uv run xyf-host put x.bin /yaffs2/xy-forever/x.bin   # any size; SHA-256 checked on the device [--no-verify]
 uv run xyf-host mkdir /yaffs2/xy-forever/new         # the parent must exist
 uv run xyf-host rm /yaffs2/xy-forever/x.bin          # rm --dir: an empty folder only
 uv run xyf-host mv /yaffs2/xy-forever/a /yaffs2/content/b   # file or folder; no overwrite (state)

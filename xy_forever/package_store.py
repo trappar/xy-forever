@@ -143,13 +143,32 @@ class Session:
         check(code, 'list %s' % path)
         return entries
 
-    def write(self, path, data):
+    def sha256(self, path, size=0, optional=False):
+        """The SHA-256 digest of the file stored at path (None: missing, with optional); size: the bytes expected. Hashed
+        on the device (file.hash, 1.32: nothing comes back over USB), else read back whole and hashed here."""
+        if not host_write.hashes(self.dev):
+            data = self.read(path, optional)
+            return None if data is None else hashlib.sha256(data).digest()
+        self.command(1)
+        code, sha = host_write.stored_sha256(self.dev, path, size)
+        if optional and code == MISSING:
+            return None
+        check(code, 'hash %s' % path)
+        return sha
+
+    def put(self, path, data):
+        """Writes data to path. The device checks the bytes it received (CRC-32, SHA-256) and the file it read back
+        (CRC-32) before it renames the file onto path (host_write.put)."""
         self.command(1)
         if depth.refusal(path):
             raise StoreError(depth.refusal(path))
         code = host_write.put(self.dev, data, path, say=lambda _: None)
         check(code, 'write %s' % path)
-        if hashlib.sha256(self.read(path)).digest() != hashlib.sha256(data).digest():
+
+    def write(self, path, data):
+        """put, then the stored file checked by its SHA-256."""
+        self.put(path, data)
+        if self.sha256(path, len(data)) != hashlib.sha256(data).digest():
             raise StoreError('read-back SHA-256 differs: %s' % path)
 
     def change(self, kind, path):
@@ -197,10 +216,11 @@ class Session:
         live_hashes = set()
         for sha, rel in references:
             live_path = '/yaffs2/content/' + rel
-            live = self.read(live_path, optional=True) if factory else None
-            if factory and rel == 'op1_factory.json' and (live is None or hashlib.sha256(live).hexdigest() != sha):
-                live = self.read(ROOT + '/content-official/op1_factory.json', optional=True)
-            if live is not None and hashlib.sha256(live).hexdigest() == sha:
+            want = bytes.fromhex(sha)
+            live = self.sha256(live_path, optional=True) if factory else None
+            if factory and rel == 'op1_factory.json' and live != want:
+                live = self.sha256(ROOT + '/content-official/op1_factory.json', optional=True)
+            if live == want:
                 live_hashes.add(sha)
                 continue
             if sha in existing or sha in live_hashes:
@@ -220,7 +240,7 @@ class Session:
 
     def publish(self, target, files, keep=()):
         """Publishes files ({rel: bytes}) as target. keep: rels the published target already holds with these bytes (the
-        caller checked them): moved over from it on the device after the rest is staged and read back, never sent."""
+        caller checked them): moved over from it on the device after the rest is staged and checked, never sent."""
         if not package_name(target.rsplit('/', 1)[-1]):
             raise StoreError('unsafe package name')
         if not target.startswith((LIBRARY + '/', ROOT + '/mods/')):
@@ -232,10 +252,11 @@ class Session:
                 raise StoreError('package exceeds storage depth')
         sent = {rel: data for rel, data in files.items() if rel not in keep}
         for rel, data in sorted(sent.items()):
-            self.write(scratch + '/' + rel, data)
-        # Re-read the entire staged result before the sole publication rename.
+            self.put(scratch + '/' + rel, data)
+        # Check the entire staged result, as stored now, before the sole publication rename: one SHA-256 per file, hashed
+        # on the device from 1.32 (#327), else read back over USB.
         for rel, data in sorted(sent.items()):
-            if self.read(scratch + '/' + rel) != data:
+            if self.sha256(scratch + '/' + rel, len(data)) != hashlib.sha256(data).digest():
                 raise StoreError('staged package changed: %s' % rel)
         old = scratch + '-old'
         parent, name = target.rsplit('/', 1)
