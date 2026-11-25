@@ -96,18 +96,15 @@ def kit_file(path):
 
 
 def choose(kit, only=None):
-    """The package folder name of the mod to try: --only's, else the kit's one personal machine or extension (or its
-    one machine)."""
+    """The id of the mod to try: --only's, else the kit's one personal machine or extension (or its one machine)."""
     machines = [m['id'] for m in kit.get('machines', [])]
     extensions = [e['id'] for e in kit.get('extensions', [])]
     if only:
-        if only in machines:
+        if only in machines + extensions:
             return only
-        if only in extensions:
-            return 'ext-' + only
         raise Refused('no machine or extension %r in the kit (it holds %s)' % (only, ', '.join(machines + extensions)))
     personal = [m['id'] for m in kit.get('machines', []) if m.get('origin') == 'personal']
-    personal += ['ext-' + e['id'] for e in kit.get('extensions', []) if e.get('origin') == 'personal']
+    personal += [e['id'] for e in kit.get('extensions', []) if e.get('origin') == 'personal']
     found = personal or machines
     if len(found) == 1:
         return found[0]
@@ -146,7 +143,9 @@ def dev_kit(args, kit_dir, out=print, splitter=split, connect=checked_connect):
             kit = json.loads(kit_path.read_text(encoding='utf-8'))
         except ValueError as error:
             raise Refused('%s is not a kit (%s)' % (kit_path, error))
-        package = choose(kit, args.only)
+        if not isinstance(kit, dict):
+            raise Refused('%s is not a kit' % kit_path)
+        mod = choose(kit, args.only)
         sdk = open_xy(args.sdk)
         if not shutil.which('node'):
             raise Refused(NODE)
@@ -163,8 +162,8 @@ def dev_kit(args, kit_dir, out=print, splitter=split, connect=checked_connect):
             out('%s: stopped' % name)
             return STOPPED
         run = SimpleNamespace(
-            package_dir=generation / package,
-            only=None,
+            package_dir=generation,  # with only: moddev finds the machine's or the extension's package
+            only=mod,
             base=args.base,
             unverified=args.unverified,
             wait=args.wait,

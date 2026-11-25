@@ -84,7 +84,7 @@ class DevTest(unittest.TestCase):
         kit = dict(machines=[dict(id='fm2op', origin='official'), dict(id='mine', origin='personal')])
         self.assertEqual(xyf.choose(kit), 'mine')
         kit['extensions'] = [dict(id='cpu', origin='official')]
-        self.assertEqual(xyf.choose(kit, 'cpu'), 'ext-cpu')
+        self.assertEqual(xyf.choose(kit, 'cpu'), 'cpu')
         self.assertEqual(xyf.choose(kit, 'fm2op'), 'fm2op')
         with self.assertRaisesRegex(
             xyf.Refused, r"no machine or extension 'x' in the kit \(it holds fm2op, mine, cpu\)"
@@ -122,20 +122,27 @@ class DevTest(unittest.TestCase):
         self.assertEqual(self.dev(write_kit(self.tmp / 'kit', [('mine', 'personal')]), broken), 1)
         self.assertEqual(self.lines, ['xyf dev: failed: the kit could not be split: core.mjs driver failed: boom'])
 
-    def test_moddev_runs_the_split_mod(self):
-        seen = []
+    def test_moddev_takes_the_split_mod(self):
+        """A real split (test_modkit's synthetic kit, its content stand-in): moddev finds the machine's and the
+        extension's package in it, then the connect's mismatch ends the run with its one line."""
+        from test_modkit import finish, synthetic_kit
 
-        def command(run, connect, out, name):
-            seen.append((run.package_dir.name, run.package_dir.parent.name, run.base, run.unverified, name))
-            connect(1.0)
+        from xy_forever import modkit
 
-        kit = write_kit(self.tmp / 'kit', [('mine', 'personal')])
-        with (
-            mock.patch.object(moddev, 'command', command),
-            mock.patch('xy_forever.device_client.connect', return_value=(mock.Mock(), 'sim', HELLO % '1.21')),
-        ):
-            self.assertEqual(self.dev(kit, base='opxy-121', unverified=True), 2)
-        self.assertEqual(seen, [('mine', 'gen', 'opxy-121', True, 'xyf dev')])
+        kit = synthetic_kit()
+        folder = self.tmp / 'kit'
+        folder.mkdir()
+        (folder / 'kit.json').write_text(json.dumps(kit))
+        found = []
+
+        def split(kit_path, out, sdk):
+            generation = Path(modkit.split_kit(kit_path, out, finish=finish)['root'])
+            found.extend(moddev.resolve(generation, mod)[1] for mod in ('alpha', 'cap'))
+            return generation
+
+        with mock.patch('xy_forever.device_client.connect', return_value=(mock.Mock(), 'sim', HELLO % '1.21')):
+            self.assertEqual(self.dev(folder, split, only='alpha'), 2)
+        self.assertEqual(found, ['alpha', 'ext-cap'])
         self.assertEqual(len(self.lines), 1)
         self.assertTrue(self.lines[0].startswith('xyf dev: the OP-XY speaks XY Forever protocol 1.21'), self.lines)
 
