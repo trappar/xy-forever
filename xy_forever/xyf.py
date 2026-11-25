@@ -1,25 +1,23 @@
 """xyf: the mod developer's commands, published on PyPI as `xy-forever` (#284; its page: pypi/README.md).
 
-  xyf dev KIT                  the mod in an Open-XY kit (`sdk.py kit --personal --out KIT`): split (Open-XY's
-                               core.mjs under Node), then pushed, built alone on the OP-XY and booted once
-  xyf dev --watch FOLDER       the same for every new kit in FOLDER (a kit folder inside it, or FOLDER itself)
+  xyf stock-os [OUT]           the stock OS 1.2.1 os.ldr from the OP-XY's own library, for `sdk.py build --stock-os`
+  xyf dev BUILD                Open-XY's build (`sdk.py build --out BUILD`): checked, pushed as library entry xyf-dev
+                               with its content, booted once (dev_entry.py)
+  xyf dev --watch FOLDER       the same for every new build in FOLDER (a build folder inside it, or FOLDER itself)
   xyf logs [--out DIR]         the OP-XY's new crash logs and reports, copied to DIR
 
-The device steps are `xyf-host mods dev`'s (moddev.py: wait, push, build, boot, one timed line each). Every command
-first checks the protocol the OP-XY's HELLO names against the range this package speaks (PROTOCOL): a mismatch stops
-with one line naming both and the update. Exit codes: 0 done (dev: the mod booted), 1 failed, 2 refused, 130
-stopped (Ctrl-C). Needs macOS or Linux (the serial port, transport.py) and, for dev, Node.
+Every command that talks to the OP-XY waits for its XY Forever menu (saying once how to get there), then checks the
+protocol its HELLO names against the range this package speaks (PROTOCOL): a mismatch stops with one line naming both
+and the update. Exit codes: 0 done (dev: the build booted), 1 failed, 2 refused, 130 stopped (Ctrl-C).
 """
 
 import argparse
 import hashlib
 import json
-import shutil
+import os
 import sys
-import tempfile
 import time
 from pathlib import Path
-from types import SimpleNamespace
 
 from xy_forever import usb_proto as P
 
@@ -27,10 +25,8 @@ PROTOCOL = (1, 30)  # the oldest protocol xyf speaks (menu.converge, #204); ever
 SITE = 'https://xy-forever.trappar.com'
 UPDATE_FIRMWARE = 'Update XY Forever at %s (Manage → Device → Update)' % SITE
 UPDATE_XYF = 'Update xyf: pip install -U xy-forever (or uvx xy-forever@latest)'
-NODE = "Node is missing: install Node 22.12 or newer (https://nodejs.org), as Open-XY's own guide asks"
-KIT = 'kit.json'
-DONE = 'opxy-builder.html'  # `sdk.py kit` names it last, once every check passed: the kit is complete
-POLL_S = 0.5  # --watch: how often it looks for a new kit
+DONE = 'verification.json'  # `sdk.py build` writes it last, once the build passed its checks
+POLL_S = 0.5  # --watch: how often it looks for a new build
 LOG_FOLDERS = ('/yaffs2/logs', '/yaffs2/xy-forever/log')  # the OS's crash logs; XY Forever's reports of the last boot
 LOG_LIMIT = 1 << 20  # bytes read of one log file
 SHOWN = 4096  # bytes of a text log printed inline
@@ -85,128 +81,157 @@ def checked_connect(timeout, log=None, waiting=None):
     return dev, port, text
 
 
-# -- xyf dev --------------------------------------------------------------------------------------------
-def kit_file(path):
-    """The kit.json of a kit folder (or the file itself)."""
-    path = Path(path)
-    kit = path if path.is_file() else path / KIT
-    if not kit.is_file():
-        raise Refused('%s holds no %s: give the folder `sdk.py kit --personal --out FOLDER` wrote' % (path, KIT))
-    return kit
+def session(name, args, work, out=print, connect=checked_connect):
+    """Connects (the power line once, when the OP-XY is not at its menu), waits for the menu's storage, says [wait]
+    when it waited, then work(dev, detail) -> the exit code. Every way out ends in one line."""
+    from xy_forever import dev_entry, moddev
+    from xy_forever.startup_ready import StartupNotReady
 
+    waited = []
 
-def choose(kit, only=None):
-    """The id of the mod to try: --only's, else the kit's one personal machine or extension (or its one machine)."""
-    machines = [m['id'] for m in kit.get('machines', [])]
-    extensions = [e['id'] for e in kit.get('extensions', [])]
-    if only:
-        if only in machines + extensions:
-            return only
-        raise Refused('no machine or extension %r in the kit (it holds %s)' % (only, ', '.join(machines + extensions)))
-    personal = [m['id'] for m in kit.get('machines', []) if m.get('origin') == 'personal']
-    personal += [e['id'] for e in kit.get('extensions', []) if e.get('origin') == 'personal']
-    found = personal or machines
-    if len(found) == 1:
-        return found[0]
-    raise Refused(
-        'the kit holds %s: name the one to try with --only ID'
-        % ('no machine' if not found else '%d mods (%s)' % (len(found), ', '.join(found)))
-    )
+    def waiting():
+        waited.append(time.monotonic())
+        out(moddev.POWER)
 
-
-def open_xy(sdk):
-    """The Open-XY checkout whose builder/core.mjs finishes the mod's content."""
-    folder = Path(sdk) if sdk else Path.cwd()
-    if not (folder / 'builder' / 'core.mjs').is_file():
-        raise Refused(
-            'no Open-XY checkout at %s (builder/core.mjs): run xyf from your Open-XY checkout or give --sdk DIR'
-            % folder
-        )
-    return folder
-
-
-def split(kit_path, out, sdk):
-    """modkit split of the kit into out: the generation folder."""
-    from xy_forever import modkit
-
-    return Path(modkit.split_kit(kit_path, out, sdk)['root'])
-
-
-def dev_kit(args, kit_dir, out=print, splitter=split, connect=checked_connect):
-    """One kit: split, then moddev's push, build and boot. The exit code."""
-    from xy_forever import moddev, modkit
-
-    name = 'xyf dev'
+    start = time.monotonic()
+    detail = (lambda line: out('  ' + line)) if getattr(args, 'verbose', False) else (lambda line: None)
     try:
-        kit_path = kit_file(kit_dir)
-        try:
-            kit = json.loads(kit_path.read_text(encoding='utf-8'))
-        except ValueError as error:
-            raise Refused('%s is not a kit (%s)' % (kit_path, error))
-        if not isinstance(kit, dict):
-            raise Refused('%s is not a kit' % kit_path)
-        mod = choose(kit, args.only)
-        sdk = open_xy(args.sdk)
-        if not shutil.which('node'):
-            raise Refused(NODE)
-    except Refused as error:
+        dev, port, text = connect(args.wait, log=detail, waiting=waiting)
+    except Incompatible as error:
+        out('%s: %s' % (name, error))
+        return 2
+    except SystemExit as error:  # device_client.connect: no XY Forever menu within --wait
+        out('%s: %s' % (name, error.code))
+        return 1
+    except KeyboardInterrupt:
+        out('%s: stopped' % name)
+        return STOPPED
+    detail('connected %s: %s' % (port, text))
+    try:
+        moddev.ready(dev, text)
+        if waited:
+            out('[wait] %.2f s' % (time.monotonic() - start))
+        return work(dev, detail)
+    except (Refused, dev_entry.Refused) as error:
         out('%s: refused: %s' % (name, error))
         return 2
-    with tempfile.TemporaryDirectory(prefix='xyf-dev-') as tmp:
+    except StartupNotReady as error:
+        out('%s: %s' % (name, error))
+        return 1
+    except (OSError, TimeoutError) as error:
+        out('%s: connection lost (%s); run it again' % (name, error))
+        return 1
+    except KeyboardInterrupt:
+        out('%s: stopped' % name)
+        return STOPPED
+    finally:
         try:
-            generation = splitter(kit_path, tmp, sdk)
-        except (modkit.KitError, OSError) as error:
-            out('%s: failed: the kit could not be split: %s' % (name, error))
-            return 1
-        except KeyboardInterrupt:
-            out('%s: stopped' % name)
-            return STOPPED
-        run = SimpleNamespace(
-            package_dir=generation,  # with only: moddev finds the machine's or the extension's package
-            only=mod,
-            base=args.base,
-            unverified=args.unverified,
-            wait=args.wait,
-            verbose=args.verbose,
+            dev.t.close()
+        except OSError:
+            pass
+
+
+# -- xyf stock-os ---------------------------------------------------------------------------------------
+def private_root():
+    """Open-XY's folder for private files (its tooling/device.py private_root): firmware stays outside checkouts."""
+    if sys.platform == 'darwin':
+        return Path.home() / 'Library/Application Support/OPXY-SDK/private'
+    return Path(os.environ.get('LOCALAPPDATA') or Path.home() / '.local/share') / 'OPXY-SDK/private'
+
+
+def default_stock():
+    """Where `xyf stock-os` writes the stock os.ldr and `xyf dev` reads it: Open-XY's stock-1.2.1/os.ldr."""
+    return private_root() / 'stock-1.2.1' / 'os.ldr'
+
+
+def stock_target(out):
+    target = Path(out) if out else default_stock()
+    return target / 'os.ldr' if target.is_dir() else target
+
+
+def stock_os(args, out=print, connect=checked_connect):
+    """Copies the library entry whose os.ldr is stock OS 1.2.1 (by SHA-256) to the target, checked; never prints it."""
+    from xy_forever import dev_entry
+
+    name, target = 'xyf stock-os', stock_target(args.out)
+    try:
+        dev_entry.read_stock(target)
+        out('%s: %s is stock OS 1.2.1 already' % (name, target))
+        return 0
+    except dev_entry.Refused:
+        pass
+
+    def work(dev, detail):
+        start = time.monotonic()
+        entry = dev_entry.stock_entries(dev)[0]
+        code, data = dev.read_all(
+            '%s/%s/os.ldr' % (dev_entry.package_store.LIBRARY, entry), limit=dev_entry.STOCK_BYTES
         )
-        try:
-            return moddev.command(run, connect, out, name)
-        except Incompatible as error:
-            out('%s: %s' % (name, error))
-            return 2
-        except SystemExit as error:  # device_client.connect: no OP-XY menu within --wait
-            out('%s: %s' % (name, error.code))
+        if code or len(data) != dev_entry.STOCK_BYTES or hashlib.sha256(data).hexdigest() != dev_entry.STOCK_SHA256:
+            out('%s: failed: %s/os.ldr did not read back as stock OS 1.2.1; run it again' % (name, entry))
             return 1
+        target.parent.mkdir(parents=True, exist_ok=True)
+        part = target.with_name(target.name + '.part')
+        part.write_bytes(data)
+        os.replace(part, target)
+        out(
+            '%s: %s (%d bytes, SHA-256 checked, from library entry %s) in %.2f s'
+            % (name, target, len(data), entry, time.monotonic() - start)
+        )
+        return 0
+
+    return session(name, args, work, out, connect)
 
 
-def kits(folder):
-    """{kit folder: when `sdk.py kit` finished it} for folder and the folders in it."""
+# -- xyf dev --------------------------------------------------------------------------------------------
+def dev_build(args, folder, out=print, connect=checked_connect):
+    """One build: checked here, then pushed and booted once. The exit code."""
+    from xy_forever import dev_entry
+
+    try:
+        image, content = dev_entry.read_build(folder)
+        stock = dev_entry.read_stock(args.stock_os or default_stock())
+        dev_entry.check_image(image, stock, dev_entry.read_profile(args.sdk or Path.cwd()))
+        files = dev_entry.entry_files(image, content)
+    except dev_entry.Refused as error:
+        out('xyf dev: refused: %s' % error)
+        return 2
+
+    def work(dev, detail):
+        dev_entry.preflight(dev)
+        return dev_entry.run(dev, files, out, detail)
+
+    return session('xyf dev', args, work, out, connect)
+
+
+def builds(folder):
+    """{build folder: when `sdk.py build` finished it} for folder and the folders in it."""
     found = {}
     for candidate in [folder, *sorted(p for p in folder.iterdir() if p.is_dir())]:
-        done = candidate / DONE
-        if done.is_file() and (candidate / KIT).is_file():
-            found[candidate] = done.stat().st_mtime_ns
+        image, done = candidate / 'candidate' / 'os.ldr', candidate / DONE
+        if image.is_file() and done.is_file():
+            found[candidate] = (image.stat().st_mtime_ns, done.stat().st_mtime_ns)
     return found
 
 
-def watch(args, out=print, sleep=time.sleep, run=dev_kit):
-    """dev_kit for each kit that appears or is rebuilt in args.folder after it starts (the newest, when several
-    did), until Ctrl-C."""
+def watch(args, out=print, sleep=time.sleep, run=dev_build):
+    """run for each build that appears or is rebuilt in args.folder after it starts (the newest, when several did),
+    until Ctrl-C."""
     folder = Path(args.folder)
     if not folder.is_dir():
         out('xyf dev: refused: %s is not a folder' % folder)
         return 2
-    out('xyf dev: watching %s for new kits (Ctrl-C stops)' % folder)
+    out('xyf dev: watching %s for new builds (Ctrl-C stops)' % folder)
     try:
-        seen = kits(folder)
+        seen = builds(folder)
         while True:
-            now = kits(folder)
-            new = [kit for kit, stamp in now.items() if seen.get(kit) != stamp]
+            now = builds(folder)
+            new = [build for build, stamp in now.items() if seen.get(build) != stamp]
             seen = now
             if new:
-                kit = max(new, key=lambda k: now[k])
-                out('kit %s' % kit)
-                if run(args, kit, out) == STOPPED:
+                build = max(new, key=lambda b: now[b])
+                out('build %s' % build)
+                if run(args, build, out) == STOPPED:
                     return STOPPED
             sleep(POLL_S)
     except KeyboardInterrupt:
@@ -215,7 +240,7 @@ def watch(args, out=print, sleep=time.sleep, run=dev_kit):
 
 
 def dev(args, out=print):
-    return watch(args, out) if args.watch else dev_kit(args, args.folder, out)
+    return watch(args, out) if args.watch else dev_build(args, args.folder, out)
 
 
 # -- xyf logs -------------------------------------------------------------------------------------------
@@ -289,82 +314,47 @@ def copy_new(dev, folder, out=print):
 
 
 def logs(args, out=print, connect=checked_connect):
-    from xy_forever import moddev
-    from xy_forever.startup_ready import StartupNotReady
-
-    name = 'xyf logs'
-    waited = []
-
-    def waiting():
-        waited.append(time.monotonic())
-        out(moddev.POWER)
-
-    start = time.monotonic()
-    detail = (lambda line: out('  ' + line)) if args.verbose else (lambda line: None)
-    try:
-        dev, port, text = connect(args.wait, log=detail, waiting=waiting)
-    except Incompatible as error:
-        out('%s: %s' % (name, error))
-        return 2
-    except SystemExit as error:
-        out('%s: %s' % (name, error.code))
-        return 1
-    except KeyboardInterrupt:
-        out('%s: stopped' % name)
-        return STOPPED
-    detail('connected %s: %s' % (port, text))
-    try:
-        moddev.ready(dev, text)
-        if waited:
-            out('[wait] %.2f s' % (time.monotonic() - start))
+    def work(dev, detail):
         copy_new(dev, Path(args.out), out)
         return 0
-    except StartupNotReady as error:
-        out('%s: %s' % (name, error))
-        return 1
-    except (OSError, TimeoutError) as error:
-        out('%s: connection lost (%s); run it again' % (name, error))
-        return 1
-    except KeyboardInterrupt:
-        out('%s: stopped' % name)
-        return STOPPED
-    finally:
-        try:
-            dev.t.close()
-        except OSError:
-            pass
+
+    return session('xyf logs', args, work, out, connect)
 
 
 # -- the command line ---------------------------------------------------------------------------------
 def parser():
     p = argparse.ArgumentParser(
         prog='xyf',
-        description="Try your Open-XY mod on an OP-XY running XY Forever: the device steps after Open-XY's build.",
-        epilog='Each command waits for the XY Forever menu; when the OP-XY is off or running its OS it says once: '
-        '"Power the OP-XY off, then on holding PLAY (let go at the logo)". Exit codes: 0 done (dev: the mod '
-        'booted), 1 failed, 2 refused, 130 stopped. More: https://pypi.org/project/xy-forever/',
+        description='Try your Open-XY build on an OP-XY running XY Forever: it boots once, your saved setup stays.',
+        epilog='Each command that talks to the OP-XY waits for the XY Forever menu; when the OP-XY is off or running '
+        'its OS it says once: "Power the OP-XY off, then on holding PLAY (let go at the logo)". Exit codes: 0 done '
+        '(dev: the build booted), 1 failed, 2 refused, 130 stopped. More: https://pypi.org/project/xy-forever/',
     )
     p.add_argument('--version', action='version', version='xyf %s (XY Forever protocol %s)' % (version(), speaks()))
     sub = p.add_subparsers(dest='command', required=True, metavar='COMMAND')
+    s = sub.add_parser(
+        'stock-os',
+        help="copy the stock OS 1.2.1 os.ldr from the OP-XY's library, for sdk.py build --stock-os",
+        description="Copy the stock OS 1.2.1 os.ldr from the OP-XY's own library (the entry whose SHA-256 is OS "
+        "1.2.1's), checked, to OUT (default: %s, where xyf dev looks for it)." % default_stock(),
+    )
+    s.add_argument('out', nargs='?', type=Path, help='the file or folder to write it to')
     d = sub.add_parser(
         'dev',
-        help='push the mod in a kit, build it alone on the OP-XY and boot it once (nothing saved changes)',
-        description='Push the mod in an Open-XY kit, build it alone on the OP-XY and boot it once. Lines: '
-        '[wait] (only after a power cycle), [push], [build], [boot], each with its time, then total. Nothing saved '
-        'changes: the next plain start goes back to your own mods.',
+        help="push Open-XY's build to the OP-XY and boot it once (nothing saved changes)",
+        description='Push the firmware `sdk.py build --out BUILD` made to the OP-XY as library entry xyf-dev, with '
+        'its content, and boot it once. Lines: [wait] (only after a power cycle), [push], [boot], each with its '
+        'time, then total. The next plain start goes back to your saved setup.',
     )
     d.add_argument(
         'folder',
         type=Path,
-        help='the kit folder (sdk.py kit --personal --out FOLDER); with --watch, the folder new kits appear in',
+        help='the build folder (sdk.py build --out BUILD; it holds candidate/os.ldr); with --watch, the folder new '
+        'builds appear in',
     )
-    d.add_argument('--watch', action='store_true', help='repeat for every new kit in FOLDER, until Ctrl-C')
-    d.add_argument('--only', metavar='ID', help='the machine or extension to try, when the kit holds several')
+    d.add_argument('--watch', action='store_true', help='repeat for every new build in FOLDER, until Ctrl-C')
     d.add_argument('--sdk', type=Path, metavar='DIR', help='your Open-XY checkout (default: the current folder)')
-    d.add_argument('--base', metavar='ID', help='the stock firmware entry to build on (default: the saved base)')
-    d.add_argument('--unverified', action='store_true', help='build on a base XY Forever does not know (you trust it)')
-    d.add_argument('--wait', type=float, default=600.0, metavar='S', help='seconds to wait for the OP-XY (default 600)')
-    d.add_argument('--verbose', action='store_true', help='also the connection, every package and the jobs')
+    d.add_argument('--stock-os', type=Path, metavar='FILE', help='the stock OS 1.2.1 os.ldr (default: as stock-os)')
     lg = sub.add_parser(
         'logs',
         help="copy the OP-XY's new crash logs and reports from the last boot",
@@ -372,19 +362,17 @@ def parser():
         'since the last run into --out; text ones are printed too.' % LOG_FOLDERS,
     )
     lg.add_argument('--out', type=Path, default=Path('xyf-logs'), help='where they go (default: ./xyf-logs)')
-    lg.add_argument(
-        '--wait', type=float, default=600.0, metavar='S', help='seconds to wait for the OP-XY (default 600)'
-    )
-    lg.add_argument('--verbose', action='store_true', help='also the connection')
+    for command in (s, d, lg):
+        command.add_argument(
+            '--wait', type=float, default=600.0, metavar='S', help='seconds to wait for the OP-XY (default 600)'
+        )
+        command.add_argument('--verbose', action='store_true', help='also the connection and each step')
     return p
 
 
 def main(argv=None):
     args = parser().parse_args(argv)
-    if sys.platform == 'win32':
-        print('xyf: needs macOS or Linux for now (its USB serial connection)')
-        return 2
-    return dev(args) if args.command == 'dev' else logs(args)
+    return {'stock-os': stock_os, 'dev': dev, 'logs': logs}[args.command](args)
 
 
 if __name__ == '__main__':

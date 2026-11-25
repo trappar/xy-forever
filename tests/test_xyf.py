@@ -1,8 +1,9 @@
-"""`xyf`, the developer package's command (xy_forever/xyf.py, #284): the protocol check at connect, the mod a kit
-gives, `xyf dev`'s refusals before any device work and its hand-over to moddev (whose device flow
-test_sim_moddev.py proves in the simulator), `--watch` on new and rebuilt kits, and `xyf logs` copying only what is
-new. No device and no Node; one test runs `xyf logs` against the simulator (skipped without the private stock
-images)."""
+"""`xyf`, the developer package's command (xy_forever/xyf.py, dev_entry.py; #284): the protocol check at connect;
+`xyf dev`'s check that a build is Open-XY's assembly of stock OS 1.2.1, the library entry it makes, its refusals
+before any device work and its hand-over to the connection; `--watch` on new and rebuilt builds; `xyf stock-os`
+copying the checked stock image; `xyf logs` copying only what is new; the Windows serial port. No device; one test
+runs `xyf logs` against the simulator (skipped without the private stock images); the push and the boot once in the
+simulator: test_sim_xyf_dev.py."""
 
 import json
 import os
@@ -14,30 +15,69 @@ from types import SimpleNamespace
 from unittest import mock
 
 import pytest
+from test_ldr import header
+from test_modpatch import profile_for, stock
 
-from xy_forever import device_client, moddev, sim, xyf
+from xy_forever import dev_entry, device_client, moddev, package_records, sim, transport, xyf
 from xy_forever import usb_proto as P
+from xy_forever.ldr import parse_ldr
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
-
 HELLO = 'XYF1;service=usb;role=b;proto=%s;version=0.1.0;image=00000000;mode=product'
 
 
+def assemble(base, profile, module=b'\x11' * 64):
+    """Open-XY's assembly (tooling/firmware.py assemble): base with the profile's edits, the module record before
+    FINAL, FIRST's length fixed."""
+    patched = bytearray(base)
+    for patch in profile['patches']:
+        offset, length = int(patch['file_offset'], 16), patch['length']
+        after = bytes.fromhex(patch['after']) if len(patch.get('after', '')) == 2 * length else b'\xee' * length
+        patched[offset : offset + length] = after
+    blocks = parse_ldr(base)
+    at = blocks[-1].offset
+    body = bytes(patched[16:at]) + header(4, profile['module_base'], len(module)) + module + bytes(patched[at:])
+    return header(0x5004, blocks[0].target, 0, len(body)) + body
+
+
+class Synthetic:
+    """A synthetic stock image and its profile (test_modpatch's), standing in for OS 1.2.1 (the pin patched)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='xyf-test-'))
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.stock = stock()
+        self.profile = profile_for(self.stock)
+        self.image = assemble(self.stock, self.profile)
+        for name, value in (('STOCK_SHA256', self.profile['stock_sha256']), ('STOCK_BYTES', len(self.stock))):
+            patcher = mock.patch.object(dev_entry, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.sdk = self.tmp / 'open-xy'
+        (self.sdk / 'profiles').mkdir(parents=True)
+        (self.sdk / 'profiles' / 'opxy-1.2.1.json').write_text(json.dumps(self.profile))
+        self.stock_path = self.tmp / 'stock-1.2.1' / 'os.ldr'
+        self.stock_path.parent.mkdir()
+        self.stock_path.write_bytes(self.stock)
+
+    def build(self, name='mine-001', image=None, content=None, done=True):
+        """An `sdk.py build --out` folder."""
+        folder = self.tmp / 'builds' / name
+        (folder / 'candidate').mkdir(parents=True, exist_ok=True)
+        (folder / 'candidate' / 'os.ldr').write_bytes(self.image if image is None else image)
+        for rel, data in (content or {'op1_factory.json': b'{"catalog": 1}', 'display/mine.svg': b'<svg/>'}).items():
+            path = folder / 'candidate' / 'content' / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        if done:
+            (folder / 'verification.json').write_text('{}')
+        return folder
+
+
 def dev_args(**kw):
-    values = dict(only=None, sdk=None, base=None, unverified=False, wait=1.0, verbose=False, watch=False)
+    values = dict(sdk=None, stock_os=None, wait=1.0, verbose=False, watch=False)
     values.update(kw)
     return SimpleNamespace(**values)
-
-
-def write_kit(folder, machines, extensions=(), done=True):
-    folder.mkdir(parents=True, exist_ok=True)
-    kit = dict(
-        machines=[dict(id=i, origin=o) for i, o in machines], extensions=[dict(id=i, origin=o) for i, o in extensions]
-    )
-    (folder / 'kit.json').write_text(json.dumps(kit))
-    if done:
-        (folder / 'opxy-builder.html').write_text('<html>')
-    return folder
 
 
 class ProtocolTest(unittest.TestCase):
@@ -63,137 +103,230 @@ class ProtocolTest(unittest.TestCase):
         port.close.assert_called_once()
 
 
-class DevTest(unittest.TestCase):
-    def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix='xyf-test-'))
-        self.addCleanup(shutil.rmtree, self.tmp)
-        self.sdk = self.tmp / 'open-xy'
-        (self.sdk / 'builder').mkdir(parents=True)
-        (self.sdk / 'builder/core.mjs').write_text('')
-        self.lines = []
-        which = mock.patch('xy_forever.xyf.shutil.which', return_value='/usr/bin/node')
-        which.start()
-        self.addCleanup(which.stop)
+class CheckTest(Synthetic, unittest.TestCase):
+    def test_open_xy_s_assembly_of_the_stock_image_passes(self):
+        dev_entry.check_image(self.image, self.stock, self.profile)
 
-    def dev(self, kit, splitter=None, **kw):
-        args = dev_args(sdk=self.sdk, **kw)
-        return xyf.dev_kit(args, kit, self.lines.append, splitter or (lambda k, out, sdk: Path(out) / 'gen'))
+    def test_anything_else_is_refused(self):
+        changed = bytearray(self.image)
+        changed[112 + 0x90] ^= 1  # a byte of the stock text record outside every edit (test_modpatch's TEXT_AT)
+        cases = [
+            (bytes(changed), 'differs from stock OS 1.2.1 outside the edits Open-XY makes'),
+            (self.stock, r'3 records|5 records; Open-XY adds one'),
+            (assemble(self.stock, dict(self.profile, module_base=0x8D000000)), 'module is not where Open-XY puts it'),
+            (b'not an image', 'is not an OS image'),
+        ]
+        for image, pattern in cases:
+            with self.subTest(pattern=pattern), self.assertRaisesRegex(dev_entry.Refused, pattern):
+                dev_entry.check_image(image, self.stock, self.profile)
 
-    def test_the_mod_a_kit_gives(self):
-        self.assertEqual(xyf.choose(dict(machines=[dict(id='mine', origin='personal')])), 'mine')
-        kit = dict(machines=[dict(id='fm2op', origin='official'), dict(id='mine', origin='personal')])
-        self.assertEqual(xyf.choose(kit), 'mine')
-        kit['extensions'] = [dict(id='cpu', origin='official')]
-        self.assertEqual(xyf.choose(kit, 'cpu'), 'cpu')
-        self.assertEqual(xyf.choose(kit, 'fm2op'), 'fm2op')
-        with self.assertRaisesRegex(
-            xyf.Refused, r"no machine or extension 'x' in the kit \(it holds fm2op, mine, cpu\)"
-        ):
-            xyf.choose(kit, 'x')
-        kit['machines'].append(dict(id='also', origin='personal'))
-        with self.assertRaisesRegex(
-            xyf.Refused, r'the kit holds 2 mods \(mine, also\): name the one to try with --only'
-        ):
-            xyf.choose(kit)
-
-    def test_refusals_before_anything_runs(self):
-        kit = write_kit(self.tmp / 'kit', [('mine', 'personal')])
-        self.assertEqual(self.dev(self.tmp), 2)
-        self.assertEqual(xyf.dev_kit(dev_args(sdk=self.tmp), kit, self.lines.append), 2)
-        with mock.patch('xy_forever.xyf.shutil.which', return_value=None):
-            self.assertEqual(self.dev(kit), 2)
+    def test_the_build_and_the_entry(self):
+        image, content = dev_entry.read_build(self.build())
+        self.assertEqual((image, sorted(content)), (self.image, ['display/mine.svg', 'op1_factory.json']))
+        self.assertEqual(dev_entry.read_build(self.build() / 'candidate')[0], self.image)  # the candidate folder too
+        files = dev_entry.entry_files(image, content)
         self.assertEqual(
-            self.lines,
-            [
-                'xyf dev: refused: %s holds no kit.json: give the folder `sdk.py kit --personal --out FOLDER` wrote'
-                % self.tmp,
-                'xyf dev: refused: no Open-XY checkout at %s (builder/core.mjs): run xyf from your Open-XY checkout '
-                'or give --sdk DIR' % self.tmp,
-                'xyf dev: refused: ' + xyf.NODE,
-            ],
+            sorted(files),
+            ['content/display/mine.svg', 'content/op1_factory.json', 'files.sha256', 'manifest.json', 'os.ldr'],
+        )
+        fields = package_records.parse(files['manifest.json'], 'manifest.json')
+        digest = dev_entry.sha256(self.image)
+        self.assertEqual(
+            {k: fields[k] for k in ('type', 'kind', 'needs_os', 'generation', 'profile', 'sha256')},
+            dict(
+                type='firmware',
+                kind='open-xy',
+                needs_os=dev_entry.STOCK_SHA256,
+                generation='dev-' + digest[:12],
+                profile='opxy-1.2.1',
+                sha256=digest,
+            ),
+        )
+        with self.assertRaisesRegex(dev_entry.Refused, 'cannot be a library entry'):
+            dev_entry.entry_files(image, {'bootloader.dev': b'x'})
+        (self.build() / 'candidate' / 'notes.txt').write_text('?')
+        with self.assertRaisesRegex(dev_entry.Refused, 'files xyf dev does not know: notes.txt'):
+            dev_entry.read_build(self.build())
+        with self.assertRaisesRegex(dev_entry.Refused, 'holds no candidate/os.ldr'):
+            dev_entry.read_build(self.tmp)
+
+
+class DevTest(Synthetic, unittest.TestCase):
+    def dev(self, folder, connect=None, **kw):
+        lines = []
+        args = dev_args(sdk=self.sdk, stock_os=self.stock_path, **kw)
+        code = xyf.dev_build(args, folder, lines.append, connect or (lambda *a, **k: self.fail('connected')))
+        return code, lines
+
+    def test_refusals_before_the_device(self):
+        build = self.build()
+        stock_line = 'xyf dev: refused: no stock OS 1.2.1 at %s: run `xyf stock-os` (it copies it from your OP-XY)'
+        cases = [
+            (dict(stock_os=self.tmp / 'none'), stock_line % (self.tmp / 'none')),
+            (
+                dict(sdk=self.tmp),
+                'xyf dev: refused: no Open-XY profile at %s' % (self.tmp / 'profiles/opxy-1.2.1.json'),
+            ),
+        ]
+        for overrides, line in cases:
+            lines = []
+            args = dev_args(**{'sdk': self.sdk, 'stock_os': self.stock_path, **overrides})
+            self.assertEqual(xyf.dev_build(args, build, lines.append, lambda *a, **k: self.fail('connected')), 2)
+            self.assertEqual(len(lines), 1)
+            self.assertTrue(lines[0].startswith(line), lines)
+        code, lines = self.dev(self.build('plain', image=self.stock))
+        self.assertEqual(
+            (code, lines),
+            (
+                2,
+                [
+                    'xyf dev: refused: the candidate os.ldr is not an Open-XY build of OS '
+                    '1.2.1 (5 records; Open-XY adds one to the stock 5)'
+                ],
+            ),
         )
 
-    def test_a_split_that_fails(self):
-        from xy_forever import modkit
+    def test_a_checked_build_reaches_the_connection(self):
+        def connect(timeout, log, waiting):
+            waiting()
+            raise xyf.Incompatible('the OP-XY speaks XY Forever protocol 1.21; ...')
 
-        def broken(kit, out, sdk):
-            raise modkit.KitError('core.mjs driver failed: boom')
-
-        self.assertEqual(self.dev(write_kit(self.tmp / 'kit', [('mine', 'personal')]), broken), 1)
-        self.assertEqual(self.lines, ['xyf dev: failed: the kit could not be split: core.mjs driver failed: boom'])
-
-    def test_moddev_takes_the_split_mod(self):
-        """A real split (test_modkit's synthetic kit, its content stand-in): moddev finds the machine's and the
-        extension's package in it, then the connect's mismatch ends the run with its one line."""
-        from test_modkit import finish, synthetic_kit
-
-        from xy_forever import modkit
-
-        kit = synthetic_kit()
-        folder = self.tmp / 'kit'
-        folder.mkdir()
-        (folder / 'kit.json').write_text(json.dumps(kit))
-        found = []
-
-        def split(kit_path, out, sdk):
-            generation = Path(modkit.split_kit(kit_path, out, finish=finish)['root'])
-            found.extend(moddev.resolve(generation, mod)[1] for mod in ('alpha', 'cap'))
-            return generation
-
-        with mock.patch('xy_forever.device_client.connect', return_value=(mock.Mock(), 'sim', HELLO % '1.21')):
-            self.assertEqual(self.dev(folder, split, only='alpha'), 2)
-        self.assertEqual(found, ['alpha', 'ext-cap'])
-        self.assertEqual(len(self.lines), 1)
-        self.assertTrue(self.lines[0].startswith('xyf dev: the OP-XY speaks XY Forever protocol 1.21'), self.lines)
+        code, lines = self.dev(self.build(), connect)
+        self.assertEqual((code, lines), (2, [moddev.POWER, 'xyf dev: the OP-XY speaks XY Forever protocol 1.21; ...']))
 
 
-class WatchTest(unittest.TestCase):
-    def test_new_and_rebuilt_kits_only(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            old = write_kit(root / 'mine-001', [('mine', 'personal')])
-            ran, lines = [], []
-            steps = [
-                lambda: write_kit(root / 'mine-002', [('mine', 'personal')], done=False),  # not finished yet
-                lambda: (root / 'mine-002' / 'opxy-builder.html').write_text('<html>'),
-                lambda: None,  # nothing new: nothing runs
-                lambda: os.utime(old / 'opxy-builder.html', ns=(1 << 62, 1 << 62)),  # rebuilt in place
-            ]
+class WatchTest(Synthetic, unittest.TestCase):
+    def test_new_and_rebuilt_builds_only(self):
+        old = self.build('mine-001')
+        root, ran, lines = old.parent, [], []
+        steps = [
+            lambda: self.build('mine-002', done=False),  # not finished yet
+            lambda: (root / 'mine-002' / 'verification.json').write_text('{}'),
+            lambda: None,  # nothing new: nothing runs
+            lambda: os.utime(old / 'verification.json', ns=(1 << 62, 1 << 62)),  # rebuilt in place
+        ]
 
-            def sleep(seconds):
-                self.assertEqual(seconds, xyf.POLL_S)
-                if not steps:
-                    raise KeyboardInterrupt
-                steps.pop(0)()
+        def sleep(seconds):
+            self.assertEqual(seconds, xyf.POLL_S)
+            if not steps:
+                raise KeyboardInterrupt
+            steps.pop(0)()
 
-            def run(args, kit, out):
-                ran.append(kit.name)
-                return 0
+        def run(args, build, out):
+            ran.append(build.name)
+            return 0
 
-            code = xyf.watch(dev_args(folder=root, watch=True), lines.append, sleep, run)
-        self.assertEqual(code, xyf.STOPPED)
+        self.assertEqual(xyf.watch(dev_args(folder=root, watch=True), lines.append, sleep, run), xyf.STOPPED)
         self.assertEqual(ran, ['mine-002', 'mine-001'])
         self.assertEqual(
             lines,
             [
-                'xyf dev: watching %s for new kits (Ctrl-C stops)' % root,
-                'kit %s' % (root / 'mine-002'),
-                'kit %s' % old,
+                'xyf dev: watching %s for new builds (Ctrl-C stops)' % root,
+                'build %s' % (root / 'mine-002'),
+                'build %s' % old,
                 'xyf dev: stopped',
             ],
         )
 
     def test_a_stop_inside_a_run_ends_the_watch(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            sleeps = [lambda: write_kit(root / 'k', [('mine', 'personal')])]
-            code = xyf.watch(
-                dev_args(folder=root),
-                lambda line: None,
-                lambda s: sleeps.pop(0)() if sleeps else self.fail('watched on after a stop'),
-                lambda args, kit, out: xyf.STOPPED,
-            )
+        root = self.tmp / 'builds'
+        root.mkdir()
+        sleeps = [lambda: self.build('k')]
+        code = xyf.watch(
+            dev_args(folder=root),
+            lambda line: None,
+            lambda s: sleeps.pop(0)() if sleeps else self.fail('watched on after a stop'),
+            lambda args, build, out: xyf.STOPPED,
+        )
         self.assertEqual(code, xyf.STOPPED)
+
+
+class StockOsTest(Synthetic, unittest.TestCase):
+    def test_the_checked_copy(self):
+        manifest = package_records.document(
+            dict(
+                type='firmware',
+                name='OP-XY 1.2.1',
+                kind='official',
+                bytes=len(self.stock),
+                crc32='00000000',
+                sha256=dev_entry.STOCK_SHA256,
+            )
+        )
+        lib = '/yaffs2/xy-forever/firmware/'
+        dev = FakeDevice(
+            {
+                lib + 'opxy-121/manifest.json': manifest,
+                lib + 'opxy-121/os.ldr': self.stock,
+                lib + 'mods-a/manifest.json': b'{}',
+                lib + 'mods-a/os.ldr': b'other',
+            }
+        )
+        target, lines = self.tmp / 'out' / 'os.ldr', []
+        args = SimpleNamespace(out=target, wait=1.0, verbose=False)
+        with mock.patch.object(moddev, 'ready'):
+            self.assertEqual(xyf.stock_os(args, lines.append, lambda *a, **k: (dev, 'sim', HELLO % '1.30')), 0)
+        self.assertEqual(target.read_bytes(), self.stock)
+        self.assertEqual(len(lines), 1)
+        self.assertRegex(
+            lines[0],
+            r'^xyf stock-os: %s \(%d bytes, SHA-256 checked, from library entry opxy-121\) in '
+            % (target, len(self.stock)),
+        )
+        lines.clear()
+        self.assertEqual(xyf.stock_os(args, lines.append, lambda *a, **k: self.fail('connected')), 0)
+        self.assertEqual(lines, ['xyf stock-os: %s is stock OS 1.2.1 already' % target])
+        dev.files[lib + 'opxy-121/os.ldr'] = self.stock[:200] + b'?' + self.stock[201:]  # read back wrong
+        lines.clear()
+        args.out = self.tmp / 'again.ldr'
+        with mock.patch.object(moddev, 'ready'):
+            self.assertEqual(xyf.stock_os(args, lines.append, lambda *a, **k: (dev, 'sim', HELLO % '1.30')), 1)
+        self.assertFalse(args.out.exists())
+
+    def test_where_open_xy_keeps_it(self):
+        with mock.patch.object(xyf.sys, 'platform', 'darwin'):
+            self.assertEqual(
+                xyf.default_stock(), Path.home() / 'Library/Application Support/OPXY-SDK/private/stock-1.2.1/os.ldr'
+            )
+        with mock.patch.object(xyf.sys, 'platform', 'win32'), mock.patch.dict(os.environ, LOCALAPPDATA='C:/L'):
+            self.assertEqual(xyf.default_stock(), Path('C:/L/OPXY-SDK/private/stock-1.2.1/os.ldr'))
+
+
+class WindowsPortTest(unittest.TestCase):
+    def test_reads_and_writes_through_pyserial(self):
+        import serial
+
+        class Port:
+            def __init__(self):
+                self.timeout, self.waits, self.data, self.sent = None, [], b'XF', []
+
+            def read(self, n):
+                self.waits.append(self.timeout)
+                out, self.data = self.data[:n], self.data[n:]
+                return out
+
+            def write(self, data):
+                if data == b'stall':
+                    raise serial.SerialTimeoutException('stalled')
+                self.sent.append(data)
+
+            def close(self):
+                self.sent.append('closed')
+
+        with self.assertRaisesRegex(BaseException, 'tests may not open a real device: COM3'):
+            transport.WindowsSerialPort('COM3', opener=lambda *a, **k: Port())
+        port = object.__new__(transport.WindowsSerialPort)
+        port.port = Port()
+        self.assertEqual(port.read(0.2), b'XF')  # the first byte waited for, the rest taken at once
+        self.assertEqual(port.port.waits, [0.2, 0])
+        self.assertEqual(port.read(0.1), b'')
+        port.write(b'hello')
+        with self.assertRaises(TimeoutError):
+            port.write(b'stall')
+        inner = port.port
+        port.close()
+        port.close()
+        self.assertEqual(inner.sent, [b'hello', 'closed'])
 
 
 class FakeDevice:
@@ -212,6 +345,8 @@ class FakeDevice:
         return (0, list(entries.values())) if entries else (P.ids.S_NOT_FOUND, [])
 
     def read_all(self, path, limit):
+        if path not in self.files:
+            return P.ids.S_NOT_FOUND, b''
         data = self.files[path]
         return (0, data) if len(data) <= limit else (P.STATUS_NAMES.index('too_large'), data[:limit])
 
