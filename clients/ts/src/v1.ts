@@ -924,7 +924,7 @@ export const COMMANDS: Readonly<Record<CommandName, Command>> = {
       { name: "phase", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: [0, 10] },
       { name: "done", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
       { name: "total", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
-      { name: "error", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: [0, 21] },
+      { name: "error", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: [0, 22] },
       { name: "code", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
       { name: "elapsed_ms", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
       { name: "steps", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },

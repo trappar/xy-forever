@@ -51,8 +51,9 @@ export interface InstallDeps {
    * port), else a granted port or the chooser (or the simulator). */
   readonly connect: () => Promise<Lease>;
   /** XY Forever is installed: the app takes the connection (kept open) and switches to Manage. installed: the owner was
-   * installing (past the first stage); false: XY Forever was already there. */
-  readonly handoff: (lease: Lease, installed: boolean) => void;
+   * installing (past the first stage); false: XY Forever was already there. cleaned: what its first start removed of
+   * Open-XY's content, in words (#334), or null. */
+  readonly handoff: (lease: Lease, installed: boolean, cleaned: string | null) => void;
   /** XY Forever on a port already granted (never the chooser), or null when none answers. */
   readonly find?: () => Promise<Lease | null>;
   /** Calls back when a serial port appears (Web Serial's connect event). */
@@ -284,7 +285,7 @@ export function installFlow(deps: InstallDeps) {
         if (!shown) return;
         if (setup.kind === 'installed') {
           kept = true;
-          deps.handoff(lease, stage !== 'boot');
+          deps.handoff(lease, stage !== 'boot', setup.cleaned);
           return;
         }
         if (setup.kind === 'refused') {
@@ -304,7 +305,9 @@ export function installFlow(deps: InstallDeps) {
         say(
           setup.kind === 'adopting'
             ? 'Your OP–XY is adding OS 1.2.1 to its library…'
-            : 'Your OP–XY runs XY Forever and is about to add OS 1.2.1 to its library…',
+            : setup.kind === 'checking'
+              ? 'Your OP–XY is checking its OS content for what Open-XY left…'
+              : 'Your OP–XY runs XY Forever and is about to add OS 1.2.1 to its library…',
           setup.kind === 'adopting' && setup.total > 0 ? setup.done / setup.total : null,
         );
         await new Promise((resolve) => setTimeout(resolve, POLL_MS));

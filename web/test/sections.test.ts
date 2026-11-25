@@ -45,6 +45,9 @@ function installed(): Client {
       return INFO;
     },
     readState: async () => ({ default: ENTRY }),
+    readFile: async () => {
+      throw new XyfError('not_found', 'no such file', { command: 'file.read', status: 3 }); // no cleanup.txt (#334)
+    },
   };
   return fake as unknown as Client;
 }

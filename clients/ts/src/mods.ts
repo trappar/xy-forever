@@ -458,6 +458,7 @@ export const JOB_ERRORS = [
   'cancelled',
   'image',
   'link',
+  'catalog',
 ] as const;
 /** job.status error -> plain words. */
 const ERROR_WORDS: Readonly<Record<string, string>> = {
@@ -482,6 +483,7 @@ const ERROR_WORDS: Readonly<Record<string, string>> = {
   cancelled: 'it was cancelled',
   image: "the base's os.ldr is not a usable firmware image",
   link: 'processor A stopped answering',
+  catalog: "op1_factory.json can't be put back to OS 1.2.1's own",
 };
 /** mods.apply `missing` (with not_found) -> plain words. */
 export const MISSING_WORDS = [

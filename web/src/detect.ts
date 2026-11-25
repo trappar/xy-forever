@@ -39,9 +39,9 @@ export function findDevice(filters?: SerialConnectOptions['filters']): Promise<C
 
 /** XY Forever answered while Install showed: the app takes the connection, then Manage; right after an install
  * (installed), its Mods page with the "installed" notice. */
-export function toManage(found: Client, installed: boolean): void {
+export function toManage(found: Client, installed: boolean, cleaned: string | null = null): void {
   if (useConnection.getState().client !== found) take(found);
-  if (installed) useConnection.setState({ installed: true });
+  if (installed) useConnection.setState({ installed: true, cleaned });
   navigatePath(installed ? '/manage/mods' : '/manage');
 }
 

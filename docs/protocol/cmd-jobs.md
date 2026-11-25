@@ -47,7 +47,7 @@ Progress of the running or last job. A job id this boot has not started (none ye
 | `phase` | u32 | 0 = idle; 1 = inputs; 2 = link; 3 = patch; 4 = content; 5 = write; 6 = verify; 7 = finish; 8 = done; 9 = failed; 10 = cancelled. 8, 9 and 10 are final |
 | `done` | u32 | units of the phase done (inputs: bytes; link, patch: steps; content: packages; write, verify, finish: outputs) |
 | `total` | u32 | of total (0: not known ahead) |
-| `error` | u32 | 0 = none; 1 = argument; 2 = path; 3 = region; 4 = open; 5 = read; 6 = truncated; 7 = size; 8 = list; 9 = unlisted; 10 = sha256; 11 = info; 12 = base; 13 = linker; 14 = patch; 15 = content; 16 = write; 17 = rename; 18 = verify; 19 = cancelled; 20 = image; 21 = link. Why it failed (`native/mod_job.hpp`; 12 with code 18: a base that is not a known one, not confirmed; 17: also the library commit; 21: processor A did not answer) |
+| `error` | u32 | 0 = none; 1 = argument; 2 = path; 3 = region; 4 = open; 5 = read; 6 = truncated; 7 = size; 8 = list; 9 = unlisted; 10 = sha256; 11 = info; 12 = base; 13 = linker; 14 = patch; 15 = content; 16 = write; 17 = rename; 18 = verify; 19 = cancelled; 20 = image; 21 = link; 22 = catalog. Why it failed (`native/mod_job.hpp`; 12 with code 18: a base that is not a known one, not confirmed; 17: also the library commit; 21: processor A did not answer; 22: an op1_factory.json not put back to the official one, #331) |
 | `code` | u32 | the refusing step's own status number |
 | `elapsed_ms` | u32 | since the start (to the end once final) |
 | `steps` | u32 | steps run |
