@@ -140,9 +140,9 @@ void sample(uint32_t value, uint32_t& last, uint32_t& low, uint32_t& high) {
     if (value > high) high = value;
 }
 
-// #314: a PSoC frame the stock poll may stop B on (knob_input::watch), drawn top left by the present before that
-// poll: "P" type ":" byte 4, " off" when the stock power handler shuts down on it. Once: the next present leaves
-// it out; if B stops, the screen keeps it.
+// #314: a PSoC frame the stock poll may stop B on (knob_input::watch), drawn top left, under the trail's row, by the
+// present before that poll: "P" type ":" byte 4, " off" when the stock power handler shuts down on it. Once: the
+// next present leaves it out; if B stops, the screen keeps it.
 volatile uint32_t psoc_shown __attribute__((section(".data"))) = 0;
 void psoc_draw(uint16_t* fb) {
     const uint32_t f = psoc_shown;
@@ -165,10 +165,43 @@ void psoc_draw(uint16_t* fb) {
     }
     t[n] = 0;
     const int w = xyf::gfx::text_width(t, 1) + 4;
-    xyf::gfx::fill(fb, 0, 0, w, 11, xyf::gfx::accent);
-    xyf::gfx::text(fb, 2, 2, t, xyf::gfx::black, 1);
+    xyf::gfx::fill(fb, 0, 11, w, 11, xyf::gfx::accent);   // under the trail's row
+    xyf::gfx::text(fb, 2, 13, t, xyf::gfx::black, 1);
     flush_from = 0;                                  // a saver frame flushes its boxes only
     flush_to = framebuffer_bytes;
+}
+
+// #314: the trail. B has stopped as a whole with nothing left to read but the screen's last frame, so while a job or
+// the converge sequence runs, every present draws the loop's last step in the top row: "n" this present's number
+// (hex; STATUS frame_time.presents counts the same), the dead man's timer (T: proven and armed, t: its proof
+// interrupt never came, x: turned off; then the stops logged, key_ui_crash.ipp), then usb_service::crumb. The
+// frozen frame then tells when the last present was (against the host's last answered STATUS) and what the loop
+// had done by then: whether a USB frame had just come, how far the job was, which file request was out.
+void trail_draw(uint16_t* fb) {
+#if defined(XYF_ONE_SESSION) && defined(XYF_USB_SERVICE)
+    if (crash_shown || hang_shown) return;           // those screens carry their own lines
+    char t[10 + xyf::crash::line_bytes];
+    const bool job = xy_forever::usb_service::crumb(t + 9, xyf::crash::line_bytes);
+#if defined(XYF_MODS_PAGE)
+    if (!job && !xy_forever::mods_io::converging()) return;
+#else
+    if (!job) return;
+#endif
+    const uint32_t n = frames.presents + 1, timer = xy_forever::key_ui::stall_log.timer,
+                   stops = xy_forever::key_ui::stall_log.count;
+    t[0] = 'n';
+    for (uint32_t i = 0; i != 4; ++i) t[1 + i] = "0123456789abcdef"[n >> (12 - 4 * i) & 15u];
+    t[5] = ' ';
+    t[6] = timer & xy_forever::key_ui::stall_off ? 'x' : timer & xy_forever::key_ui::stall_proven ? 'T' : 't';
+    t[7] = char('0' + (stops < 9 ? stops : 9));
+    t[8] = ' ';
+    xyf::gfx::fill(fb, 0, 0, xyf::gfx::text_width(t, 1) + 4, 11, xyf::gfx::black);
+    xyf::gfx::text(fb, 2, 2, t, xyf::gfx::white, 1);
+    flush_from = 0;                                  // a saver frame flushes its boxes only
+    flush_to = framebuffer_bytes;
+#else
+    (void)fb;
+#endif
 }
 
 // Finish the previous frame (stock wait clears the busy flag on DMA done),
@@ -191,6 +224,7 @@ void present() {
     flush_to = framebuffer_bytes;
     draw_screen(reinterpret_cast<uint16_t*>(word(framebuffer)));   // full repaint (a saver frame: its boxes)
     where_draw(reinterpret_cast<uint16_t*>(word(framebuffer)));    // a long wait's code (key_ui_where.ipp)
+    trail_draw(reinterpret_cast<uint16_t*>(word(framebuffer)));    // #314: the loop's last step, top row
     psoc_draw(reinterpret_cast<uint16_t*>(word(framebuffer)));     // #314: the PSoC frame about to be handled
     flush_framebuffer(word(framebuffer), flush_from, flush_to);
     const uint32_t drawn = cycles_div1024();

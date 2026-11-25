@@ -114,6 +114,22 @@ class CrashScreenTest(unittest.TestCase):
         writer = install[install.index('key_ui::hang_hold(true);') : install.index('key_ui::hang_hold(false);')]
         self.assertIn('write_boot(staged, put_expected)', writer)
 
+    def test_trail_is_drawn_by_every_present_while_a_job_runs(self):
+        # #314: the loop's last step in the top row, so the frozen frame tells it; reads only.
+        display = (ROOT / 'target/key_ui_display.ipp').read_text()
+        present = display[display.index('void present() {') :]
+        present = present[: present.index('\n}\n')]
+        self.assertLess(present.index('draw_screen('), present.index('trail_draw('))
+        self.assertLess(present.index('trail_draw('), present.index('flush_framebuffer('))
+        trail = display[display.index('void trail_draw(uint16_t* fb) {') :]
+        trail = trail[: trail.index('\n}\n')]
+        self.assertIn('if (!job && !xy_forever::mods_io::converging()) return;', trail)
+        self.assertIn('frames.presents + 1', trail)
+        home = unit_text(ROOT / 'target/usb_service.cpp')
+        crumb = home[home.index('bool crumb(char* line, uint32_t bytes) {') :]
+        crumb = crumb[: crumb.index('\n}\n')]
+        self.assertNotIn('stock<', crumb)
+
     def test_where_line_names_the_wait(self):
         # #114: the wait B was in at the fault, else the last one it left, else none.
         self.assertEqual(

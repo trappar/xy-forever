@@ -16,20 +16,27 @@ non-knob frames and the power handler's stored status (diag.status block PSC1, `
 
 B has also stopped as a whole during the on-device content read with a host polling STATUS (#314): the screen
 frozen on its last frame, no input, no crash screen, the OP-XY gone from the bus by the next replug (right after
-one freeze its serial port was still there, unanswered), and nothing left to read. So the
-evidence goes on the screen, which keeps its last frame:
+one freeze its serial port was still there, unanswered), and nothing left to read. Two things now put the
+evidence on the screen, which keeps its last frame:
 
+- **The trail.** While a job or the converge sequence runs, every present draws the loop's last step in the top
+  row, e.g. `n00c6 T0 t43210 u92/91 02 +850 j1.1 118032k f1234 2a.15 L +3`: `n` this present's number (hex; STATUS
+  `frame_time.presents` counts the same, so the host's last answered STATUS dates the frame), the timer below
+  (`T` proven, `t` its proof interrupt never came, `x` turned off; then the stops logged), `t` the service's clock
+  in ms, `u` frames received / replies sent, the last frame's type and the ms since it came, `j` the job's
+  state.phase and KiB done, `f` B's file requests so far, the last one's op.outcome (15: still out), `L` a request
+  left out, and the ms since it left (`usb_service::crumb`).
 - **The stop screen.** The core timer (IVG6, unused by the stock code) is a dead man's timer while the menu loop
   runs: every pass of the loop and every poll of a bounded wait winds it back, so it interrupts only when
   nothing has moved for 3 s, plus once on purpose 1 ms after the loop starts, the proof that it can. It then logs (STATUS
   block STL1, `stalls`) and draws "Stopped": IPEND, the interrupted instruction, RETS, the frame and its callers,
-  the message a stock assert left at the frame, the wait, the loop's last step (`usb_service::crumb`). A stock assert ends in the ROM's IDLE
+  the message a stock assert left at the frame, the wait, the trail's line. A stock assert ends in the ROM's IDLE
   loop (`0803dfcc`) at the level that asserted; the stock interrupt wrapper (`11a015d8`) has pushed RETI by then,
   so IVG6 still gets in. It never resets or writes, and it returns: a loop that goes on draws over it. The install's
   stock writer stops the timer. An earlier tick every 0.5 s seemed to change how often B froze; this one never ticks
   while the loop moves.
 
-A freeze with no stop screen leaves: the core hung (anomaly 19000058, a system
+A freeze with the trail but no stop screen (and `T` in the trail) leaves: the core hung (anomaly 19000058, a system
 MMR read; ours carry the workaround, [code rules](../architecture/code-rules.md)), interrupts masked for good, or
 the display's DMA no longer ending.
 
