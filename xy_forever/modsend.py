@@ -108,6 +108,53 @@ def delete(dev, path, folder=False):
     check(code, '%s %s (error %d)' % ('file.rmdir' if folder else 'file.delete', path, error))
 
 
+def human(n):
+    return '%d B' % n if n < 1000 else '%.0f KB' % (n / 1000.0) if n < 1000000 else '%.1f MB' % (n / 1000000.0)
+
+
+def package_line(result):
+    """'base: up to date' / 'navi: sent 3 of 23 files (12 KB)'."""
+    if not result['sent']:
+        return '%s: up to date' % result['name']
+    return '%s: sent %d of %d files (%s)' % (result['name'], result['sent'], result['of'], human(result['bytes']))
+
+
+def push_package(dev, session, folder, name, files, verify=False):
+    """One package of a push. Up to date (nothing sent) when the device holds the same stored files, by name and size,
+    and the same files.sha256: one read (stored names carry each file's SHA-256; files.sha256 is published last and
+    lists every file's), every file read back only with verify. Otherwise only the files whose content changed are
+    sent; the others move over from the published package on the device (package_store publish keep)."""
+    stored = modstore.stored_files(name, files)
+    physical = {stored_name: data for stored_name, _, data in stored}
+    existing = remote_tree(dev, folder)
+    held = existing[0] if existing else {}
+    remote = session.read(folder + '/' + LIST, optional=True) if LIST in held else None
+    same = held == {n: len(d) for n, d in physical.items()} and remote == physical[LIST]
+    if same and verify:
+        same = all(session.read(folder + '/' + rel) == data for rel, data in physical.items())
+    result = dict(name=name, of=len(stored), sent=0, bytes=0, paths=[], removed=0)
+    if same:
+        return result
+    try:
+        listed = {rel: sha for sha, rel in list_paths(remote)} if remote is not None and not verify else {}
+    except Refused:
+        listed = {}
+    keep = {
+        stored_name
+        for stored_name, rel, data in stored
+        if rel != LIST and held.get(stored_name) == len(data) and listed.get(rel) == hashlib.sha256(data).hexdigest()
+    }
+    session.publish(folder, physical, keep=keep)
+    sent = [(stored_name, rel, data) for stored_name, rel, data in stored if stored_name not in keep]
+    result.update(
+        sent=len(sent),
+        bytes=sum(len(data) for _, _, data in sent),
+        paths=[(name, rel) for _, rel, _ in sent],
+        removed=len(set(held) - set(physical)),
+    )
+    return result
+
+
 def push(dev, package_dir, only=(), verify=False, out=print, development=False):
     """Puts the package set on the device; returns the summary dict (sent: [(package, path)] too). Raises
     Refused (or the transport's error) on the first failure: what was written stays, and running it again
@@ -119,7 +166,7 @@ def push(dev, package_dir, only=(), verify=False, out=print, development=False):
         raise Refused('%s: too long for a development set folder (31 bytes at most)' % folder)
     gen_path = '%s/%s' % (ROOT, folder)
     start = time.monotonic()
-    total = dict(sent=0, skipped=0, files=0, bytes=0, paths=[], removed=0, folder=folder)
+    total = dict(sent=0, skipped=0, files=0, bytes=0, paths=[], removed=0, folder=folder, packages=[])
     try:
         with package_store.Session(dev) as session:
             version = session.read(gen_path + '/' + modstore.FILE, optional=True)
@@ -137,32 +184,20 @@ def push(dev, package_dir, only=(), verify=False, out=print, development=False):
                     gen_path + '/' + modstore.FILE, modstore.DEVELOPMENT_TEXT if development else modstore.TEXT
                 )
             for name, files in packages.items():
-                folder = gen_path + '/' + name
-                stored = modstore.stored_files(name, files)
-                physical = {stored_name: data for stored_name, _, data in stored}
-                existing = remote_tree(dev, folder)
-                same = existing is not None and set(existing[0]) == set(physical)
-                if same:
-                    for rel, data in physical.items():
-                        if session.read(folder + '/' + rel) != data:
-                            same = False
-                            break
-                if same:
-                    total['skipped'] += 1
-                else:
-                    session.publish(folder, physical)
+                result = push_package(dev, session, gen_path + '/' + name, name, files, verify)
+                total['packages'].append(result)
+                if result['sent']:
                     total['sent'] += 1
-                    total['files'] += len(stored)
-                    total['bytes'] += sum(len(data) for _, _, data in stored)
-                    total['paths'] += [(name, rel) for _, rel, _ in stored]
-                    total['removed'] += len(set(existing[0]) - set(physical)) if existing else 0
-                out(
-                    '%-22s %s %4d of %4d files (SHA-256 verified)'
-                    % (name, 'skipped' if same else 'sent', 0 if same else len(stored), len(stored))
-                )
+                    total['files'] += result['sent']
+                    total['bytes'] += result['bytes']
+                    total['paths'] += result['paths']
+                    total['removed'] += result['removed']
+                else:
+                    total['skipped'] += 1
+                out(package_line(result))
         total['seconds'] = time.monotonic() - start
         out(
-            '%s/%s: %d packages sent, %d skipped; %d files, %d B in %.2f s'
+            '%s/%s: %d packages sent, %d up to date; %d files, %d B in %.2f s'
             % (profile, generation, total['sent'], total['skipped'], total['files'], total['bytes'], total['seconds'])
         )
         if verify:

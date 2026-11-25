@@ -8,6 +8,7 @@ lists a development set. Synthetic packages (test_sim_config's). Needs clang++ a
 (skipped without them). No device access. The rest runs without a device or simulator."""
 
 import json
+import re
 import struct
 import unittest
 from pathlib import Path
@@ -25,23 +26,26 @@ from xy_forever import usb_proto as P
 ONCE = 'menu: boots once '
 
 
-def development_set(cls, version):
-    """alpha renamed, split again: version 1 is the saved set's own generation (a name is not in its hash), version 2
+def development_set(cls, name, version=None):
+    """alpha renamed, split again: the saved set's own generation (a name is not in its hash), or with version
     another one (another kit version)."""
     from test_modpatch import finish, kit_for, profile_for, stock
 
     from xy_forever import modkit as M
 
     kit = kit_for(profile_for(stock()))
-    if version > 1:
-        kit['version'] = '0.0.%d' % (90 + version)
+    if version:
+        kit['version'] = version
     for machine in kit['machines']:
         if machine['id'] == 'alpha':
-            machine['name'] = 'Alpha dev %d' % version
-    path = cls.work / ('dev-%d.json' % version)
+            machine['name'] = 'Alpha dev %s' % name
+    path = cls.work / ('dev-%s.json' % name)
     path.write_text(json.dumps(kit))
-    out = M.split_kit(path, cls.work / ('dev-%d' % version), finish=finish, sdk_source='https://github.com/x/sdk@abc')
+    out = M.split_kit(path, cls.work / ('dev-%s' % name), finish=finish, sdk_source='https://github.com/x/sdk@abc')
     return Path(out['root'])
+
+
+PHASE = re.compile(r'\[(push|build|boot)\] \d+\.\d\d s: (.*)$')
 
 
 @unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
@@ -49,26 +53,41 @@ class DevBuild(ConfigBase, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.dev_sets = [development_set(cls, 1), development_set(cls, 2)]
-        assert cls.dev_sets[0].name == cls.generation != cls.dev_sets[1].name
+        cls.dev_sets = [development_set(cls, '1'), development_set(cls, '1b'), development_set(cls, '2', '0.0.92')]
+        assert cls.dev_sets[0].name == cls.dev_sets[1].name == cls.generation != cls.dev_sets[2].name
 
-    def xyf_dev(self, gen):
-        """mods dev GEN/alpha against the menu the test holds (the port is there): its exit code and lines."""
-        lines = []
-        args = SimpleNamespace(package_dir=gen / 'alpha', only=None, base=None, unverified=True, wait=1.0)
-        code = moddev.command(args, lambda _: (self.dev, 'sim', self.dev.hello_info.text), out=lines.append)
-        return code, lines
+    def connect(self, timeout, log, waiting):
+        """As xyf_host.connect: the menu's port at once, or (the OP-XY in its OS) waiting(), then the developer's
+        power cycle holding PLAY."""
+        if not self.sim.status()['listening']:
+            waiting()
+            self.menu_again()
+        return self.dev, 'sim', self.dev.hello_info.text
 
     def once(self, gen, slot):
-        """mods dev boots the development build of gen once from slot: its content installed, nothing saved changed."""
+        """mods dev boots the development build of gen once from slot: its content installed, nothing saved changed.
+        Its lines: [POWER, [wait]] (only when the OP-XY was in its OS), push, build, boot, total. The push's note."""
         kept = [self.root / name for name in ('xy-forever/config.json', MARK)]
         saved = [p.read_bytes() if p.exists() else None for p in kept]
         default = self.disk_default()
         booted = len(self.lines(ONCE))
-        code, lines = self.xyf_dev(gen)
+        in_os = not self.sim.status()['listening']
+        lines = []
+        args = SimpleNamespace(package_dir=gen / 'alpha', only=None, base=None, unverified=True, wait=1.0)
+        code = moddev.command(args, self.connect, out=lines.append)
         self.assertEqual(code, 0, '\n'.join(lines))
-        for phase in ('[wait] ', '[push] ', '[build] ', '[boot] ', 'total '):
-            self.assertTrue(any(line.startswith(phase) for line in lines), (phase, lines))
+        head = [moddev.POWER, '[wait]'] if in_os else []
+        self.assertEqual(
+            [line.split(' ')[0] if line.startswith('[wait]') else line for line in lines[: len(head)]], head
+        )
+        phases = [PHASE.match(line) for line in lines[len(head) : -1]]
+        self.assertTrue(all(phases), lines)
+        self.assertEqual([m.group(1) for m in phases], ['push', 'build', 'boot'], lines)
+        self.assertEqual(phases[1].group(2), slot)
+        self.assertEqual(
+            phases[2].group(2), '%s started once; the next plain start goes back to the saved setup' % slot
+        )
+        self.assertRegex(lines[-1], r'^total \d+\.\d\d s$')
         self.wait_log(lambda: self.sim.status()['a'] == 'os' and self.sim.status()['b'] == 'os', 'the OS')
         self.assertEqual(self.lines(ONCE)[booted:], [slot])
         self.assertEqual(self.record().splitlines()[:2], ['state=installed', 'entry=%s' % slot])
@@ -82,6 +101,10 @@ class DevBuild(ConfigBase, unittest.TestCase):
         self.assertFalse((self.root / 'xy-forever/job.txt').exists())  # the switch ended its journal
         store = self.root / 'xy-forever/mods' / ('dev-' + gen.name) / modstore.FILE
         self.assertEqual(store.read_bytes(), modstore.DEVELOPMENT_TEXT)
+        self.assertEqual(
+            MS.local_set(gen, ['alpha'])[2]['alpha'][-1][1], (store.parent / 'alpha' / MS.LIST).read_bytes()
+        )
+        return phases[0].group(2)
 
     @pytest.mark.gate  # a simulator chain: three builds, four content switches, four starts
     @pytest.mark.uses('sim/')
@@ -89,13 +112,25 @@ class DevBuild(ConfigBase, unittest.TestCase):
         a = self.first_save()
         b = 'mods-b' if a == 'mods-a' else 'mods-a'
         self.menu_again()
-        self.once(self.dev_sets[0], b)
+        listed = len(MS.local_set(self.dev_sets[0], ['alpha'])[2]['alpha'])
+        self.assertRegex(
+            self.once(self.dev_sets[0], b),
+            r'^base: sent (\d+) of \1 files \(.*\); alpha: sent %d of %d ' % (listed, listed),
+        )
+        # in its OS: power it off and on holding PLAY; nothing changed: nothing sent, built and booted again
+        self.assertEqual(self.once(self.dev_sets[0], b), 'base: up to date; alpha: up to date')
         self.menu_again()  # PLAY at power-on: the menu, nothing converged
         self.wait_log(lambda: 'pending=1' in self.home(), 'the first row: (to apply)')
         self.open_page()  # the Mods page lists the saved set only
         self.assertEqual(self.page()['count'], len(self.folders))
         self.assertTrue(self.page()['text'].startswith('Booted once: alpha (development).'), self.page())
-        self.once(self.dev_sets[1], b)  # a new version: the old set removed, built again
+        # a changed package (its name): only its changed files are sent, the rest moves over on the device
+        self.assertRegex(self.once(self.dev_sets[1], b), r'^base: up to date; alpha: sent [1-3] of %d files' % listed)
+        # a new generation: the old development set removed, everything sent, built again
+        note = self.once(self.dev_sets[2], b)
+        self.assertTrue(
+            note.startswith('removed the older development set dev-%s; base: sent ' % self.generation), note
+        )
         self.assertFalse((self.root / 'xy-forever/mods' / ('dev-' + self.dev_sets[0].name)).exists())
         self.assertTrue((self.root / 'xy-forever/mods' / self.generation / 'base').is_dir())  # the saved set stays
         before = self.snapshot()
@@ -118,7 +153,7 @@ class NothingSaved(DevBuild):
     @pytest.mark.gate  # a simulator chain: one build, two content switches, three starts
     @pytest.mark.uses('sim/')
     def test_boot_once_then_the_menu_then_back(self):
-        self.once(self.dev_sets[1], 'mods-a')
+        self.once(self.dev_sets[2], 'mods-a')
         doubts = len(self.lines('menu: power-on converge: doubt '))
         rows = len(self.lines('menu: home row: '))
         self.sim.control('power plain')  # Start at menu: the menu, though the default's content is missing
@@ -166,16 +201,17 @@ class Host(unittest.TestCase):
             return 0, struct.pack('<11I', item, 4, 1, 2, 0, 0, 10, 3, 1, 0, 0) + b'mods-b'.ljust(32, b'\0')
 
         dev = SimpleNamespace(call=call, t=None)
-        return moddev.follow(dev, out=lines.append, sleep=lambda _: None), lines
+        return moddev.follow(dev, detail=lines.append, sleep=lambda _: None), lines
 
     def test_follow(self):
-        ok, lines = self.follow([(1, 7, ''), 7, (3, 7, '')])
-        self.assertTrue(ok)
-        self.assertIn('installing its content', lines[0])
-        self.assertEqual(self.follow([(1, 7, ''), 7, OSError('gone')])[0], True)  # USB went away
-        ok, lines = self.follow([(2, 7, 'Installing content failed: Continue again repairs it.')])
-        self.assertFalse(ok)
-        self.assertIn('stayed in its menu: Installing content failed', lines[-1])
+        (ok, why), lines = self.follow([(1, 7, ''), 7, (3, 7, '')])
+        self.assertEqual((ok, why), (True, ''))
+        self.assertIn('job 7 (content): ', lines[0])
+        self.assertEqual(self.follow([(1, 7, ''), 7, OSError('gone')])[0], (True, ''))  # USB went away
+        (ok, why), _ = self.follow([(2, 7, 'Installing content failed: Continue again repairs it.')])
+        self.assertEqual(
+            (ok, why), (False, 'the OP-XY stayed in its menu: Installing content failed: Continue again repairs it.')
+        )
 
     def test_resolve_takes_one_mod(self):
         with self.assertRaisesRegex(MS.Refused, 'neither'):

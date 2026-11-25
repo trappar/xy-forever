@@ -1,7 +1,8 @@
 """`uv run xyf-host mods dev` (#204; the developer package's `xyf dev` wraps it, #284): boot a mod under development on
 the OP-XY, alone and once, without touching what is saved. Host only; it uses the device's own commands:
 
-  wait   the OP-XY's serial port appearing: the XY Forever menu (with Start at menu, turning the OP-XY on is all)
+  wait   only when the OP-XY is not at its XY Forever menu: it says once to power it off, then on holding PLAY (with
+         Menu at power-on set to Always, turning it on is enough), and waits for the serial port
   push   the mod and its base as a development set, in a folder of its own (mods/dev-<generation>: it never mixes
          with a saved set, even of the same generation): only changed files are sent; store.txt says development=1,
          so the Mods page and config.set never take it for the saved mods' set; older development sets are removed
@@ -10,13 +11,15 @@ the OP-XY, alone and once, without touching what is saved. Host only; it uses th
   boot   menu.converge mode 2: the build's content installed, then it boots once (job.status follows the switch);
          USB goes away as the OP-XY starts it
 
-Every phase is printed with its time, then the total. A development build never mixes with saved mods (whatever kit
-generation it comes from), and nothing saved changes: the selection, Mod memory, the default and the fingerprint stay.
+Output is one line per phase, in order, "[phase] seconds: what came of it" (a refusal in plain words), then "total";
+--verbose adds the connection, every package and the jobs, indented. A development build never mixes with saved mods
+(whatever kit generation it comes from), and nothing saved changes: the selection, Mod memory, the default and the
+fingerprint stay.
 The next plain power-on finds the default's content missing and converges back to the saved setup by itself; with
 Start at menu the menu opens instead, and its first row (or the next `mods dev`) goes on from there.
 
-This module needs only the connection it is given (connect(timeout) -> (device, port, hello text), as xyf_host's), so
-the developer package can reuse it without the rest of xyf-host."""
+This module needs only the connection it is given (connect(timeout, log=, waiting=) -> (device, port, hello text), as
+xyf_host's), so the developer package can reuse it without the rest of xyf-host."""
 
 import argparse
 import contextlib
@@ -34,7 +37,8 @@ CONVERGE = P.ids.COMMANDS[P.ids.MENU_CONVERGE]
 REPORT, SAVED, ONCE = 0, 1, 2  # menu.converge modes
 ENDED, BOOTING = 2, 3  # its states (0 idle, 1 running)
 NAME = '%s (development)'  # the build's library name (mods.apply's name: 47 bytes at most)
-WAIT_S = 600.0  # how long it waits for the OP-XY to be turned on (--wait)
+WAIT_S = 600.0  # how long it waits for the OP-XY's menu (--wait)
+POWER = 'Power the OP-XY off, then on holding PLAY (let go at the logo)'  # said once when it is not at the menu
 READY_S = 120.0  # then for its storage (the start's recovery scan; a full yaffs scan can take tens of seconds)
 BUSY_S = 60.0  # a request answered busy is sent again this long (A's write window closing after a push or a build)
 PLAIN = {  # the device's refusals, in plain words
@@ -116,14 +120,14 @@ def development_sets(dev):
     return out
 
 
-def remove_older(dev, keep, out=print):
-    """Removes every development set but keep: a development build needs no package once it is built."""
+def remove_older(dev, keep):
+    """Removes every development set but keep (a development build needs no package once it is built): their names."""
     older = [g for g in development_sets(dev) if g != keep]
     if older:
         with package_store.Session(dev) as session:
             for generation in older:
                 session.remove('%s/%s' % (MS.ROOT, generation))
-                out('removed the older development set %s' % generation)
+    return older
 
 
 def patient(dev, request, timeout=BUSY_S, clock=time.monotonic):
@@ -148,61 +152,58 @@ def ready(dev, text, timeout=READY_S):
     wait_startup_ready(text, probe, timeout)
 
 
-def follow(dev, out=print, poll=0.25, sleep=None):
-    """Follows the boot once (menu.converge mode 0; job.status of its content switch) until USB goes away: True. The
-    menu staying, with why (printed): False."""
+def follow(dev, detail=print, poll=0.25, sleep=None):
+    """Follows the boot once (menu.converge mode 0; job.status of its content switch) until USB goes away: (True, '').
+    The menu staying: (False, why in plain words)."""
     sleep = sleep or (lambda s: transport.pause(dev.t, s))
     shown = None
     while True:
         try:
             code, f = converge(dev, REPORT)
             if code:
-                out('boot: %s' % plain(code))
-                return False
+                return False, plain(code)
             if f['state'] == ENDED:
-                out('boot: the OP-XY stayed in its menu: %s' % (f['reason'] or 'no reason given'))
-                return False
+                return False, 'the OP-XY stayed in its menu: %s' % (f['reason'] or 'no reason given')
             if f['state'] == BOOTING:
-                out('boot: the OP-XY is starting the build')
-                return True
+                return True, ''
             if f['job']:
                 code, j = MS.job_status(dev, f['job'])
                 if not code and j['phase'] != shown:
                     shown = j['phase']
-                    out('boot: installing its content (job %d: %s)' % (f['job'], MS.describe(j)))
+                    detail('job %d (content): %s' % (f['job'], MS.describe(j)))
         except OSError, TimeoutError:  # USB went away: the menu closed to start it
-            out('boot: USB went away: the OP-XY is starting the build')
-            return True
+            return True, ''
         sleep(poll)
 
 
 # -- one run --------------------------------------------------------------------------------------------
 class Phases:
+    """One line per phase, in order: [name] seconds: what came of it; then the total."""
+
     def __init__(self, out):
-        self.out, self.start, self.times = out, time.monotonic(), []
+        self.out, self.start = out, time.monotonic()
 
     def run(self, name, fn):
+        """fn() -> (value, note): prints the phase's line, returns the value."""
         t = time.monotonic()
-        result = fn()
-        self.times.append((name, time.monotonic() - t))
-        self.out('[%s] %.2f s' % (name, self.times[-1][1]))
-        return result
+        value, note = fn()
+        self.out('[%s] %.2f s%s' % (name, time.monotonic() - t, ': ' + note if note else ''))
+        return value
 
     def total(self):
-        self.out('total %.2f s (%s)' % (time.monotonic() - self.start, ', '.join('%s %.2f' % t for t in self.times)))
+        self.out('total %.2f s' % (time.monotonic() - self.start))
 
 
-def build(dev, args, gen, package, folder, out=print):
-    """mods.apply of the mod alone from the development set's folder, followed to its end: the library entry, or None
-    (said why)."""
+def build(dev, args, gen, package, folder, detail=print):
+    """mods.apply of the mod alone from the development set's folder, followed to its end: (library entry or None, the
+    phase's note)."""
     profile = MS.local_set(gen, [package])[0]
     code, saved = patient(dev, lambda: modconfig.get(dev))  # the saved base and Mod memory (read only)
     if code:
-        out('build: the saved setup could not be read (%s)' % plain(code))
+        detail('the saved setup could not be read (%s)' % plain(code))
     base = args.base or (saved or {}).get('base')
     if not base:
-        out('build: no stock OP-XY firmware to build on: give its library entry with --base ID')
-        return None
+        return None, 'refused: no stock OP-XY firmware to build on: give its library entry with --base ID'
     machines, extensions = ([], [package[4:]]) if package.startswith('ext-') else ([package], [])
     expanded = bool(saved and saved['flags'] & modconfig.EXPANDED)
     code, job, missing = patient(
@@ -216,46 +217,43 @@ def build(dev, args, gen, package, folder, out=print):
             why = 'both mod slots are taken (the default and the saved setup)'
         else:
             why = plain(code)
-        out('build: refused: %s' % why)
-        return None
-    f = MS.wait(dev, job, out)
+        return None, 'refused: %s' % why
+    f = MS.wait(dev, job, detail)
     if f is None:
-        return None
-    MS.served(dev, out)
+        return None, 'failed: the build stopped answering'
+    MS.served(dev, detail)
     if f['phase'] == MS.DONE:
-        return f['detail']
+        return f['detail'], f['detail']
     if f['error'] < len(MS.ERRORS) and MS.ERRORS[f['error']] == 'base' and f['code'] == 18:
-        out("build: the mod's base is not one XY Forever knows; if you trust your kit, run again with --unverified")
-    else:
-        out('build: failed (%s)' % MS.describe(f))
-    return None
+        return None, "refused: the mod's base is not one XY Forever knows; if you trust your kit, add --unverified"
+    return None, 'failed: %s' % MS.describe(f)
 
 
-def dev_once(dev, args, gen, package, out=print):
+def dev_once(dev, args, gen, package, out=print, detail=print):
     """Push, build, boot once. The exit code."""
     ph = Phases(out)
     folder = modstore.DEVELOPMENT_PREFIX + MS.local_set(gen, [package])[1]
 
     def push():
-        remove_older(dev, folder, out)
-        summary = MS.push(dev, gen, [package], out=out, development=True)
-        MS.served(dev, out)  # A's write window closed
-        return summary
+        older = remove_older(dev, folder)
+        summary = MS.push(dev, gen, [package], out=detail, development=True)
+        MS.served(dev, detail)  # A's write window closed
+        notes = ['removed the older development set %s' % g for g in older]
+        return summary, '; '.join(notes + [MS.package_line(r) for r in summary['packages']])
 
     def boot():
         code, _ = patient(dev, lambda: converge(dev, ONCE, entry))
         if code:
-            out('boot: refused: %s' % plain(code))
-            return False
-        out('boot: %s, "%s", once; nothing saved changes' % (entry, NAME % package))
-        return follow(dev, out)
+            return False, 'refused: %s' % plain(code)
+        booted, why = follow(dev, detail)
+        if not booted:
+            return False, why
+        return True, '%s started once; the next plain start goes back to the saved setup' % entry
 
     ph.run('push', push)
-    entry = ph.run('build', lambda: build(dev, args, gen, package, folder, out))
+    entry = ph.run('build', lambda: build(dev, args, gen, package, folder, detail))
     booted = bool(entry) and ph.run('boot', boot)
     ph.total()
-    if booted:
-        out('The next plain start of the OP-XY goes back to the saved setup.')
     return 0 if booted else 1
 
 
@@ -273,18 +271,28 @@ def add_arguments(sub):
     d.add_argument(
         '--wait', type=float, default=WAIT_S, metavar='S', help='seconds to wait for the OP-XY (default %(default)d)'
     )
+    d.add_argument('--verbose', action='store_true', help='also the connection, every package and the jobs')
 
 
 def command(args, connect, out=print):
+    """connect(timeout, log=, waiting=) -> (device, port, hello text), as xyf_host.connect."""
     try:
         gen, package = resolve(args.package_dir, args.only)
         MS.local_set(gen, [package])
     except (MS.Refused, OSError) as error:
         out('mods dev: refused: %s' % error)
         return 2
+    verbose = getattr(args, 'verbose', False)
+    detail = (lambda line: out('  ' + line)) if verbose else (lambda line: None)
+    waited = []
+
+    def waiting():  # the OP-XY is off or in its OS: the one step at the device
+        waited.append(time.monotonic())
+        out(POWER)
+
     t = time.monotonic()
-    out('waiting for the OP-XY: turn it on (the XY Forever menu, USB connected)')
-    dev, port, text = connect(args.wait)
+    dev, port, text = connect(args.wait, log=detail, waiting=waiting)
+    detail('connected %s: %s' % (port, text))
     hello = P.Hello(text)
     if hello.major != '1' or not hello.answers(P.ids.MENU_CONVERGE):
         out('mods dev: refused: %s' % PLAIN['unsupported'])
@@ -292,8 +300,9 @@ def command(args, connect, out=print):
         return 2
     try:
         ready(dev, text)
-        out('[wait] %.2f s: connected %s: %s' % (time.monotonic() - t, port, text))
-        return dev_once(dev, args, gen, package, out)
+        if waited:
+            out('[wait] %.2f s' % (time.monotonic() - t))
+        return dev_once(dev, args, gen, package, out, detail)
     except StartupNotReady as error:
         out('mods dev: %s' % error)
         return 1

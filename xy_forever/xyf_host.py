@@ -415,20 +415,30 @@ def log(message):
     sys.stderr.flush()
 
 
-def connect(timeout, hello_every=0.5, hello_window=8.0):
+def connect(timeout, hello_every=0.5, hello_window=8.0, log=log, waiting=None):
     """Waits for a /dev/cu.usbmodem* port and sends HELLO every hello_every seconds on the same open
     port (the device answers only during its ~6 s service window). Every failed port is closed; the
-    whole wait never exceeds timeout. The device lock first (xy_forever/device_lock.py; not for the simulator)."""
+    whole wait never exceeds timeout. The device lock first (xy_forever/device_lock.py; not for the simulator).
+    log: its progress lines (stderr); waiting(): called once, the first time no port is there or a port does not
+    answer HELLO (the OP-XY is off or in its OS: the XY Forever menu is not running)."""
     deadline = time.monotonic() + (min(timeout, bounds.SIM_CONNECT_S) if SIM else timeout)
     if not SIM:
         device_lock.hold(timeout)
     seen = None
+
+    def wait_once():
+        nonlocal waiting
+        if waiting:
+            waiting()
+            waiting = None
+
     while time.monotonic() < deadline:
         port = find_port()
         if port != seen:
             log('port %s' % (port or 'gone'))
             seen = port
         if not port:
+            wait_once()
             pause(0.1)
             continue
         try:
@@ -459,6 +469,7 @@ def connect(timeout, hello_every=0.5, hello_window=8.0):
         except (OSError, TimeoutError) as error:
             log('%s: %s' % (port, error))
         log('no HELLO reply on %s: %d sent, %d bytes received' % (port, sent, received))
+        wait_once()
         try:
             transport.close()
         except OSError:
