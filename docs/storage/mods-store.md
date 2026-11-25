@@ -19,6 +19,11 @@ A package set lives in `/yaffs2/xy-forever/mods/<generation>/` as a flat store (
   package is detached into `tmp/` first. Python and browser pushes compare complete bytes before skipping.
   Removal detaches the package/generation before deleting it ([transactions](package-transactions.md)).
 
+A development set (#204, `mods dev`: one mod and its base) sits in `mods/dev-<generation>/` and its `store.txt` has
+a second line, `development=1`. The Mods page and `config.set` skip it when they pick the newest set (a reader that
+takes only the first line sees an ordinary set); `mods.apply` builds from it by its folder name; `mods dev` removes the
+older ones.
+
 Older layouts: `mods/<profile>/<generation>/` (before 1.16: presets 8 folders deep) and the mirrored package
 tree of 1.16's first builds (no `store.txt`: 7 deep). `mods list` and the web app show them as an older layout;
 `mods remove <folder> --yes` deletes one (deletes work at any depth) before the set is pushed again.
