@@ -498,6 +498,8 @@ void converge_begin(uint32_t why) { // never the page: the list, its toggles and
 bool converging() { return sv.stage != sv_idle && sv.stage != sv_failed; }
 
 // #204: entry id booted once with its own content: the switch (always: a rebuilt entry keeps its id), then the boot.
+// #284: the stock base's content set first (#183's job, as before a build; at once when it is there): a switch from
+// the official content needs it, and an OP-XY that never saved mods has none.
 uint32_t converge_once(const char* id) {
     const uint32_t i = index_of(id);
     if (i == ~0u) return xyf::usbp::s_not_found;
@@ -508,6 +510,10 @@ uint32_t converge_once(const char* id) {
     copy(sv.target, id, sizeof(sv.target));
     sv.ops = xc::op_switch;
     sv.stage = sv_switch;
+    const char* base = base_entry();
+    if (!base) return s_ok;
+    copy(sv.base, base, sizeof(sv.base));
+    content_set(); // sv_content_set, or failed with the build's reason (the menu says it; mode 0 reports it)
     return s_ok;
 }
 

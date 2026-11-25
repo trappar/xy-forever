@@ -88,9 +88,10 @@ Converge, then boot: the saved inputs, or one library entry once; and the sequen
 menu then runs the sequence on its progress screen and USB stays up, so `job.status` follows each job (a build, a content switch, the record, the fingerprint)
 and mode 0 says how it stands. When it boots, the menu closes and USB goes away; when it ends without booting, the menu stays, shows why, and mode 0 answers
 state 2 with that reason. Mode 1 is the first row's Continue: the converge before every boot (docs/storage/state.md). Mode 2 boots a library entry once, as
-`library.boot`, but installs its content first (always: an entry rebuilt into the same slot keeps its id), and changes nothing saved: the next plain power-on
-finds the default's content missing and converges back to the saved inputs (xyf dev, #204). `busy` while a sequence or a job runs, and for mode 2 while a
-content journal is open (the menu replays it first); `not_found`, no such entry; `state`, it has no `os.ldr`; `link`, processor A does not serve.
+`library.boot`, but installs its content first (always: an entry rebuilt into the same slot keeps its id; before it, when the stock base has no content set, as
+on an OP-XY that never saved mods, the content-set job makes it, #284), and changes nothing saved: the next plain power-on finds the default's content missing
+and converges back to the saved inputs (xyf dev, #204). `busy` while a sequence or a job runs, and for mode 2 while a content journal is open (the menu replays
+it first); `not_found`, no such entry; `state`, it has no `os.ldr`; `link`, processor A does not serve.
 
 | Request field (41 to 72 bytes) | Type | Meaning |
 |---|---|---|
