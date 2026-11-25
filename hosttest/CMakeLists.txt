@@ -30,6 +30,7 @@ endfunction()
 
 xyf_module(aes native/aes.cpp)
 xyf_module(hash native/hash.cpp)
+xyf_module(official_content native/hash.cpp)
 xyf_module(content native/content.cpp native/package_policy.cpp native/hash.cpp)
 xyf_module(ldr native/ldr.cpp)
 xyf_module(policy native/package_policy.cpp)
