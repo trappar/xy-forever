@@ -15,9 +15,16 @@ A package set lives in `/yaffs2/xy-forever/mods/<generation>/` as a flat store (
   `clients/ts/src/modstore.ts`). Files with the same content share one stored file; two different files
   with one stored name are refused by the host tools. Every file is 4 folders below `/yaffs2`.
 - A push writes `store.txt` into a new generation folder first and refuses a folder in another layout;
-  each changed package is fully staged and verified in `tmp/`, then renamed into its place; the old
-  package is detached into `tmp/` first. Python and browser pushes compare complete bytes before skipping.
+  each changed package is staged and verified in `tmp/`, then renamed into its place; the old
+  package is detached into `tmp/` first. A package whose stored files (names and sizes) and `files.sha256` are the
+  device's is skipped (one read; `--verify` reads every file). The Python push sends only the files whose content
+  changed: the rest move from the detached old package into the staged one by rename, just before it is published.
   Removal detaches the package/generation before deleting it ([transactions](package-transactions.md)).
+
+A development set (#204, `mods dev`: one mod and its base) sits in `mods/dev-<generation>/` and its `store.txt` has
+a second line, `development=1`. The Mods page and `config.set` skip it when they pick the newest set (a reader that
+takes only the first line sees an ordinary set); `mods.apply` builds from it by its folder name; `mods dev` removes the
+older ones.
 
 Older layouts: `mods/<profile>/<generation>/` (before 1.16: presets 8 folders deep) and the mirrored package
 tree of 1.16's first builds (no `store.txt`: 7 deep). `mods list` and the web app show them as an older layout;

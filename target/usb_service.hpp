@@ -290,6 +290,12 @@ const char* content_undo();
 // default_id unless it is that already ("" or 0: not changed). job_target: the entry the last mod job
 // committed into ("mods-a" / "mods-b").
 uint32_t content_switch(const char* id);
+// #204: content_switch whose journal ends when it succeeds, with no default written: the switch before a boot once of
+// id, and the switch back to the default when no setup is saved (nothing writes a record to end it).
+uint32_t content_switch_once(const char* id);
+// A content journal is open (job.txt: a switch to finish or undo) or not read yet: a boot once waits for the menu's own
+// replay (or its Continue) first.
+bool content_unfinished();
 // #178: library entry id from the stock updater's own os.ldr (usb_service_adopt.ipp; mode adopt_default: it is there,
 // only the default), then id as the default; a job (job_view; error as a switch's; status as content_switch's start).
 // #183, mode adopt_content: official OS 1.2.1 entry id's content set (firmware.version, content.sha256) from the live

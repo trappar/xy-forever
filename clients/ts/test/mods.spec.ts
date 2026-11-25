@@ -200,7 +200,7 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
       timeout: 60_000,
     });
     expect(run.status, run.stdout + run.stderr).toBe(0);
-    expect(run.stdout).toContain(`${profile}/${generation}: 0 packages sent, ${names.length} skipped; 0 files, 0 B`);
+    expect(run.stdout).toContain(`${profile}/${generation}: 0 packages sent, ${names.length} up to date; 0 files, 0 B`);
     assertStored();
   });
 

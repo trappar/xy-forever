@@ -218,7 +218,9 @@ class Session:
             for sha in sorted(duplicates - self.references(include_factory=False)):
                 self.change(P.ids.DELETE_FILE, BLOBS + '/' + sha)
 
-    def publish(self, target, files):
+    def publish(self, target, files, keep=()):
+        """Publishes files ({rel: bytes}) as target. keep: rels the published target already holds with these bytes (the
+        caller checked them): moved over from it on the device after the rest is staged and read back, never sent."""
         if not package_name(target.rsplit('/', 1)[-1]):
             raise StoreError('unsafe package name')
         if not target.startswith((LIBRARY + '/', ROOT + '/mods/')):
@@ -228,17 +230,24 @@ class Session:
         for rel in files:
             if depth.refusal(scratch + '/' + rel) or depth.refusal(target + '/' + rel):
                 raise StoreError('package exceeds storage depth')
-        for rel, data in sorted(files.items()):
+        sent = {rel: data for rel, data in files.items() if rel not in keep}
+        for rel, data in sorted(sent.items()):
             self.write(scratch + '/' + rel, data)
         # Re-read the entire staged result before the sole publication rename.
-        for rel, data in sorted(files.items()):
+        for rel, data in sorted(sent.items()):
             if self.read(scratch + '/' + rel) != data:
                 raise StoreError('staged package changed: %s' % rel)
         old = scratch + '-old'
         parent, name = target.rsplit('/', 1)
         present = any(raw == name.encode() for _, _, raw in self.entries(parent))
+        if keep and not present:
+            raise StoreError('%s is gone: nothing to keep from it' % target)
         if present:
             self.rename(target, old)
+        # The kept files move over only now: the target is away just for these renames (a cut leaves the old package in
+        # tmp/, swept, and the next push sends everything).
+        for rel in sorted(keep):
+            self.rename(old + '/' + rel, scratch + '/' + rel)
         self.rename(scratch, target)
         if present:
             self.erase(old)

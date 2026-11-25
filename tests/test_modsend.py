@@ -189,7 +189,7 @@ class Synthetic(Harness, unittest.TestCase):
                 self.assert_stored()
                 shutil.rmtree(self.stored)
         # a file replaced part-way (file.write_staged truncates, then writes) in a complete package:
-        # the list goes first, and the next push sends the file and the list again
+        # the list goes first, and the next push sends the file and the list again (the rest moves over on the device)
         self.push()
         victim = self.stored / 'alpha' / 'catalog.txt'
         victim.write_bytes(victim.read_bytes()[:5])
@@ -199,7 +199,8 @@ class Synthetic(Harness, unittest.TestCase):
         self.assertTrue((self.stored / 'alpha' / S.LIST).exists())
         self.assertEqual(victim.read_bytes(), victim.read_bytes()[:5])
         total, lines = self.push()
-        self.assertEqual((total['sent'], total['files']), (1, len(MP.tree(self.gen / 'alpha'))))
+        self.assertEqual((total['sent'], total['files']), (1, 2))
+        self.assertEqual(sorted(rel for _, rel in total['paths']), ['catalog.txt', S.LIST])
         self.assert_stored()
         self.assert_job_identical(['alpha'], [])
 

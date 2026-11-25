@@ -25,9 +25,9 @@ import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table.tsx
 import { PageHeader } from '@/components/page-header.tsx';
 import { confirmAction } from '../ask.tsx';
 import { bugReport } from '../bug-report.ts';
-import { device, queryClient, savedConfig, useAction } from '../device.ts';
+import { device, queryClient, readText, savedConfig, useAction } from '../device.ts';
 import type { Catalog } from '../kit/catalog.ts';
-import { groupMods, human } from '../model.ts';
+import { CONTENT_STATE, bootedOnce, groupMods, human } from '../model.ts';
 import type { SavedConfig } from '../model.ts';
 import { notice } from '../notice.ts';
 
@@ -41,7 +41,8 @@ async function loadMods() {
         if (isXyfError(e, 'update_required', 'unsupported')) return null;
         throw e;
       });
-  return { held, config, error, inputs };
+  const once = bootedOnce(await readText(c, CONTENT_STATE), (await c.readState())?.default ?? null);
+  return { held, config, error, inputs, once };
 }
 const refresh = (): Promise<void> => queryClient.invalidateQueries({ queryKey: ['mods'] });
 interface Removal {
@@ -79,6 +80,18 @@ export default function ModsPage() {
         <>
           {data.error !== undefined && (
             <p className="mb-4 text-muted-foreground">Could not read the saved configuration ({data.error}).</p>
+          )}
+          {data.once && (
+            <Card id="development-build">
+              <CardHeader>
+                <CardTitle className="flex-1">Development build in use</CardTitle>
+                <Badge variant="warn">booted once</Badge>
+              </CardHeader>
+              <CardDescription>
+                Library entry {data.once} was started once by xyf dev, with its own content. Nothing saved changed: the
+                next plain start of the OP-XY goes back to the saved mods.
+              </CardDescription>
+            </Card>
           )}
           <OpenXyCard inputs={data.inputs} />
           <AddPackages />
@@ -324,6 +337,7 @@ function GenerationCard({
           {g.profile} {g.generation}
         </CardTitle>
         {!g.packages.some((p) => p.name === 'base') && <Badge variant="warn">no base package</Badge>}
+        {g.development && <Badge>development set</Badge>}
         <span className="flex-1" />
         <Button
           size="sm"
@@ -336,11 +350,13 @@ function GenerationCard({
         </Button>
       </CardHeader>
       <CardDescription>
-        {config === undefined
-          ? 'On/off: the saved configuration could not be read.'
-          : sameSet
-            ? 'On/off: as saved on the device.'
-            : 'On/off: this set is not the saved one, so all are off.'}
+        {g.development
+          ? 'A development set from xyf dev: built alone and booted once, never saved; the next xyf dev replaces it.'
+          : config === undefined
+            ? 'On/off: the saved configuration could not be read.'
+            : sameSet
+              ? 'On/off: as saved on the device.'
+              : 'On/off: this set is not the saved one, so all are off.'}
       </CardDescription>
       <Table>
         <TableBody>
@@ -389,7 +405,7 @@ function GenerationCard({
 /** The mods the OP-XY runs (#26): saved as turning them on in the device's Mods menu does (config.set). The device checks
  * that it can build them and keeps them, or says why not; it builds them the next time XY Forever starts. */
 function InputsCard({ saved, held }: { saved: SavedInputs | null; held: HeldGeneration[] }) {
-  const gens = held.filter((g) => g.packages.some((p) => p.name === 'base' && p.complete));
+  const gens = held.filter((g) => !g.development && g.packages.some((p) => p.name === 'base' && p.complete));
   const g = gens.find((x) => x.generation === saved?.generation) ?? gens[0];
   const rows = g
     ? groupMods(

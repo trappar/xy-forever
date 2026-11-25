@@ -32,6 +32,7 @@ struct ContentSlot {
     ContentIo io;
     U32 id, started_ms, ended_ms, longest_ms, stage, menu, said_ms, said_phase, line_seq;
     U32 write_default;                                                   // 0 for the save sequence's switch
+    U32 once; // #204: no default either, and the journal ends at success (a boot once, the switch back to the default)
     char line[96], progress[24];
     xj::Record intent;
     xj::Source source;
@@ -48,7 +49,7 @@ void save_log_write(bool ok) {
         char* const line = text + xl::max_text + 64;
         const U32 line_n = xl::format(line, xl::max_line, save_times, now());
         uint32_t error = 0, old_n = 0;
-        file_client::change(0x26u, xl::folder, error, mounted);           // mkdir (it may exist)
+        file_client::change(0x26u, xl::folder, error, mounted); // mkdir (it may exist)
         if (file_client::read_file(xl::path, 0, false, reinterpret_cast<uint8_t*>(text), xl::max_text, old_n,
                                    mounted) != P::s_ok)
             old_n = 0;
@@ -64,7 +65,7 @@ void save_log_write(bool ok) {
         }
         if (n && !o.outcome && o.value >= 0) written = !file_client::close(o.value).outcome && written;
         if (written) {
-            file_client::change(0x25u, xl::path, error, mounted);           // unlink: A never renames onto a file
+            file_client::change(0x25u, xl::path, error, mounted); // unlink: A never renames onto a file
             file_client::rename(xl::part_path, xl::path, error, mounted);
         }
     }
@@ -73,11 +74,11 @@ void save_log_write(bool ok) {
 }
 ContentSlot& cslot() { return *reinterpret_cast<ContentSlot*>(XYF_JOB_REGION_BEGIN + job_slot_bytes); }
 volatile U32 content_line_shown __attribute__((section(".data"))) = 0;
-U32 content_phase(const ContentSlot& c) {                                 // final only once the default is written
+U32 content_phase(const ContentSlot& c) { // final only once the default is written
     const U32 ph = xc::phase(c.job);
     return c.stage != cs_ended && ph >= xc::phase_done ? U32(xc::phase_finish) : ph;
 }
-void content_text(ContentSlot& c, const char* a, const char* b = "", const char* d = "") {   // the menu's line
+void content_text(ContentSlot& c, const char* a, const char* b = "", const char* d = "") { // the menu's line
     U32 n = 0;
     for (const char *parts[3] = {a, b, d}, **k = parts; k != parts + 3; ++k)
         for (const char* t = *k; *t && n + 1 < sizeof(c.line); ++t) c.line[n++] = *t;
@@ -99,7 +100,7 @@ void content_say(ContentSlot& c, bool force) {
     if (!force && ph == c.said_phase && t - c.said_ms < job_say_ms) return;
     c.said_phase = ph;
     c.said_ms = t;
-    if (c.stage == cs_opening) {                                         // 193
+    if (c.stage == cs_opening) { // 193
         say("Opening storage for writing...", c.job.target, "", "Do not unplug or power off.");
         content_text(c, "Opening storage for writing: ", c.job.target);
         return;
@@ -117,7 +118,7 @@ U32 content_start(const char* id, bool menu, bool write_default, bool replay) {
     U32 code = file_client::mount_ready(mounted);
     if (code != P::s_ok) return code;
     ContentSlot& c = cslot();
-    const xyf::catalog::Catalog* catalog = xyf_boot::catalog();         // every entry's content.sha256 is a candidate
+    const xyf::catalog::Catalog* catalog = xyf_boot::catalog(); // every entry's content.sha256 is a candidate
     const char* candidates[xc::max_candidates];
     U32 n = 0;
     for (U32 i = 0; catalog && i != catalog->count && n != xc::max_candidates; ++i)
@@ -129,7 +130,7 @@ U32 content_start(const char* id, bool menu, bool write_default, bool replay) {
     if ((code = enter_writes()) != P::s_ok) return code;
     storage_used = 1;
     writes_due = 1;
-    writes_ms = now();                                  // closed when the switch ends
+    writes_ms = now(); // closed when the switch ends
     c.io.link = 0;
     c.id = ++job_counter;
     c.started_ms = c.ended_ms = now();
@@ -151,6 +152,7 @@ U32 content_start(const char* id, bool menu, bool write_default, bool replay) {
     c.said_ms = 0;
     c.said_phase = ~0u;
     c.write_default = write_default ? 1u : 0u;
+    c.once = 0;
     if (save_active) save_lap(xl::p_switch);
     else xl::begin(save_times, xl::k_switch, now(), xl::p_switch);
     job_kind = 1;
@@ -212,7 +214,7 @@ void content_pump() {
             }
         }
         if (c.job.stage != xc::st_done && journal_present) recovery_offer = 1;
-        if (c.job.stage == xc::st_done && journal_present && c.write_default) {
+        if (c.job.stage == xc::st_done && journal_present && (c.write_default || c.once)) {
             c.stage = cs_cleanup;
             c.cleaning = 0;
         } else {

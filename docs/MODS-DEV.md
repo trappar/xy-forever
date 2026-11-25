@@ -63,7 +63,7 @@ The set goes to `/yaffs2/xy-forever/mods/<generation>/`, stored flat (protocol 1
 [the store](storage/mods-store.md)). `mods list` names an older layout, too deep for the dev menu's MTP:
 `mods remove <folder> --yes`, then push again. The base is always sent. A file in a folder is stored under
 its SHA-256. A changed package is built and SHA-256 verified in `tmp/`, then renamed into its place;
-its old folder is detached first. Python and browser pushes skip only complete, byte-identical packages.
+its old folder is detached first. A package with the same files and `files.sha256` is skipped.
 If a push stops part-way, run it again: an unpublished scratch
 folder is swept, and no half-sent package becomes visible. See [package transactions](storage/package-transactions.md).
 
@@ -85,8 +85,10 @@ installs content, sets the default and boots it.
 **From the computer:** `uv run xyf-host mods set MACHINE ... [--ext ID ...]` saves the same
 selection (checked, or refused with the reason; none: all off); it is built at the next start.
 
-To try your build once without changing what is saved: `mods dev --boot` (or `mods apply`, then
-`set-default` and `boot`). The next plain power-on goes back to the saved setup.
+## 4. Try a mod you are writing
+
+`uv run xyf-host mods dev DIR/mods/opxy-1.2.1/<generation>/<mod>` builds that mod alone on the OP-XY and boots it
+once; nothing saved changes. [How it works](mods-dev/try.md).
 
 ## Limits
 
@@ -102,8 +104,6 @@ To try your build once without changing what is saved: `mods dev --boot` (or `mo
 
 ## Not yet
 
-- No one-command edit, build and boot loop. Today it is `split`, `mods push`, then a
-  build on the device and a boot by hand.
 - No measuring build: the memory figure is an estimate, not the size after linking.
 - No CPU or stability checks of a mod before it boots. A mod that crashes the OS needs
   a power-on holding PLAY to get back to the menu (not verified for every crash).

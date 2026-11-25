@@ -23,7 +23,8 @@ Replaying an interrupted switch uses the same checks. A's engine renames onto an
 so B replaces the record as record -> `content-state.old`, `.part` ->
 record, `.old` removed; only a `.old` (a cut between) reads as switching, never as official. Stock entries (no `generation`) are usable only in the official
 state; an assembled mod set only when the record is installed for it. A plain power-on never writes: an unusable default opens the menu with the reason
-("Default <id>: content not installed" or "content needs repair").
+("Default <id>: content not installed" or "content needs repair"), except that a default whose content is missing
+converges (#204: `menu.converge` mode 2 installed another entry's content for a boot once; [convergence](../architecture/boot/convergence.md)).
 
 The switch (B's job, `target/xyf_content_job.hpp`; one file request per step, USB live): the target's manifest (`generation`: a mod set), the record (or its
 `.old`); in the official state the live catalog's SHA-256 must equal the `op1_factory.json` line of a library entry's `content.sha256` (else refused: not the

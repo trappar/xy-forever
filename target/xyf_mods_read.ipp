@@ -52,7 +52,9 @@ void step() {
         }
         const uint32_t v = xyf::mods_store::version_of(io.buffer, bytes);
         io.newer |= v > xyf::mods_store::version ? 1u : 0u;
-        if (v == xyf::mods_store::version) io.step = s_base_list;
+        const bool development = v == xyf::mods_store::version && xyf::mods_store::development(io.buffer, bytes);
+        io.development += development ? 1u : 0u;
+        if (v == xyf::mods_store::version && !development) io.step = s_base_list;
         else next_candidate();
         return;
     }

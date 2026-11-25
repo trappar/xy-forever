@@ -46,13 +46,13 @@ class PackageRecords(unittest.TestCase):
                     read_all=read,
                 )
                 if want is modsend.Refused:
-                    with self.assertRaisesRegex(modsend.Refused, r'config\.(json|txt)'):
-                        moddev.config(dev)
+                    with self.assertRaisesRegex(ValueError, r'config\.(json|txt)'):
+                        config_records.read(dev)
                 elif want is None:
-                    self.assertIsNone(moddev.config(dev))
+                    self.assertIsNone(config_records.read(dev))
                 else:
-                    config = moddev.config(dev)
-                    self.assertEqual((config['mods'], config['safe']), (want, '1'))
+                    config = config_records.read(dev)[2]
+                    self.assertEqual((config['mods'].split(','), config['safe']), (want, '1'))
                 name = next((name for name in config_records.NAMES if name in files), None)
                 self.assertEqual(reads, [name] if name else [])
                 if name and want is not modsend.Refused:
@@ -89,37 +89,6 @@ class PackageRecords(unittest.TestCase):
         with self.assertRaises(native_json.RecordError):
             package_store.validate(files)
 
-    def test_moddev_entry_stamp_falls_back_only_on_absence(self):
-        native = native_json.package_document(
-            dict(type='firmware', name='New', bytes=1, crc32='00000000', sha256='a' * 64)
-        )
-        for response, expected in (
-            ((P.ids.S_NOT_FOUND, b''), 'b' * 64),
-            ((0, native), 'a' * 64),
-            ((0, b'{'), None),
-            ((P.ids.S_STORAGE, b''), None),
-        ):
-            with self.subTest(response=response):
-                calls = []
-
-                def read(path, **_):
-                    calls.append(path)
-                    return response if path.endswith('manifest.json') else (0, ('sha256=%s\n' % ('b' * 64)).encode())
-
-                device = SimpleNamespace(read_all=read, list_dir=lambda _: (0, [(0, 64, b'info.txt')]))
-                if expected is None:
-                    with self.assertRaises(modsend.Refused):
-                        moddev.entry_stamp(device, 'entry')
-                else:
-                    self.assertEqual(moddev.entry_stamp(device, 'entry'), expected)
-                self.assertEqual(len(calls), 2 if response[0] == P.ids.S_NOT_FOUND else 1)
-        link = SimpleNamespace(
-            read_all=lambda *_args, **_kw: (P.ids.S_NOT_FOUND, b''),
-            list_dir=lambda _: (0, [(2, 0, b'manifest.json'), (0, 64, b'info.txt')]),
-        )
-        with self.assertRaisesRegex(modsend.Refused, 'manifest.json'):
-            moddev.entry_stamp(link, 'entry')
-
     def test_modkit_modsend_index_and_dev_read_the_same_native_set(self):
         with tempfile.TemporaryDirectory(prefix='xyf-native-packages-') as scratch:
             work = Path(scratch)
@@ -138,7 +107,7 @@ class PackageRecords(unittest.TestCase):
             )
             self.assertEqual(modkit.rebuild_kit(root, ['alpha', 'beta'], ['cap', 'flt'], CATALOG_BYTES), expected)
             self.assertEqual(modpatch.info_values(root / 'base' / R.NATIVE)['profile'], profile)
-            self.assertEqual(moddev.resolve(root / 'alpha'), (root, ['alpha']))
+            self.assertEqual(moddev.resolve(root / 'alpha'), (root, 'alpha'))
             index_dir = work / 'index'
             modindex.build(root, index_dir)
             fetched = work / 'fetched'

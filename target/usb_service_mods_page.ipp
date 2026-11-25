@@ -99,6 +99,12 @@ const char* content_undo() {                                             // the 
                                "Content switch: could not start.";
 }
 uint32_t content_switch(const char* id) { return content_begin(id, true, false); }
+bool content_unfinished() { return journal_present || recovery_pending || recovery_offer; }
+uint32_t content_switch_once(const char* id) {
+    const U32 code = content_begin(id, true, false);
+    if (code == P::s_ok) cslot().once = 1;
+    return code;
+}
 uint32_t adopt_start(const char* id, uint32_t mode) { return adopt_begin(id, mode); }
 uint32_t content_set_check(const char* id, const char*& why) {
     why = 0;

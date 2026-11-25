@@ -2,7 +2,7 @@
   "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md. Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
   "protocol": {
     "name": "XY Forever serial protocol",
-    "version": "1.29",
+    "version": "1.30",
     "intro": [
       "XY Forever is a firmware and mod manager for the teenage engineering OP-XY. While its menu runs, the OP-XY's processor B answers this protocol over USB. Tools use it to list, read, write and delete files, take screenshots, stage and install builds, set the default firmware and restart the device.",
       "Transport: USB CDC serial, the raw frame stream (table below). The device answers only while the XY Forever menu runs: after an XY Forever restart, or when the OP-XY is powered on with PLAY held (release it at the logo).",
@@ -1140,6 +1140,34 @@
       "doc": "As if the Mods page's toggles were flipped on the device. The first request reads the package list fresh and answers `busy` until that is done: send the same request again. It then checks that the selection can be built (every name a package of the set, within Mod memory, a stock base in the library, which has its content set or can get it at the build: an official OS 1.2.1 entry, the content official) and answers `refused` with the reason, changing nothing; or `ok`, and the record is written at the next quiet moment as a flip on the page is (`config.get` `saving`). It never builds and never changes the default: the next boot converges to it (docs/storage/state.md). `busy` also while the device converges, a job runs, or a flip on the page is not written yet."
     },
     {
+      "type": "0x35", "name": "menu.converge", "symbol": "menu_converge", "class": "product",
+      "since": "1.30", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "converge, then boot: the saved inputs, or one library entry once; and the sequence's state",
+      "timeout_ms": 30000, "destructive": true,
+      "request": {
+        "size": [41, 72],
+        "fields": [
+          {"name": "version", "type": "u32", "doc": "API version: 1; newer is unsupported"},
+          {"name": "mode", "type": "u32", "range": [0, 2], "values": {"0": "report the sequence's state only", "1": "converge to the saved inputs, then boot the default (as PLAY on the menu's first row)", "2": "boot library entry `id` once with its own content: its content switch, then the boot; the saved inputs, the default and the fingerprint stay"}, "doc": "what to do"},
+          {"name": "id", "type": "cstr", "encoding": "ascii", "min_bytes": 1, "max_bytes": 32, "doc": "mode 2: the library entry id (1-31 of `a-z 0-9 _ -`); empty for modes 0 and 1"},
+          {"name": "sha256", "type": "bytes[32]", "doc": "confirmation: the SHA-256 of every request byte before it"}
+        ]
+      },
+      "reply": {
+        "size": [12, 92],
+        "fields": [
+          {"name": "version", "type": "u32", "doc": "reply format: 1"},
+          {"name": "state", "type": "u32", "range": [0, 3], "values": {"0": "idle: no sequence runs (the last one, if any, booted or ended with a note)", "1": "running on the menu's progress screen", "2": "the last sequence ended without booting: `reason`", "3": "booting: the menu closes on its next pass and USB goes away"}, "doc": "the converge sequence (a plain power-on's too)"},
+          {"name": "job", "type": "u32", "doc": "the job running now, or the last one (0: none this boot): follow it with `job.status`"},
+          {"name": "reason", "type": "text", "encoding": "ascii", "max_bytes": 80, "doc": "with state 2: why, as the menu's status line says it; else empty"}
+        ],
+        "on_error": "status",
+        "extensible": false
+      },
+      "errors": ["bad_request", "unsupported", "sha", "busy", "link", "not_found", "state"],
+      "doc": "Modes 1 and 2 answer at once with the state after the start (1); the menu then runs the sequence on its progress screen and USB stays up, so `job.status` follows each job (a build, a content switch, the record, the fingerprint) and mode 0 says how it stands. When it boots, the menu closes and USB goes away; when it ends without booting, the menu stays, shows why, and mode 0 answers state 2 with that reason. Mode 1 is the first row's Continue: the converge before every boot (docs/storage/state.md). Mode 2 boots a library entry once, as `library.boot`, but installs its content first (always: an entry rebuilt into the same slot keeps its id), and changes nothing saved: the next plain power-on finds the default's content missing and converges back to the saved inputs (xyf dev, #204). `busy` while a sequence or a job runs, and for mode 2 while a content journal is open (the menu replays it first); `not_found`, no such entry; `state`, it has no `os.ldr`; `link`, processor A does not serve."
+    },
+    {
       "type": "0x4f", "name": "packs.manage", "symbol": "packs_manage", "class": "product",
       "since": "1.27", "switch": "XYF_TFW_CHECK", "switch_optional": true,
       "summary": "import or toggle a .tfw sound pack and inspect progress",
@@ -1209,7 +1237,7 @@
     {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
-     "fields": {"info": "XYF1;service=usb;role=b;proto=1.29;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000fffb001700031fff00be;dev=1;confirm=1;trust=none;serial=on;stage2=0"}, "hex": "58468101e000000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32393b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303066666662303031373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b73657269616c3d6f6e3b7374616765323d300d8e3099"},
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.30;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000fffb003700031fff00be;dev=1;confirm=1;trust=none;serial=on;stage2=0"}, "hex": "58468101e000000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e33303b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303066666662303033373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b73657269616c3d6f6e3b7374616765323d30f973e8ce"},
     {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,

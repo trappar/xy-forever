@@ -261,6 +261,7 @@ static U32 home_receive() {
         else if (type == P::t_job_cancel) job_cancel(seq, payload, length);
         else if (type == P::t_config_get) config_get(seq, payload, length);
         else if (type == P::t_config_set) config_set(seq, payload, length);
+        else if (type == P::t_menu_converge) menu_converge(seq, payload, length);
 #endif
         else if (type == P::t_status) status(seq);
         else if (type == P::t_read_file) read_file(seq, payload, length);
