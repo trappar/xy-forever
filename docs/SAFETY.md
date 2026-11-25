@@ -121,8 +121,9 @@ Keep a known-good build and its dev-menu kit ready at all times.
   experiments for lone-restart recovery; prefer removing such machinery.
 - **The stock Track-5 writer** erases the old partition's block 0 even when its own verify fails.
   It retries forever if A leaves mid-install. Check stock return conventions before any boot write.
-- **USB:** replies of 4 KiB hung B, so ranged reads are capped at 1 KiB. `begin()` refuses session caps
-  over 600 s. Detach the stale stock CDC callback `11a03e04`, which drains the host's HELLOs.
+- **USB:** replies up to 4 KiB on our composite (#327), 1 KiB on stock fallback (4 KiB hung B,
+  Test 038). `begin()` refuses session caps over 600 s. Detach the stale stock CDC callback
+  `11a03e04`, which drains the host's HELLOs.
   Start USB once per boot as one composite device; stopping and restarting functions inside a boot
   froze B. Compare descriptor layouts against stock, including the full 0x18-byte config record.
 - **Register reads can hang B:** SEC SCTL/SSTAT reads over sources 0..127 hung B; the BF707 most
