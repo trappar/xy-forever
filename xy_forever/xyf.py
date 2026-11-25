@@ -8,7 +8,7 @@
   xyf logs [--out DIR]         the OP-XY's new crash logs and reports, copied to DIR
 
 Every command that talks to the OP-XY waits for its XY Forever menu (saying once how to get there), then checks the
-protocol its HELLO names against the range this package speaks (PROTOCOL): a mismatch stops with one line naming both
+protocol its HELLO names against the range that command needs (NEEDS): a mismatch stops with one line naming both
 and the update. Exit codes: 0 done (dev: the build booted), 1 failed, 2 refused, 130 stopped (Ctrl-C).
 """
 
@@ -22,7 +22,10 @@ from pathlib import Path
 
 from xy_forever import usb_proto as P
 
-PROTOCOL = (1, 30)  # the oldest protocol xyf speaks (menu.converge, #204); every later 1.x answers it too
+MAJOR = 1  # every later 1.x answers what an earlier one did
+# The oldest protocol each command needs: dev, menu.converge mode 2 making the base's content set first (1.31, #284);
+# logs and stock-os, file.list (1.5) and file.read.
+NEEDS = {'dev': (1, 31), 'logs': (1, 5), 'stock-os': (1, 5)}
 SITE = 'https://xy-forever.trappar.com'
 UPDATE_FIRMWARE = 'Update XY Forever at %s (Manage > Device > Update)' % SITE  # ASCII: a Windows pipe is cp1252
 UPDATE_XYF = 'Update xyf: pip install -U xy-forever (or uvx xy-forever@latest)'
@@ -52,37 +55,44 @@ def version():
         return '?'
 
 
-def speaks():
-    return '%d.%d or a later %d.x' % (PROTOCOL[0], PROTOCOL[1], PROTOCOL[0])
+def speaks(need=None):
+    need = need or NEEDS['dev']
+    return '%d.%d or a later %d.x' % (need[0], need[1], MAJOR)
 
 
-def protocol_problem(text):
-    """None when this xyf speaks the protocol the HELLO text names, else the one line to print."""
+def protocol_problem(text, need=None):
+    """None when the protocol the HELLO text names answers a command needing need (default: dev's), else the line."""
+    need = need or NEEDS['dev']
     proto = P.Hello(text).proto
     try:
         parts = [int(p) for p in proto.split('.')]
     except ValueError:
         parts = [0]
-    found = (parts + [0])[:2]
-    if found[0] == PROTOCOL[0] and found[1] >= PROTOCOL[1]:
+    found = tuple((parts + [0])[:2])
+    if found[0] == MAJOR and found >= need:
         return None
-    line = 'the OP-XY speaks XY Forever protocol %s; xyf needs %s. ' % (proto, speaks())
-    return line + (UPDATE_XYF if found[0] > PROTOCOL[0] else UPDATE_FIRMWARE)
+    line = 'the OP-XY speaks XY Forever protocol %s; xyf needs %s. ' % (proto, speaks(need))
+    return line + (UPDATE_XYF if found[0] > MAJOR else UPDATE_FIRMWARE)
 
 
-def checked_connect(timeout, log=None, waiting=None):
+def checked_connect(timeout, log=None, waiting=None, need=None):
     """device_client.connect, then the protocol check: (device, port, HELLO text) or Incompatible (port closed)."""
     from xy_forever import device_client
 
     dev, port, text = device_client.connect(timeout, log=log or (lambda line: None), waiting=waiting)
-    problem = protocol_problem(text)
+    problem = protocol_problem(text, need)
     if problem:
         dev.t.close()
         raise Incompatible(problem)
     return dev, port, text
 
 
-def session(name, args, work, out=print, connect=checked_connect):
+def connector(command):
+    """checked_connect with that command's need."""
+    return lambda timeout, log=None, waiting=None: checked_connect(timeout, log, waiting, NEEDS[command])
+
+
+def session(name, args, work, out=print, connect=None):
     """Connects (the power line once, when the OP-XY is not at its menu), waits for the menu's storage, says [wait]
     when it waited, then work(dev, detail) -> the exit code. Every way out ends in one line."""
     from xy_forever import dev_entry, moddev
@@ -150,7 +160,7 @@ def stock_target(out):
     return target / 'os.ldr' if target.is_dir() else target
 
 
-def stock_os(args, out=print, connect=checked_connect):
+def stock_os(args, out=print, connect=None):
     """Copies the library entry whose os.ldr is stock OS 1.2.1 (by SHA-256) to the target, checked; never prints it."""
     from xy_forever import dev_entry
 
@@ -181,11 +191,11 @@ def stock_os(args, out=print, connect=checked_connect):
         )
         return 0
 
-    return session(name, args, work, out, connect)
+    return session(name, args, work, out, connect or connector('stock-os'))
 
 
 # -- xyf dev --------------------------------------------------------------------------------------------
-def dev_build(args, folder, out=print, connect=checked_connect):
+def dev_build(args, folder, out=print, connect=None):
     """One build: checked here as the device checks a library image, then pushed and booted once. The exit code."""
     from xy_forever import dev_entry
 
@@ -202,7 +212,7 @@ def dev_build(args, folder, out=print, connect=checked_connect):
         first = dev_entry.preflight(dev)
         return dev_entry.run(dev, files, out, detail, kind, content_first=first)
 
-    return session('xyf dev', args, work, out, connect)
+    return session('xyf dev', args, work, out, connect or connector('dev'))
 
 
 def builds(folder):
@@ -314,12 +324,12 @@ def copy_new(dev, folder, out=print):
     return new
 
 
-def logs(args, out=print, connect=checked_connect):
+def logs(args, out=print, connect=None):
     def work(dev, detail):
         copy_new(dev, Path(args.out), out)
         return 0
 
-    return session('xyf logs', args, work, out, connect)
+    return session('xyf logs', args, work, out, connect or connector('logs'))
 
 
 # -- the command line ---------------------------------------------------------------------------------
@@ -331,7 +341,11 @@ def parser():
         'its OS it says once: "Power the OP-XY off, then on holding PLAY (let go at the logo)". Exit codes: 0 done '
         '(dev: the build booted), 1 failed, 2 refused, 130 stopped. More: https://pypi.org/project/xy-forever/',
     )
-    p.add_argument('--version', action='version', version='xyf %s (XY Forever protocol %s)' % (version(), speaks()))
+    p.add_argument(
+        '--version',
+        action='version',
+        version='xyf %s (XY Forever protocol %s; logs and stock-os: %s)' % (version(), speaks(), speaks(NEEDS['logs'])),
+    )
     sub = p.add_subparsers(dest='command', required=True, metavar='COMMAND')
     s = sub.add_parser(
         'stock-os',

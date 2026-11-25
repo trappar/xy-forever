@@ -7,7 +7,7 @@ stays as it is: the next plain start goes back to it, and holding PLAY at power-
 
 ## Needs
 
-- An OP-XY running XY Forever with protocol 1.30 or later (update at https://xy-forever.trappar.com, Manage → Device
+- An OP-XY running XY Forever with protocol 1.31 or later (update at https://xy-forever.trappar.com, Manage → Device
   → Update), connected over USB.
 - macOS, Linux or Windows, Python 3.11 or later.
 - An Open-XY checkout with its toolchain (`python sdk.py toolchain fetch`) and your machine (`python sdk.py new`).
@@ -79,6 +79,6 @@ again.
 
 ## Compatibility
 
-`xyf` checks the protocol the OP-XY reports when it connects. This version speaks XY Forever protocol 1.30 or a later
-1.x; `xyf --version` says so. The package has its own version numbers, separate from XY Forever's: `pip install
+`xyf` checks the protocol the OP-XY reports when it connects: `xyf dev` needs XY Forever protocol 1.31 or a later 1.x,
+`xyf logs` and `xyf stock-os` 1.5 or later; `xyf --version` says so. The package has its own version numbers, separate from XY Forever's: `pip install
 xy-forever` gets the latest normal version, `pip install --pre xy-forever` also the newest development version.

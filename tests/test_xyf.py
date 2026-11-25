@@ -82,17 +82,26 @@ def dev_args(**kw):
 
 class ProtocolTest(unittest.TestCase):
     def test_the_range_and_the_lines(self):
-        for proto in ('1.30', '1.31', '1.99'):
+        for proto in ('1.31', '1.32', '1.99'):  # xyf dev: 1.31's boot once makes the base's content set first
             self.assertIsNone(xyf.protocol_problem(HELLO % proto))
-        older = xyf.protocol_problem(HELLO % '1.21')
+        older = xyf.protocol_problem(HELLO % '1.30')
         self.assertEqual(
             older,
-            'the OP-XY speaks XY Forever protocol 1.21; xyf needs 1.30 or a later 1.x. Update XY Forever at '
+            'the OP-XY speaks XY Forever protocol 1.30; xyf needs 1.31 or a later 1.x. Update XY Forever at '
             'https://xy-forever.trappar.com (Manage > Device > Update)',
         )
-        self.assertIn('protocol 1; xyf needs 1.30', xyf.protocol_problem('XYF1;service=usb;role=b;proto=1'))  # pre-v1
+        self.assertIn('protocol 1; xyf needs 1.31', xyf.protocol_problem('XYF1;service=usb;role=b;proto=1'))  # pre-v1
         newer = xyf.protocol_problem(HELLO % '2.0')
-        self.assertIn('protocol 2.0; xyf needs 1.30 or a later 1.x. Update xyf: pip install -U xy-forever', newer)
+        self.assertIn('protocol 2.0; xyf needs 1.31 or a later 1.x. Update xyf: pip install -U xy-forever', newer)
+        logs = xyf.NEEDS['logs']  # logs and stock-os: file.list (1.5) and file.read
+        self.assertIsNone(xyf.protocol_problem(HELLO % '1.5', logs))
+        self.assertIn('protocol 1.4; xyf needs 1.5 or a later 1.x', xyf.protocol_problem(HELLO % '1.4', logs))
+
+    def test_each_command_asks_for_its_own_range(self):
+        with mock.patch('xy_forever.device_client.connect', return_value=(mock.Mock(), 'sim', HELLO % '1.30')):
+            self.assertIsNotNone(xyf.connector('logs')(1.0))
+            with self.assertRaisesRegex(xyf.Incompatible, 'needs 1.31'):
+                xyf.connector('dev')(1.0)
 
     def test_a_mismatch_closes_the_port(self):
         port = mock.Mock()

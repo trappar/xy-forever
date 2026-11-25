@@ -11,7 +11,7 @@ runs `uv build` there: an sdist, then the wheel built from that sdist, so the sd
 
 check takes the wheel and sdist in DIR: the wheel holds exactly the listed files and stays small; a new virtual
 environment (PY: the oldest supported Python, 3.11) installs it; `xyf --help` and `xyf --version` run; every module
-imports; and `xyf logs` against a stand-in OP-XY whose HELLO names protocol 1.21 stops with the mismatch line and
+imports; and `xyf logs` against a stand-in OP-XY whose HELLO names protocol 1.4 stops with the mismatch line and
 exit code 2 (the simulator needs the private stock bootloader, which CI never has).
 
 Versions (docs/operating/pypi.md): the package's own. A normal version is published by an XY Forever release when
@@ -133,9 +133,9 @@ def build(out, release=None):
 
 # -- check ----------------------------------------------------------------------------------------------
 class StandIn:
-    """A TCP endpoint that answers HELLO as an OP-XY with an older XY Forever would (protocol 1.21); --sim's form."""
+    """A TCP endpoint that answers HELLO as an OP-XY with an older XY Forever would (protocol 1.4); --sim's form."""
 
-    HELLO = 'XYF1;service=usb;role=b;proto=1.21;version=0.0.9;image=00000000;mode=product'
+    HELLO = 'XYF1;service=usb;role=b;proto=1.4;build=150;mode=product'
 
     def __init__(self):
         if str(ROOT) not in sys.path:  # run without the repository's environment (the Windows check)
@@ -205,7 +205,7 @@ def check(folder, python='3.11'):
         stand_in = StandIn()
         env['XYF_SIM'] = stand_in.address
         code, out = run([xyf, 'logs', '--wait', '5', '--out', str(Path(tmp) / 'logs')], env)
-        want = 'xyf logs: the OP-XY speaks XY Forever protocol 1.21; xyf needs 1.30 or a later 1.x. Update XY Forever'
+        want = 'xyf logs: the OP-XY speaks XY Forever protocol 1.4; xyf needs 1.5 or a later 1.x. Update XY Forever'
         if code != 2 or want not in out:
             failures.append('the protocol mismatch: exit %d (want 2)\n%s' % (code, out))
     return failures

@@ -7,7 +7,7 @@ line means and what to do on each failure: the package's page, [pypi/README.md](
 
 ## What you need
 
-- An OP-XY running XY Forever, protocol 1.30 or later (update it in the web app: Manage → Device → Update).
+- An OP-XY running XY Forever, protocol 1.31 or later (update it in the web app: Manage → Device → Update).
 - macOS, Linux or Windows, Python 3.11 or later, and what Open-XY's
   [build guide](https://github.com/etcetc000/open-xy/blob/staging/docs/build.md) asks for (its toolchain).
 

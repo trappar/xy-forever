@@ -17,8 +17,8 @@ default: it adopts the stock entry first ([jobs.md](../../storage/jobs.md#the-st
 except in that adoption case (read once the menu has the library and the record): it adopts, and the menu stays.
 
 Over USB, `menu.converge` (protocol 1.30) starts the same sequence: mode 1 as the first row's PLAY, mode 2 a library
-entry booted once with its own content (its content switch, then the boot: no record, default or fingerprint
-written); `job.status` follows its jobs and mode 0 reports it (running, booting, or why it stopped).
+entry booted once with its own content (since 1.31 the stock base's content set first when it has none, #284; its
+content switch, then the boot: no record, default or fingerprint written); `job.status` follows its jobs and mode 0 reports it (running, booting, or why it stopped).
 
 Code: `target/usb_service.cpp` (`home_*`), `file_boot.cpp` and `key_ui.cpp` (`XYF_ONE_SESSION`),
 `storage_server.cpp`, `peer_services.cpp` (RPC mode), `menu_link.cpp`. Home, reads, dry runs, reboots,
