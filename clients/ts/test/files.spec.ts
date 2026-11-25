@@ -76,7 +76,7 @@ describe.skipIf(!sim)(`file methods against the simulator${sim ? '' : ` (skipped
     expect(
       await client.writeFile(path, data, { onProgress: (done, total) => staged.push([done, total]) }),
     ).toMatchObject({ written: 1 << 20 });
-    expect(staged.length).toBe(1024);
+    expect(staged.length).toBe(256); // MAX_DATA pieces (hello pipe)
     expect(staged.at(-1)).toEqual([1 << 20, 1 << 20]);
     expect(new Uint8Array(readFileSync(host(path)))).toEqual(data);
     let read = 0;
@@ -175,8 +175,8 @@ describe.skipIf(!sim)(`file methods against the simulator${sim ? '' : ` (skipped
 
   test('a missing file or folder: not_found', async () => {
     const read = await failure(client.readFile(`${DIR}/none.bin`));
-    expect(read).toMatchObject({ code: 'not_found', command: 'file.read' });
-    expect(read.message).toBe(`file.read ${DIR}/none.bin: no such file`);
+    expect(read).toMatchObject({ code: 'not_found', command: 'file.read_stream' });
+    expect(read.message).toBe(`file.read_stream ${DIR}/none.bin: no such file`);
     await expect(client.deleteFile(`${DIR}/none.bin`)).rejects.toMatchObject({
       code: 'not_found',
       command: 'file.delete',

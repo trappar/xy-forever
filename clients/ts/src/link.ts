@@ -24,6 +24,26 @@ interface Pending {
   reject(error: Error): void;
 }
 
+export interface PipelineOptions {
+  /** Requests in flight at most (hello `pipe`); 1 is one at a time. */
+  depth: number;
+  timeoutMs: number;
+  /** The first wait for the oldest reply before that request is sent once more (#306: a lost reply tail). */
+  resendMs: number;
+  signal?: AbortSignal | undefined;
+  /** The next request's payload; null: no more. */
+  next(): Uint8Array | null;
+  /** Each reply payload (status first), in request order; false: send no more and return. */
+  reply(payload: Uint8Array): boolean;
+}
+
+interface Flight {
+  type: number;
+  accept(f: Frame): void;
+  /** The link closed. */
+  closed(): void;
+}
+
 interface Collector {
   frames: Frame[];
   until(frames: readonly Frame[]): boolean;
@@ -46,6 +66,7 @@ export class Link {
   private readonly listeners = new Set<(event: Frame) => void>();
   private readonly closeWaiters = new Set<() => void>();
   private pending: Pending | null = null;
+  private flight: Flight | null = null;
   private collector: Collector | null = null;
   private queue: Promise<unknown> = Promise.resolve();
   private seq = 0;
@@ -95,6 +116,107 @@ export class Link {
         clearTimeout(timer);
         if (onAbort) signal?.removeEventListener('abort', onAbort);
         this.pending = null;
+      }
+    });
+  }
+
+  /**
+   * Requests of one type with up to options.depth in flight (protocol 1.33, hello `pipe`: file.read_stream and
+   * file.write_data only). The device answers in order, so a reply that is missing while a later one came was lost on
+   * the way: that request is sent once more (both commands answer a resend), as is the oldest when its reply has not
+   * come in resendMs. Stopping early (reply returns false) leaves the requests still out unanswered: their replies are
+   * dropped as stale. The caller sends a transfer's first request with request() (the #65 question, the cmds check).
+   */
+  pipeline(type: number, options: PipelineOptions): Promise<void> {
+    return this.serial(options.signal, async () => {
+      interface Out {
+        seq: number;
+        payload: Uint8Array;
+        resent: boolean;
+      }
+      const out: Out[] = [];
+      const early = new Map<number, Uint8Array>();
+      let wake: (() => void) | null = null;
+      let failed: Error | null = null;
+      let more = true;
+      const send = async (entry: Out): Promise<void> => {
+        entry.seq = this.nextSeq();
+        await this.send(encodeFrame(type, entry.seq, entry.payload));
+      };
+      const fill = async (): Promise<void> => {
+        while (more && out.length < options.depth) {
+          const payload = options.next();
+          if (!payload) {
+            more = false;
+            return;
+          }
+          const entry = { seq: 0, payload, resent: false };
+          out.push(entry);
+          await send(entry);
+        }
+      };
+      let resendHead = false;
+      this.flight = {
+        type,
+        accept: (f) => {
+          const at = out.findIndex((e) => e.seq === f.seq);
+          if (at < 0) {
+            this.dropped++;
+            return;
+          }
+          if (f.payload.length < 4) failed = new XyfError('protocol', 'a reply without a status');
+          early.set(f.seq, f.payload);
+          const head = out[0];
+          if (at > 0 && head && !early.has(head.seq) && !head.resent) resendHead = true;
+          wake?.();
+        },
+        closed: () => wake?.(),
+      };
+      const onAbort = (): void => {
+        failed = aborted(options.signal);
+        wake?.();
+      };
+      options.signal?.addEventListener('abort', onAbort, { once: true });
+      try {
+        await fill();
+        while (out.length) {
+          if (failed) throw failed;
+          if (this.isClosed) throw new XyfError('disconnected', 'the device went away');
+          const head = out[0] as Out;
+          const got = early.get(head.seq);
+          if (got) {
+            early.delete(head.seq);
+            out.shift();
+            if (!options.reply(got)) return;
+            await fill();
+            continue;
+          }
+          if (resendHead) {
+            resendHead = false;
+            head.resent = true;
+            await send(head);
+            continue;
+          }
+          const waitMs = head.resent ? options.timeoutMs : Math.min(options.timeoutMs, options.resendMs);
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const timedOut = await new Promise<boolean>((resolve) => {
+            wake = () => resolve(false);
+            timer = setTimeout(() => resolve(true), waitMs);
+          });
+          clearTimeout(timer);
+          wake = null;
+          if (!timedOut || early.has(head.seq) || resendHead || failed) continue;
+          if (head.resent) {
+            this.parser.reset();
+            throw new XyfError('timeout', `no reply to request 0x${type.toString(16)} within ${options.timeoutMs} ms`);
+          }
+          this.parser.reset(); // a cut frame then cannot swallow the next reply
+          head.resent = true;
+          await send(head);
+        }
+      } finally {
+        this.flight = null;
+        options.signal?.removeEventListener('abort', onAbort);
       }
     });
   }
@@ -184,6 +306,8 @@ export class Link {
         this.pending = null;
         if (f.payload.length < 4) p.reject(new XyfError('protocol', 'a reply without a status'));
         else p.resolve(f.payload);
+      } else if (this.flight && f.type === (this.flight.type | REPLY)) {
+        this.flight.accept(f);
       } else if (isEvent(f)) {
         for (const listener of this.listeners) listener(f);
       } else if (this.collector) {
@@ -200,6 +324,7 @@ export class Link {
     this.isClosed = true;
     this.pending?.reject(new XyfError('disconnected', 'the device went away'));
     this.pending = null;
+    this.flight?.closed();
     this.collector?.done();
     for (const wake of [...this.closeWaiters]) wake();
   }

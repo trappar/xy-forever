@@ -240,10 +240,10 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
           );
         }
         const reads: string[] = [];
-        const readRange = client.readRange.bind(client);
-        vi.spyOn(client, 'readRange').mockImplementation(async (path, ...rest) => {
+        const readFile = client.readFile.bind(client);
+        vi.spyOn(client, 'readFile').mockImplementation(async (path, ...rest) => {
           reads.push(path);
-          return readRange(path, ...rest);
+          return readFile(path, ...rest);
         });
         const write = client.writeFile.bind(client);
         vi.spyOn(client, 'writeFile').mockImplementation(async (path, data, options) => {

@@ -48,7 +48,7 @@ describe.skipIf(!sim)(`end to end against the simulator${sim ? '' : ` (skipped: 
     expect(
       await client.readFile('/yaffs2/xy-forever/log/web/read.bin', { onProgress: (done) => progress.push(done) }),
     ).toEqual(data);
-    expect(progress).toEqual([1024, 2048, 3072, 4096, 5000]);
+    expect(progress).toEqual([4096, 5000]); // file.read_stream: MAX_DATA pieces
     expect(await client.readRange('/yaffs2/xy-forever/log/web/read.bin', 4990, 1024)).toEqual(data.subarray(4990));
     await expect(client.readFile('/yaffs2/xy-forever/log/web/none.bin')).rejects.toMatchObject({ code: 'not_found' });
   });
@@ -60,7 +60,7 @@ describe.skipIf(!sim)(`end to end against the simulator${sim ? '' : ` (skipped: 
     expect(await client.writeFile(path, data, { onProgress: (done) => staged.push(done) })).toMatchObject({
       written: 3000,
     });
-    expect(staged).toEqual([1024, 2048, 3000]);
+    expect(staged).toEqual([3000]); // file.write_data: MAX_DATA pieces
     expect(await client.readFile(path)).toEqual(data);
     expect(onMac(path)).toEqual(data);
     await expect(client.writeFile('/yaffs2/upgrade/elsewhere.bin', data)).rejects.toMatchObject({
