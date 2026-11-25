@@ -899,6 +899,33 @@ class SimulatorTest(unittest.TestCase):
         self.assertGreater(lost['longest_ms'], 500)
         self.sim.until(lambda: log().rfind('menu: usb line: ') > log().rfind(line), 'the line gone', 2000)
 
+    @pytest.mark.sim
+    def test_psoc_frames_are_recorded_before_the_stock_poll(self):
+        """Kept: #314: a PSoC frame the stock poll may stop B on is on screen and in STATUS before that poll runs: a power
+        status the stock power handler shuts down on (0x14), a command frame; a key frame only in STATUS, knob turns
+        not at all."""
+        dev = self.connect()
+
+        def log():
+            return (self.dir / 'log.txt').read_text(errors='replace')
+
+        for frame, label in (
+            ('4101420201', None),
+            ('4102450301' + '0002', None),
+            ('4103310114', 'P31:14 off'),
+            ('4104500100', 'P50:00'),
+        ):
+            self.assertTrue(self.sim.control('knob_raw ' + frame).get('ok'))
+            if label:
+                line = 'menu: psoc label %s before the stock poll' % label
+                self.sim.until(lambda: line in log(), line, 2000)
+        psoc = host.decode_status(dev.call(P.STATUS)[1])['psoc_frames']
+        self.assertEqual((psoc['count'], psoc['shutdowns'], psoc['commands']), (3, 1, 1))
+        self.assertEqual(
+            [(f['route'], f['type'], f['status']) for f in psoc['frames']],
+            [('key', '0x42', '0x1'), ('power', '0x31', '0x14'), ('command', '0x50', '0x0')],
+        )
+
     # -- the spec's stream vectors, cut frames, names ------------------------------------
     def frames(self, sock, parser, until, timeout):
         """Frames from a raw connection until until(frames) holds or timeout."""

@@ -134,6 +134,37 @@ void sample(uint32_t value, uint32_t& last, uint32_t& low, uint32_t& high) {
     if (value > high) high = value;
 }
 
+// #314: a PSoC frame the stock poll may stop B on (knob_input::watch), drawn top left by the present before that
+// poll: "P" type ":" byte 4, " off" when the stock power handler shuts down on it. Once: the next present leaves
+// it out; if B stops, the screen keeps it.
+volatile uint32_t psoc_shown __attribute__((section(".data"))) = 0;
+void psoc_draw(uint16_t* fb) {
+    const uint32_t f = psoc_shown;
+    if (!f) return;
+    psoc_shown = 0;
+    char t[12];                                      // byte by byte: no memcpy call (cold code)
+    uint32_t n = 0;
+    t[n++] = 'P';
+    for (uint32_t shift = 16; shift;) {             // type, then byte 4: two hex digits each
+        shift -= 4;
+        if (shift == 4) t[n++] = ':';
+        const uint32_t d = f >> shift & 15u;
+        t[n++] = char(d < 10 ? '0' + d : 'a' + d - 10);
+    }
+    if (f >> 16) {
+        t[n++] = ' ';
+        t[n++] = 'o';
+        t[n++] = 'f';
+        t[n++] = 'f';
+    }
+    t[n] = 0;
+    const int w = xyf::gfx::text_width(t, 1) + 4;
+    xyf::gfx::fill(fb, 0, 0, w, 11, xyf::gfx::accent);
+    xyf::gfx::text(fb, 2, 2, t, xyf::gfx::black, 1);
+    flush_from = 0;                                  // a saver frame flushes its boxes only
+    flush_to = framebuffer_bytes;
+}
+
 // Finish the previous frame (stock wait clears the busy flag on DMA done),
 // then draw the screen and send it: the stock transfer returns once its DMA is done.
 void present() {
@@ -154,6 +185,7 @@ void present() {
     flush_to = framebuffer_bytes;
     draw_screen(reinterpret_cast<uint16_t*>(word(framebuffer)));   // full repaint (a saver frame: its boxes)
     where_draw(reinterpret_cast<uint16_t*>(word(framebuffer)));    // a long wait's code (key_ui_where.ipp)
+    psoc_draw(reinterpret_cast<uint16_t*>(word(framebuffer)));     // #314: the PSoC frame about to be handled
     flush_framebuffer(word(framebuffer), flush_from, flush_to);
     const uint32_t drawn = cycles_div1024();
     transfer();

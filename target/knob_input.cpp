@@ -4,6 +4,17 @@ namespace xy_forever { namespace knob_input {
 // Initialized data, not BSS: the cold link has no zero-initialization.
 Result result __attribute__((section(".data"))) = {magic};
 InputLog input_log __attribute__((section(".data"))) = {log_magic, 1};
+PsocLog psoc_log __attribute__((section(".data"))) = {psoc_magic, 1};
+
+uint32_t psoc_route(uint32_t type) {
+    if (type == 0 || type == 0x31 || type == 0x32 || type == 0x35 || type == 0x37) return route_power;
+    if (type == 0x42 || type == frame_type || type == 0x4d) return route_other;
+    return route_command;
+}
+bool shuts_down(uint32_t type, uint32_t status, uint32_t stored, uint32_t flag) {
+    if (type != 0x31 && type != 0x32) return false;
+    return flag != 0 || status == 0x14 || (stored == 0x10 && status == 0x16);
+}
 
 void log_key(uint32_t key, bool pressed, bool injected, uint32_t ms) {
     InputLog& l = input_log;
@@ -83,6 +94,36 @@ int32_t frame(uint32_t a, uint32_t now_ms) {
 }
 
 namespace xy_forever { namespace knob_input {
+uint32_t watch(uint32_t now_ms) {
+    PsocLog& l = psoc_log;
+    if (result.state != state_on) return 0;                // the queue's layout is the checked image's
+    const uint32_t read = word(read_index), write = word(write_index);
+    l.stored = word(power_status);
+    l.flag = byte(power_flag);
+    uint32_t n = distance(read, write), at = read, shown = 0;
+    if (n > max_frames) n = n > slots ? 0 : max_frames;    // implausible: nothing; else the first max_frames
+    for (uint32_t i = 0; i != n; ++i, ++at) {
+        if (write < slots && at >= slots) at -= slots;     // the writer wraps at 128
+        const uint32_t a = queue + (at & (slots - 1)) * slot_bytes, type = byte(a + 2), status = byte(a + 4);
+        const uint32_t route = psoc_route(type);
+        if (type == frame_type) continue;                  // knob turns: the knob reader's
+        PsocEntry& e = l.entry[l.count++ & (psoc_entries - 1)];
+        e.ms = now_ms;
+        e.head = byte(a) | byte(a + 1) << 8 | type << 16 | byte(a + 3) << 24;
+        e.body = status | byte(a + 5) << 8 | byte(a + 6) << 16 | byte(a + 7) << 24;
+        uint32_t stops = 0;                                // the first one shown: the poll takes them in order
+        if (route == route_command) {
+            ++l.commands;
+            stops = type << 8 | status;
+        } else if (route == route_power && shuts_down(type, status, l.stored, l.flag)) {
+            ++l.shutdowns;
+            stops = 1u << 16 | type << 8 | status;
+        }
+        if (!shown) shown = stops;
+    }
+    return shown;
+}
+
 void start(bool identity_ok) {
     Result& r = result;
     for (uint32_t* p = &r.state; p != reinterpret_cast<uint32_t*>(&r + 1); ++p) *p = 0;

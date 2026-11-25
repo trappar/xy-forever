@@ -262,6 +262,10 @@ void knob_deliver() {
     }
     if (tail == first) return;
     shared->knob_tail.store(tail);
+    // #314: as key_ui, the frames are watched right before the stock poll takes them (the simulator has no stock
+    // power or command handler: B never stops on one here).
+    if (const uint32_t f = xy_forever::knob_input::watch(device_ms()))
+        log("menu: psoc label P%02x:%02x%s before the stock poll", f >> 8 & 0xffu, f & 0xffu, f >> 16 ? " off" : "");
     w32(read_index, r32(write_index));
 }
 // key_ui's stock identity (its CRC spans over the PSoC handler and the poll's frame-type switch): the knob

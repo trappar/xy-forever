@@ -350,6 +350,14 @@ extern "C" void xy_forever_key_ui() {
             bool shown_lost = false;                     // the status line already shows the lost link
 #endif
             for (;;) {
+#if defined(XYF_ONE_SESSION) && defined(XYF_USB_SERVICE)
+                // #314: a frame the stock poll may stop B on goes on screen first (where_screen: the menu's present)
+                if (const uint32_t f = xy_forever::knob_input::watch(ms_since(r.start_cycles)))
+                    if (where_screen) {
+                        psoc_shown = f;
+                        present();
+                    }
+#endif
                 poll();
                 ++r.polls;
 #if defined(XYF_SETTINGS)

@@ -377,6 +377,39 @@ def input_line(event):
     return '%8d ms  %s%s' % (event['ms'], what, ' (host)' if event.get('injected') else '')
 
 
+PSOC_MAGIC = 0x31435350  # "PSC1": target/knob_input.hpp PsocLog
+PSOC_ENTRIES = 16
+PSOC_ROUTES = {0: 'power', 0x31: 'power', 0x32: 'power', 0x35: 'power', 0x37: 'power', 0x42: 'key', 0x4D: 'other'}
+
+
+def psoc_frames(block):
+    """The PSoC's frames other than knob turns, as B saw them right before the stock poll took them (diag.status
+    block PSC1, #314): the power handler's stored status and flag, the counts, the frames oldest first; None if not
+    one. A frame: ms, route (power, key, other; command: the stock command handler), type, status (byte 4), bytes."""
+    if len(block) != 32 + 12 * PSOC_ENTRIES:
+        return None
+    magic, version, count, stored, flag, shutdowns, commands, _ = struct.unpack_from('<8I', block)
+    if magic != PSOC_MAGIC or version != 1:
+        return None
+    frames = []
+    for i in range(max(0, count - PSOC_ENTRIES), count):
+        ms, head, body = struct.unpack_from('<3I', block, 32 + 12 * (i % PSOC_ENTRIES))
+        raw = struct.pack('<II', head, body)
+        frames.append(
+            dict(
+                n=i,
+                ms=ms,
+                route=PSOC_ROUTES.get(raw[2], 'command'),
+                type=hex(raw[2]),
+                status=hex(raw[4]),
+                bytes=raw.hex(' '),
+            )
+        )
+    return dict(
+        count=count, power_status=hex(stored), power_flag=flag, shutdowns=shutdowns, commands=commands, frames=frames
+    )
+
+
 FRAMES_MAGIC = 0x314D5246  # "FRM1": target/key_ui.hpp Frames
 FRAMES_VERSION = 2  # 1 (build 242505c6 only) guessed at the DMA; 2 times the stock transfer itself
 FRAMES_FIELDS = (

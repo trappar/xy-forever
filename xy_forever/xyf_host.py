@@ -767,6 +767,7 @@ def decode_status(body):
         knob_input=next((k for k in map(census.knob_summary, (d for _, d in blocks)) if k), None),
         input_events=next((k for k in map(census.input_events, (d for _, d in blocks)) if k), None),  # 288
         frame_time=next((k for k in map(census.frame_time, (d for _, d in blocks)) if k), None),
+        psoc_frames=next((k for k in map(census.psoc_frames, (d for _, d in blocks)) if k), None),  # 314
         blocks=['0x%08x:%d' % (m, len(d)) for m, d in blocks],
     )
 

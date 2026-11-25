@@ -325,6 +325,7 @@ void status(uint8_t seq) {
     // #288, last: a block that does not fit is left out (append_block), never an earlier one
     n = append_block(p, n, &knob_input::input_log, sizeof(knob_input::InputLog));   // #288: keys and knob records
     n = append_block(p, n, &key_ui::frames, sizeof(key_ui::Frames));                 // #288: the menu's frame times
+    n = append_block(p, n, &knob_input::psoc_log, sizeof(knob_input::PsocLog));       // #314: the PSoC's other frames
     send(P::t_status, seq, p, n);
 }
 

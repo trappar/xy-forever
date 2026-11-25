@@ -62,6 +62,41 @@ struct InputLog {
 static_assert(sizeof(InputLog) == 16 + 8 * log_events, "InputLog layout");
 extern InputLog input_log;
 void log_key(uint32_t key, bool pressed, bool injected, uint32_t ms);
+// #314: the PSoC frames other than knob turns, seen right before the stock poll takes them (watch), so the frame
+// that stops B is on record. The stock poll (88a24922, 1.2.1; its frame-type switch at 0x88a24c94) hands types 0,
+// 0x31, 0x32, 0x35 and 0x37 to the stock power handler (88a1cb58) and every type it does not list (5 too, at times)
+// to the stock command handler (88a21456). For 0x31 and 0x32 the power handler takes byte 4 as the power status
+// (stored at 0x88a1cdb4) and shuts B down for good when it is 0x14, when it goes from 0x10 to 0x16, or once its
+// flag byte (0x88a1cdc1) is set: "Shut down!" (88a355a4: the links closed, USB stopped with its PHY down, so the
+// OP-XY leaves the bus), then it waits for the power to go, 200 ms at a time, forever. The command handler can
+// shut down too (88a2128c -> 88a3561e). Nothing here changes the queue or calls stock code.
+static const uint32_t psoc_magic = 0x31435350u;           // "PSC1" (diag.status block)
+static const uint32_t psoc_entries = 16;                  // a power of two
+static const uint32_t power_status = 0x88a1cdb4u, power_flag = 0x88a1cdc1u;   // the power handler's state
+enum PsocRoute : uint32_t { route_other = 0, route_power, route_command };
+// What the stock poll does with a frame of this type (route_other: a key, a knob turn, a status it handles itself).
+uint32_t psoc_route(uint32_t type);
+// Whether the stock power handler shuts B down on a power frame (0x31, 0x32) with status `status`, given its
+// stored status and flag byte (pure).
+bool shuts_down(uint32_t type, uint32_t status, uint32_t stored, uint32_t flag);
+struct PsocEntry {
+    uint32_t ms;                // the menu's clock when watch saw it
+    uint32_t head, body;        // bytes 0..3 (route, seq, type, length) and 4..7, little endian
+};
+struct PsocLog {
+    uint32_t magic, version, count;     // count: frames ever logged (entry i % psoc_entries)
+    uint32_t stored, flag;              // the power handler's stored status and flag byte, as watch last read them
+    uint32_t shutdowns;                 // frames the power handler shuts down on (shuts_down)
+    uint32_t commands;                  // frames for the command handler
+    uint32_t reserved;
+    PsocEntry entry[psoc_entries];
+};
+static_assert(sizeof(PsocLog) == 32 + 12 * psoc_entries, "PsocLog layout");
+extern PsocLog psoc_log;
+// Right before the stock poll: the frames between the stock read and write indexes, logged (knob turns aside).
+// Returns the first one the stock poll may stop B on (it takes them in order), as type << 8 | byte 4 | 1 << 16 when the power handler shuts
+// down on it (a command frame: without the bit), else 0. Reads only.
+uint32_t watch(uint32_t now_ms);
 // The menu opened. identity_ok: the stock identity the key path checked (key_ui's CRC spans) matched.
 void start(bool identity_ok);
 // One menu-loop pass, after the stock poll. selection: the page on screen moves a selection with - / +
