@@ -318,8 +318,8 @@ namespace xy_forever { namespace key_ui {
 Result result = {magic};
 Frames frames = {frames_magic, 2}; // #288: no display here: no frame is measured
 void crash_disarm() {} // no vector: the screen is not hosted
-void hang_hold(bool) {} // #314: no stall recorder (no core timer)
-StallLog stall_log = {stall_magic, 1, 0, 0, {}}; // #314: nothing recorded here
+void hang_hold(bool) {} // #314: no dead man's timer (no core timer)
+StallLog stall_log = {stall_magic, 2, 0, 0, {}}; // #314: nothing recorded here
 #if defined(XYF_CRASH_TRIGGER)
 bool crash_armed_now() { return sim_menu; } // as key_ui: armed while the menu has the screen
 void crash_fault(uint32_t kind) { // no exception vector here: B stops answering

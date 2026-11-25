@@ -80,25 +80,38 @@ __attribute__((used, noinline)) void crash_show() {
         if (result.presents != sent) return;
     }
 }
-// ---- #314: the stall recorder --------------------------------------------------------------------------------
+// ---- #314: the stop screen ------------------------------------------------------------------------------------
 // B has stopped as a whole during long reads with a host polling: the screen kept its last frame, no input, no crash
-// screen, USB gone. A core-timer tick at IVG6 every 0.5 s made it go away (0 of 2 runs froze; the same tree without
-// the tick froze), so B's core got stuck at main level in a way only that core-internal interrupt ended. The tick
-// is kept while the menu has the screen, and records each time it finds the menu loop has not moved since the
-// tick before (hang_beat: each pass and each bounded wait's poll): the interrupted instruction (RETI), RETS, FP,
-// IPEND, how many ticks in a row. B keeps running, so STATUS reports them (StallLog, diag.status block STL1).
-// The core timer is unused by the stock code (no 0x1fc03000 in the 1.2.1 listing); nothing else changes: no
-// reset, no storage, no screen. hang_hold (usb_service: the stock boot writer, a long stock call) keeps it quiet.
+// screen, USB gone, nothing left to read afterwards. A stock assert does that: it ends in the ROM's IDLE loop
+// (0803dfcc) at the level that asserted, and the stock interrupt wrapper (11a015d8) has pushed RETI by then, so
+// a higher level still gets in. The core timer (IVG6, above every peripheral; unused by the stock code: no
+// 0x1fc03000 in the 1.2.1 listing) is that level, as a dead man's timer: while the menu loop runs it counts
+// stop_ms down, and every pass of the loop and every poll of a bounded wait winds it back (hang_kick, at most
+// every 100 ms), so it never interrupts a loop that moves. (An earlier tick every 0.5 s seemed to change how
+// often B froze.) Its one interrupt on purpose is the proof, 1 ms after the menu loop starts: only once that came
+// does a beat wind the timer back (hang_live), and the trail shows T (t: it never came, so this timer cannot tell
+// anything).
+// When it does interrupt, nothing has moved for stop_ms: it logs the interrupted instruction (RETI), RETS, FP and
+// IPEND (StallLog, diag.status block STL1), draws the stop screen with the menu's own present (crash::Hang: also
+// the callers, the message a stock assert left at the frame, the wait, the loop's last step) and returns. A B that
+// really stopped keeps that screen (drawn again every stop_ms); a loop that goes on after all draws over it at its
+// next pass, and STATUS still has the entry. No reset, no storage, no link. An interrupt although the loop moved
+// under half of stop_ms ago means winding does not work on this timer: it is turned off for good (the trail shows
+// x). hang_hold (usb_service: the stock boot writer, a long stock call) stops the timer for its length.
+// No stop screen after a freeze: the core itself hung (anomaly 19000058), interrupts were masked (CLI, or a
+// handler that never pushed RETI), or the display's DMA no longer ends.
 const uint32_t evt6 = 0x1fc02018u, ipend = 0x1fc02108u;
 const uint32_t tcntl = 0x1fc03000u, tperiod = 0x1fc03004u, tscale = 0x1fc03008u, tcount = 0x1fc0300cu;
-const uint32_t tmpwr = 1, tmren = 2, tautorld = 4, tint = 8, tick_cycles = 200000000u;   // 0.5 s at 400 MHz
+const uint32_t tmpwr = 1, tmren = 2, tautorld = 4, tint = 8, proof_cycles = 400000u;   // 1 ms at 400 MHz
 const uint32_t ivg6 = 0x40u;
+static_assert(tcntl == hang_tcntl && tcount == hang_tcount && (tmpwr | tmren | tautorld) == 7u, "hang_wind");
+static_assert(hang_cycles / 400000u == xyf::crash::stop_ms, "the dead man's timer");
 volatile uint32_t& mmr(uint32_t address) { return *reinterpret_cast<volatile uint32_t*>(address); }
 volatile uint32_t hang_armed __attribute__((section(".data"))) = 0;
 volatile uint32_t hang_saved __attribute__((section(".data"))) = 0;   // EVT6 before
-volatile uint32_t hang_seen __attribute__((section(".data"))) = 0;    // hang_beat at the last tick
-volatile uint32_t hang_count __attribute__((section(".data"))) = 0;   // ticks in a row that found it stopped
-volatile uint32_t hang_last __attribute__((section(".data"))) = 0;    // cycles_div1024 at the last tick
+volatile uint32_t hang_shown __attribute__((section(".data"))) = 0;   // draw_screen draws the stop screen
+xyf::crash::Hang hang_record __attribute__((section(".data"))) = {0, 0, 0, 0, 0, 0, {0}, {0}};
+xyf::crash::HangText hang_text __attribute__((section(".data"))) = {{0}, {0}, {0}, {0}};
 
 __asm__(".text\n"
         ".align 2\n"
@@ -139,22 +152,25 @@ void hang_disarm() {
     __asm__ volatile("CLI %0;" : "=d"(m) : : "memory");
     m &= ~ivg6;
     mmr(tcntl) = 0;
+    hang_live = 0;
     *reinterpret_cast<volatile uint32_t*>(evt6) = hang_saved;
     __asm__ volatile("CSYNC;" : : : "memory");
     hang_armed = 0;
     __asm__ volatile("STI %0;" : : "d"(m) : "memory");
 }
+// From the menu loop's start to crash_off: the stage-2 menu before it has a loop of its own.
 void hang_arm() {
-    if (hang_armed) return;
-    hang_count = 0;
-    hang_seen = hang_beat;
-    hang_last = cycles_div1024();
+    using namespace xy_forever::key_ui;
+    if (hang_armed || !where_screen) return;        // where_screen: the menu's present works
+    hang_live = hang_held = hang_shown = 0;
+    stall_log.timer = stall_armed;
+    hang_at = cycles_div1024();
     hang_saved = word(evt6);
     *reinterpret_cast<volatile uint32_t*>(evt6) = reinterpret_cast<uint32_t>(&xyf_hang_vector);
     mmr(tcntl) = tmpwr;
     mmr(tscale) = 0;
-    mmr(tperiod) = tick_cycles;
-    mmr(tcount) = tick_cycles;
+    mmr(tperiod) = hang_cycles;
+    mmr(tcount) = proof_cycles;                     // the proof: one interrupt, 1 ms from here
     __asm__ volatile("CSYNC;" : : : "memory");
     mmr(tcntl) = tmpwr | tmren | tautorld;
     hang_armed = 1;
@@ -162,36 +178,92 @@ void hang_arm() {
     __asm__ volatile("CLI %0;" : "=d"(m) : : "memory");
     __asm__ volatile("STI %0;" : : "d"(m | ivg6) : "memory");
 }
+// A readable byte for the stop screen's message (crash::copy_text): the stock image and data, L1 data.
+// (A type, not a function: its call stays direct for the call audit.)
+struct HangByte {
+    bool operator()(uint32_t a, int& c) const {
+        if (!((a >= 0x88000000u && a < 0x88b00000u) || (a >= 0x11900000u && a < 0x11910000u) ||
+              (a >= 0x11b00000u && a < 0x11b02000u)))
+            return false;
+        c = *reinterpret_cast<const volatile uint8_t*>(a);
+        return true;
+    }
+};
+bool hang_word(uint32_t a, uint32_t& v) {
+    if ((a & 3u) || a < 0x80000000u || a >= 0x90000000u) return false;    // SDRAM (B's stack)
+    v = word(a);
+    return true;
+}
 extern "C" __attribute__((used, noinline)) void xyf_hang_tick(uint32_t reti, uint32_t fp,
                                                               uint32_t rets) __asm__("xyf_hang_tick");
 extern "C" __attribute__((used, noinline)) void xyf_hang_tick(uint32_t reti, uint32_t fp, uint32_t rets) {
+    using namespace xy_forever::key_ui;
     // The sticky TINT: cleared by writing 0 (BF5xx) or 1 (W1C); whichever leaves it clear.
     mmr(tcntl) = tmpwr | tmren | tautorld;
     if (mmr(tcntl) & tint) mmr(tcntl) = tmpwr | tmren | tautorld | tint;
-    const uint32_t now = cycles_div1024();
-    if (ms_since(hang_last) < 250u) {              // a storm (TINT not cleared): stop the timer, never stall B
-        hang_last = now;
+    StallLog& l = stall_log;
+    if (!hang_live) {                               // the proof: from here a beat winds the timer back
+        if (l.timer & (stall_proven | stall_off)) {   // not expected (stopped or off): never again
+            mmr(tcntl) = 0;
+            return;
+        }
+        l.timer = l.timer | stall_proven;
+        hang_at = hang_wound = cycles_div1024();
+        hang_live = 1;                              // TCOUNT is TPERIOD again (TAUTORLD): stop_ms from here
+        return;
+    }
+    const uint32_t quiet = ms_since(hang_at);
+    if (quiet < xyf::crash::stop_ms / 2) {          // the loop moved since: this timer is not wound back. Off.
         mmr(tcntl) = 0;
+        hang_live = 0;
+        l.timer = l.timer | stall_off;
         return;
     }
-    hang_last = now;
-    if (hang_held || hang_beat != hang_seen) {
-        hang_seen = hang_beat;
-        hang_count = 0;
+    if (hang_shown) {                               // the same stop, stop_ms later: only its screen again
+        present();
         return;
     }
-    xy_forever::key_ui::StallLog& l = xy_forever::key_ui::stall_log;
-    xy_forever::key_ui::StallEntry& e = l.entry[l.count++ & (xy_forever::key_ui::stall_entries - 1)];
+    const uint32_t active = word(ipend) & 0xffffu;
+    StallEntry& e = l.entry[l.count++ & (stall_entries - 1)];
     e.ms = ms_since(result.start_cycles);
     e.pc = reti;
     e.rets = rets;
     e.fp = fp;
-    e.state = (word(ipend) & 0xffffu) | (++hang_count < 0xffffu ? hang_count : 0xffffu) << 16;
+    e.state = active | (quiet < 0xffffu ? quiet : 0xffffu) << 16;
+    xyf::crash::Hang& h = hang_record;
+    h.ipend = active;
+    h.pc = reti;
+    h.rets = rets;
+    h.fp = fp;
+    h.caller = h.caller2 = 0;
+    uint32_t above = 0, text = 0;
+    hang_word(fp + 4, h.caller);
+    if (hang_word(fp, above)) hang_word(above + 4, h.caller2);
+    h.text[0] = 0;
+    if (hang_word(fp - 4, text) && !xyf::crash::copy_text(h.text, sizeof(h.text), text, HangByte())) h.text[0] = 0;
+    xy_forever::usb_service::crumb(h.crumb, sizeof(h.crumb));
+    xyf::crash::hang_describe(h, where_word_now, hang_text);
+    hang_shown = 1;
+    for (uint32_t i = 0; i != 10; ++i) {            // a frame still going out: up to ten tries of 100 ms each
+        const uint32_t sent = result.presents;
+        present();
+        if (result.presents != sent) break;
+    }
+}
+// usb_service's long stock call (the boot writer): the timer stands still for it, then counts from the top.
+void hang_pause(bool on) {
+    hang_held = on ? 1u : 0u;
+    if (!hang_live) return;
+    if (on) {
+        mmr(tcntl) = tmpwr;
+        return;
+    }
+    hang_at = hang_wound = cycles_div1024();
+    hang_wind();
 }
 
 void crash_on() {
     where_screen = 1;                               // key_ui_where.ipp: a long wait may paint its code from here
-    hang_arm();
     if (crash_armed) return;
     crash_record.taken = 0;
     crash_saved = word(evt3);                       // the stock code reads it too (88a33b98)
@@ -244,8 +316,10 @@ __asm__(".text\n"
 extern "C" void xyf_crash_fault(uint32_t kind) __asm__("xyf_crash_fault");
 #endif
 #else
-const uint32_t crash_shown = 0;
+const uint32_t crash_shown = 0, hang_shown = 0;
 const xyf::crash::Text crash_text = {{0}, {0}, {0}, {0}};
+const xyf::crash::Hang hang_record = {0, 0, 0, 0, 0, 0, {0}, {0}};
+const xyf::crash::HangText hang_text = {{0}, {0}, {0}, {0}};
 void crash_on() {}
 void crash_off() {}
 #endif

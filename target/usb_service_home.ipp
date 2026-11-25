@@ -112,6 +112,67 @@ void home_reboot(U32 target) {
     reset_self();
 }
 
+// crumb's pieces (no lambdas: each call stays a direct call for the call audit).
+struct CrumbOut {
+    char* line;
+    U32 n, cap;
+};
+void crumb_put(CrumbOut& o, const char* s) {
+    while (*s && o.n + 1 < o.cap) o.line[o.n++] = *s++;
+    if (o.cap) o.line[o.n] = 0;
+}
+void crumb_hex(CrumbOut& o, U32 v) {
+    char d[3];
+    d[0] = "0123456789abcdef"[v >> 4 & 15u];
+    d[1] = "0123456789abcdef"[v & 15u];
+    d[2] = 0;
+    crumb_put(o, d);
+}
+void crumb_dec(CrumbOut& o, const char* before, U32 v) {
+    char d[12];
+#if defined(XYF_USB_FILE_WRITE)
+    decimal_text(d, v);
+#else
+    d[0] = v ? '+' : '0';
+    d[1] = 0;
+#endif
+    crumb_put(o, before);
+    crumb_put(o, d);
+}
+// #314 (usb_service.hpp): "t<ms> u<frames>/<replies> <type> +<ms> j<state>.<phase> <KiB>k f<requests> <op>.<outcome>
+// [L] +<ms>", decimal but the two-digit hex type and op.
+bool crumb(char* line, uint32_t bytes) {
+    CrumbOut o = {line, 0, bytes};
+    const U32 at = now();
+    crumb_dec(o, "t", at);
+    crumb_dec(o, " u", result.frames);
+    crumb_dec(o, "/", result.replies);
+    crumb_put(o, " ");
+    crumb_hex(o, result.last_type);
+    crumb_dec(o, " +", host_framed ? at - host_frame_ms : 0);
+    bool busy = false;
+#if defined(XYF_USB_FILE_WRITE)
+    JobView v;
+    job_view(v);
+    busy = job_running();
+    crumb_dec(o, " j", v.state);
+    crumb_dec(o, ".", v.phase);
+    crumb_dec(o, " ", v.done >> 10);
+    crumb_put(o, "k");
+#endif
+    uint32_t e[4];
+    if (const uint32_t sent = file_client::log_last(e)) {
+        crumb_dec(o, " f", sent);
+        crumb_put(o, " ");
+        crumb_hex(o, e[0]);
+        crumb_dec(o, ".", e[0] >> 8 & 15u);
+        if (file_client::left_out()) crumb_put(o, " L");
+#if defined(XYF_ONE_SESSION)
+        crumb_dec(o, " +", xyf_boot::clock_ms() - e[1]);
+#endif
+    }
+    return busy;
+}
 #if defined(XYF_MTP_USB)
 // #144: one home_pump pass: the menu loop since the last one counted (MTP traffic active then), its end marked.
 struct LoopMark {

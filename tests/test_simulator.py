@@ -171,7 +171,7 @@ class SimulatorTest(unittest.TestCase):
         code, body = dev.call(P.STATUS)
         decoded = host.decode_status(body)
         self.assertEqual((code, decoded['usb_service']['version'], decoded['usb_service']['identity']), (0, 6, '0x0'))
-        self.assertEqual(decoded['stalls'], dict(count=0, entries=[]))  # #314: no core timer in the simulator
+        self.assertEqual(decoded['stalls'], dict(count=0, timer='none', entries=[]))  # #314: no core timer here
         self.assertEqual(dev.read_file(BASE + 'state-a.txt'), (0, self.file(BASE + 'state-a.txt')))
         os_ldr = BASE + 'firmware/opxy-121/os.ldr'
         data = b''.join(dev.read_file(os_ldr, offset)[1] for offset in range(0, 8192, 1024))

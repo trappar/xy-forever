@@ -326,7 +326,7 @@ void status(uint8_t seq) {
     n = append_block(p, n, &knob_input::input_log, sizeof(knob_input::InputLog));   // #288: keys and knob records
     n = append_block(p, n, &key_ui::frames, sizeof(key_ui::Frames));                 // #288: the menu's frame times
     n = append_block(p, n, &knob_input::psoc_log, sizeof(knob_input::PsocLog));       // #314: the PSoC's other frames
-    n = append_block(p, n, &key_ui::stall_log, sizeof(key_ui::StallLog));             // #314: the menu loop's stalls
+    n = append_block(p, n, &key_ui::stall_log, sizeof(key_ui::StallLog));             // #314: the menu loop's stops
     send(P::t_status, seq, p, n);
 }
 

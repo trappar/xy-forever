@@ -66,6 +66,11 @@ void draw_screen(uint16_t* fb) {
         draw_message(fb, xyf::crash::message(crash_text, &still));
         return;
     }
+    if (hang_shown) {                                // #314, key_ui_crash.ipp: the stop screen, as the crash screen
+        const Chrome still = {chrome.version, false, 0, false, chrome.image};
+        draw_message(fb, xyf::crash::hang_message(hang_record, hang_text, &still));
+        return;
+    }
 #if defined(XYF_SETTINGS)
     const bool asked = xy_forever::usb_service::trust_prompt();
     trust_drawn = asked;

@@ -21,7 +21,8 @@ class CrashScreenTest(unittest.TestCase):
     def setUpClass(cls):
         binary = xyf_hosttest.program('crash_screen')  # tests/crash_screen_main.cpp, sanitized
         out = subprocess.run([str(binary)], check=True, capture_output=True, text=True).stdout
-        cls.screens = [s.strip('\n').split('\n') for s in out.split('--\n') if s.strip()]
+        screens = [s.strip('\n').split('\n') for s in out.split('--\n') if s.strip()]
+        cls.screens, cls.hangs = screens[:4], screens[4:]  # #314: the stop screens after the crash screens
         cls.lib = P.build()
         cls.fb = P.framebuffer(cls.lib)
 
@@ -42,19 +43,73 @@ class CrashScreenTest(unittest.TestCase):
         self.assertEqual(software[1], 'Cause 0x03: software exception (EXCPT)')
         self.assertEqual(unknown[1:3], ['Cause 0x3f: unknown exception', 'At 0xffffffff, called from 0xffffffff'])
 
-    def test_stall_recorder_only_records(self):
-        # #314: the core timer (IVG6) only between crash_on and crash_off; the install's stock writer holds it; a tick
-        # writes only its log entry and the timer's own registers (no screen, no reset, no link).
+    def test_stop_screen_names_the_level_the_place_and_the_message(self):
+        # #314: B's loop stopped: IPEND, the interrupted instruction and RETS, the frame and its callers, the message a
+        # stock assert left at [FP - 4] (none when there is no string), the wait, the loop's last step.
+        with_text, without = self.hangs
+        self.assertEqual(
+            with_text,
+            [
+                'Stopped',
+                "XY Forever's loop stopped for 3 s (processor B).",
+                'IPEND 0x8810, at 0x0803dfcc, RETS 0x11a01f60',
+                'Frame 0x8ab83e00, callers 0x889f5a10, 0x11a015f8',
+                'Says: bf/spi_bridge_bfm.cpp:288 _this->currentRequest!=NULL',
+                'Not waiting; last wait W1',
+                't43210 u92/91 02 +850 j1.1 118032k f1234 2a.15 L +3',
+                'image f458e3cc',
+                'If it stays: turn the OP-XY off and on again.',
+                'Please photograph this screen (#314).',
+            ],
+        )
+        self.assertEqual(without[2], 'IPEND 0x8000, at 0x8ab04500, RETS 0x8ab04000')
+        self.assertEqual(without[4:6], ['No message at the frame', 'Waiting in W1'])
+        for line in with_text + without:
+            self.assertLessEqual(len(line) * 6 - 1, P.WIDTH - 2 * 16, line)
+
+    def test_dead_mans_timer_interrupts_only_a_loop_that_stopped(self):
+        # #314: the core timer (IVG6) only from the menu loop's start to crash_off, and no tick while it moves: every
+        # pass and every bounded wait's poll winds it back, once its one proof interrupt came. An interrupt for a loop
+        # that moved turns it off; the install's stock writer stops it. It logs, draws and returns: no reset, no link.
         crash = (ROOT / 'target/key_ui_crash.ipp').read_text()
-        on, off = crash[crash.index('void crash_on() {') :], crash[crash.index('void crash_off() {') :]
-        self.assertLess(on.index('hang_arm();'), on.index('\n}\n'))
+        off = crash[crash.index('void crash_off() {') :]
         self.assertLess(off.index('hang_disarm();'), off.index('\n}\n'))
+        arm = crash[crash.index('void hang_arm() {') :]
+        arm = arm[: arm.index('\n}\n')]
+        self.assertEqual(crash.count('hang_arm();'), 0)  # armed by the menu loop only (the stage-2 menu has its own)
+        self.assertIn('if (hang_armed || !where_screen) return;', arm)
+        self.assertIn('mmr(tperiod) = hang_cycles;', arm)
+        self.assertIn('mmr(tcount) = proof_cycles;', arm)
         tick = crash[crash.index('void xyf_hang_tick(uint32_t reti, uint32_t fp, uint32_t rets) {') :]
         tick = tick[: tick.index('\n}\n')]
-        self.assertIn('if (hang_held || hang_beat != hang_seen) {', tick)
-        self.assertIn('if (ms_since(hang_last) < 250u) {', tick)  # a storm turns the timer off
-        for banned in ('present', 'reset', '0x11a03518', 'file_client', 'link', 'IDLE', 'CLI'):
+        proof = tick[tick.index('if (!hang_live) {') : tick.index('const uint32_t quiet')]
+        self.assertIn('hang_live = 1;', proof)
+        self.assertIn('return;', proof)
+        moved = tick[tick.index('if (quiet < xyf::crash::stop_ms / 2) {') : tick.index('const uint32_t active')]
+        self.assertIn('mmr(tcntl) = 0;', moved)
+        self.assertIn('stall_off', moved)
+        for banned in ('reset', '0x11a03518', 'file_client', 'link', 'IDLE', 'CLI', 'JUMP'):
             self.assertNotIn(banned, tick)
+        where = (ROOT / 'target/key_ui_where.ipp').read_text()
+        kick = where[where.index('inline void hang_kick() {') :]
+        kick = kick[: kick.index('\n}\n')]
+        self.assertIn('if (!hang_live || hang_held || now - hang_wound < hang_wind_units) return;', kick)
+        self.assertIn('hang_wind();', kick)
+        wind = where[where.index('void hang_wind() {') :]
+        wind = wind[: wind.index('\n}\n')]
+        self.assertEqual(
+            re.findall(r'\((hang_\w+)\) = (\w+);', wind),
+            [('hang_tcntl', '1u'), ('hang_tcount', 'hang_cycles'), ('hang_tcntl', '7u')],
+        )
+        wait = where[where.index('void where_wait() {') : where.index('void where_leave(')]
+        self.assertIn('hang_kick();', wait)
+        loop = (ROOT / 'target/key_ui.cpp').read_text()
+        start = loop.index('hang_arm();')
+        self.assertEqual(loop.count('hang_arm();'), 1)
+        self.assertLess(start, loop.index('for (;;) {\n#if defined(XYF_USB_SERVICE)\n                hang_kick();'))
+        self.assertLess(loop.index('hang_kick();', start), loop.index('poll();\n                ++r.polls;'))
+        self.assertLess(loop.index('poll();\n                ++r.polls;'), loop.index('    crash_off(); // the vector'))
+        self.assertIn('void hang_hold(bool on) { hang_pause(on); }', loop)
         install = unit_text(ROOT / 'target/usb_service.cpp')
         writer = install[install.index('key_ui::hang_hold(true);') : install.index('key_ui::hang_hold(false);')]
         self.assertIn('write_boot(staged, put_expected)', writer)
@@ -153,7 +208,7 @@ class CrashScreenTest(unittest.TestCase):
     def test_vector_touches_only_its_record(self):
         part = (ROOT / 'target/key_ui_crash.ipp').read_text()
         self.assertIn('const uint32_t evt3 = 0x1fc0200cu;', part)  # the crash vector: EVT3 (EVT5 untouched)
-        # #314, the stall recorder: EVT6 (the core timer's level), IPEND, the core timer; nothing else
+        # #314, the dead man's timer: EVT6 (the core timer's level), IPEND, the core timer; nothing else
         self.assertEqual(
             sorted(set(re.findall(r'0x1fc0\w+', part))),
             sorted(

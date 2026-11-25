@@ -78,5 +78,62 @@ inline ui::Message message(const Text& t, const ui::Chrome* chrome) {
                            chrome};
     return m;
 }
+// #314: B's loop stopped. While the menu loop runs, the core timer is a dead man's timer (key_ui_crash.ipp):
+// every pass of the loop and every poll of a bounded wait winds it back, so it interrupts only once nothing has
+// moved for stop_ms. Its handler records this and draws the stop screen. ipend: the levels active then (bit 15
+// alone: the loop itself; 7..14: inside an interrupt handler); pc: the instruction it interrupted (RETI); rets, fp:
+// the registers there; caller, caller2: [fp + 4] and [[fp] + 4], where that frame's function and the one above it
+// were called from; text: the string [fp - 4] points to (a stock assert keeps its message there: 11a01f4c, LINK
+// 0x14, R0 at [SP + 0x10]; it ends in the ROM's IDLE loop, 0803dfcc), "" when it is no string; crumb: the loop's
+// last step (usb_service::crumb).
+static const uint32_t stop_ms = 3000;
+static const uint32_t text_bytes = 128;            // a stock assert's message, whole (its path cut on screen)
+struct Hang {
+    uint32_t ipend, pc, rets, fp, caller, caller2;
+    char text[text_bytes], crumb[line_bytes];
+};
+struct HangText {
+    char at[line_bytes], frame[line_bytes], text[line_bytes], where[line_bytes];
+};
+// A string at address p (printable ASCII up to its NUL, at most cap - 1 bytes kept) copied into out, else false.
+// read: a byte at an address that may be read (the caller's map check).
+template<class Read> inline bool copy_text(char* out, uint32_t cap, uint32_t p, Read read) {
+    uint32_t n = 0, k = 0;
+    out[0] = 0;
+    for (; k != cap; ++k) {
+        int c = -1;
+        if (!read(p + k, c)) return false;
+        if (!c) break;
+        if (c < 32 || c > 126) return false;
+        if (n + 1 < cap) out[n++] = char(c);
+    }
+    out[n] = 0;
+    return k > 3;
+}
+inline void hang_describe(const Hang& h, uint32_t where, HangText& t) {
+    uint32_t n = put_hex(t.at, put(t.at, 0, "IPEND "), h.ipend, 4);
+    n = put_hex(t.at, put(t.at, n, ", at "), h.pc, 8);
+    put_hex(t.at, put(t.at, n, ", RETS "), h.rets, 8);
+    n = put_hex(t.frame, put(t.frame, 0, "Frame "), h.fp, 8);
+    n = put_hex(t.frame, put(t.frame, n, ", callers "), h.caller, 8);
+    put_hex(t.frame, put(t.frame, n, ", "), h.caller2, 8);
+    const char* said = h.text;                       // a stock source path: its "../../../src/" left out (room)
+    while (said[0] == '.' && said[1] == '.' && said[2] == '/') said += 3;
+    if (said[0] == 's' && said[1] == 'r' && said[2] == 'c' && said[3] == '/') said += 4;
+    put(t.text, put(t.text, 0, h.text[0] ? "Says: " : "No message at the frame"), said);
+    const uint32_t in = xyf::where::current(where), code = in ? in : xyf::where::last(where);
+    n = put(t.where, 0, in ? "Waiting in " : code ? "Not waiting; last wait " : "No wait yet");
+    if (code) xyf::where::label(t.where, n, line_bytes - n, code);
+}
+inline ui::Message hang_message(const Hang& h, const HangText& t, const ui::Chrome* chrome) {
+    const char* image = chrome && chrome->image ? chrome->image : "";
+    const ui::Message m = {"Stopped",
+                           {"XY Forever's loop stopped for 3 s (processor B).", t.at, t.frame, t.text, t.where, h.crumb,
+                            image, "If it stays: turn the OP-XY off and on again."},
+                           8,
+                           "Please photograph this screen (#314).",
+                           chrome};
+    return m;
+}
 }}
 #endif

@@ -25,7 +25,7 @@ namespace xy_forever { namespace key_ui {
 // Initialized data, not BSS: the cold link has no zero-initialization.
 Result result __attribute__((section(".data"))) = {magic};
 Frames frames __attribute__((section(".data"))) = {frames_magic, 2};
-StallLog stall_log __attribute__((section(".data"))) = {stall_magic, 1, 0, 0, {}};   // #314
+StallLog stall_log __attribute__((section(".data"))) = {stall_magic, 2, 0, 0, {}};   // #314
 }}
 
 namespace {
@@ -365,9 +365,13 @@ extern "C" void xy_forever_key_ui() {
             menu_screen = 1;                             // key_ui::host_view may redraw from here
             bool shown_lost = false;                     // the status line already shows the lost link
 #endif
+#if defined(XYF_USB_SERVICE)
+            hang_arm();                                     // #314: the dead man's timer, until crash_off
+#endif
             for (;;) {
 #if defined(XYF_USB_SERVICE)
-                hang_beat = hang_beat + 1;                  // #314: the menu loop moves (the stall recorder)
+                hang_kick();                                // #314: the menu loop moves (the dead man's timer)
+                hang_shown = 0;                             // a stop screen drawn for a loop that then went on
 #endif
 #if defined(XYF_ONE_SESSION) && defined(XYF_USB_SERVICE)
                 // #314: a frame the stock poll may stop B on goes on screen first (where_screen: the menu's present)
@@ -629,7 +633,7 @@ extern "C" void xy_forever_key_ui() {
 namespace xy_forever { namespace key_ui {
 void crash_disarm() { crash_off(); }
 #if defined(XYF_USB_SERVICE)
-void hang_hold(bool on) { hang_held = on ? 1u : 0u; }
+void hang_hold(bool on) { hang_pause(on); }
 #else
 void hang_hold(bool) {}
 #endif

@@ -67,20 +67,23 @@ extern Frames frames;
 // The exception vector the stock code left, back in place if the menu had put the crash screen's there
 // (key_ui_crash.ipp); a no-op otherwise (and on A). usb_service::reset_self calls it before B resets.
 void crash_disarm();
-// #314: the stall recorder (key_ui_crash.ipp) does not record while on: a long stock call that runs interrupts of its
+// #314: the dead man's timer (key_ui_crash.ipp) stands still while on: a long stock call that runs interrupts of its
 // own (usb_service: the stock boot writer).
 void hang_hold(bool on);
-// #314: the stall recorder's log (diag.status block STL1): each core-timer tick (0.5 s, while the menu has the
-// screen) that found B's menu loop had not moved since the tick before. pc: the interrupted instruction (RETI);
-// rets, fp: the registers there; state: IPEND (low 16 bits) | ticks in a row << 16; ms: the menu's clock. Entry i of
-// count ever logged is in slot i % stall_entries.
-static const uint32_t stall_magic = 0x314c5453u;          // "STL1"
+// #314: the stop screen's log (diag.status block STL1): each time the dead man's timer found that B's menu loop had
+// not moved for crash_screen.hpp stop_ms, while the menu loop runs. pc: the interrupted instruction (RETI);
+// rets, fp: the registers there; state: IPEND (low 16 bits) | the ms since the loop last moved << 16 (0xffff: more);
+// ms: the menu's clock. Entry i of count ever logged is in slot i % stall_entries. timer: stall_armed since the menu
+// has the screen; stall_proven once the timer's proof interrupt came (without it nothing is ever logged);
+// stall_off when it interrupted a loop that moved and was turned off.
+static const uint32_t stall_magic = 0x314c5453u;          // "STL1" (version 2)
 static const uint32_t stall_entries = 16;                 // a power of two
 struct StallEntry {
     uint32_t ms, pc, rets, fp, state;
 };
+static const uint32_t stall_armed = 1, stall_proven = 2, stall_off = 4;
 struct StallLog {
-    uint32_t magic, version, count, reserved;
+    uint32_t magic, version, count, timer;
     StallEntry entry[stall_entries];
 };
 static_assert(sizeof(StallLog) == 16 + 20 * stall_entries, "StallLog layout");

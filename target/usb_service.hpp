@@ -228,6 +228,12 @@ uint32_t home_pump();
 // #144: the menu loop's pause after a pass (us): 5 ms, shorter while MTP traffic is active. drawn(start): a redraw
 // that began at start (cycles), counted in MTP's timing while that traffic is active.
 uint32_t menu_pause_us();
+// #314: the menu loop's last step as one line, for the trail every present draws and the stop screen (key_ui):
+// t, the service's clock (ms); u, the frames received / replies sent, the last frame's type (hex) and the ms since
+// it came; j, the job's state.phase and its bytes done (KiB); f, B's file requests sent so far, the last one's op
+// (hex).outcome (15: still out), L while a request is left out for its owner, and the ms since it left. true while
+// a job runs. Reads only; no stock call.
+bool crumb(char* line, uint32_t bytes);
 // A valid request (any, hello and diag.status too) came within host_activity_ms: the screen saver counts it as activity
 // (key_ui), so it never spends the menu loop's time on frames while a host talks to the device.
 bool host_requested();

@@ -415,13 +415,15 @@ STALL_ENTRIES = 16
 
 
 def stall_log(block):
-    """The stall recorder's log (diag.status block STL1, #314): each 0.5 s core-timer tick that found B's menu loop had
-    not moved since the tick before; (count ever logged, entries oldest first) or None if not one. An entry: ms, pc
-    (the interrupted instruction), rets, fp, ipend, ticks (in a row)."""
+    """The stop screen's log (diag.status block STL1, #314): each time the dead man's timer found that B's menu loop
+    had not moved for 3 s; (count ever logged, entries oldest first, the timer's state) or None if not one. An entry:
+    ms, pc (the interrupted instruction), rets, fp, ipend, quiet_ms (since the loop last moved; 65535: more). timer:
+    'none' (never armed), 'unproven' (armed, its proof interrupt never came: it cannot log anything), 'proven', or
+    'off' (it interrupted a loop that moved and was turned off)."""
     if len(block) != 16 + 20 * STALL_ENTRIES:
         return None
-    magic, version, count, _ = struct.unpack_from('<4I', block)
-    if magic != STALL_MAGIC or version != 1:
+    magic, version, count, timer = struct.unpack_from('<4I', block)
+    if magic != STALL_MAGIC or version != 2:
         return None
     entries = []
     for i in range(max(0, count - STALL_ENTRIES), count):
@@ -434,10 +436,11 @@ def stall_log(block):
                 rets='%08x' % rets,
                 fp='%08x' % fp,
                 ipend=hex(state & 0xFFFF),
-                ticks=state >> 16,
+                quiet_ms=state >> 16,
             )
         )
-    return dict(count=count, entries=entries)
+    state = 'off' if timer & 4 else 'proven' if timer & 2 else 'unproven' if timer & 1 else 'none'
+    return dict(count=count, timer=state, entries=entries)
 
 
 FRAMES_MAGIC = 0x314D5246  # "FRM1": target/key_ui.hpp Frames

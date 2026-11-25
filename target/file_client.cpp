@@ -281,6 +281,12 @@ uint32_t log_copy(uint32_t* out) {
     }
     return held;
 }
+uint32_t log_last(uint32_t* entry) {
+    if (!request_log.count) return 0;
+    const U32* e = request_log.entry[(request_log.count - 1) & (log_entries - 1)];
+    for (U32 w = 0; w != 4; ++w) entry[w] = e[w];
+    return request_log.count;
+}
 
 uint32_t identity() {
     uint32_t bits = 0;
