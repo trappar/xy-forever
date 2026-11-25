@@ -88,7 +88,7 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(
             older,
             'the OP-XY speaks XY Forever protocol 1.21; xyf needs 1.30 or a later 1.x. Update XY Forever at '
-            'https://xy-forever.trappar.com (Manage → Device → Update)',
+            'https://xy-forever.trappar.com (Manage > Device > Update)',
         )
         self.assertIn('protocol 1; xyf needs 1.30', xyf.protocol_problem('XYF1;service=usb;role=b;proto=1'))  # pre-v1
         newer = xyf.protocol_problem(HELLO % '2.0')

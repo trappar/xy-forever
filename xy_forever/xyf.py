@@ -23,7 +23,7 @@ from xy_forever import usb_proto as P
 
 PROTOCOL = (1, 30)  # the oldest protocol xyf speaks (menu.converge, #204); every later 1.x answers it too
 SITE = 'https://xy-forever.trappar.com'
-UPDATE_FIRMWARE = 'Update XY Forever at %s (Manage → Device → Update)' % SITE
+UPDATE_FIRMWARE = 'Update XY Forever at %s (Manage > Device > Update)' % SITE  # ASCII: a Windows pipe is cp1252
 UPDATE_XYF = 'Update xyf: pip install -U xy-forever (or uvx xy-forever@latest)'
 DONE = 'verification.json'  # `sdk.py build` writes it last, once the build passed its checks
 POLL_S = 0.5  # --watch: how often it looks for a new build
@@ -371,6 +371,9 @@ def parser():
 
 
 def main(argv=None):
+    for stream in (sys.stdout, sys.stderr):  # a path the console's code page lacks: replaced, never a traceback
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(errors='replace')
     args = parser().parse_args(argv)
     return {'stock-os': stock_os, 'dev': dev, 'logs': logs}[args.command](args)
 
