@@ -224,6 +224,23 @@ class UsbServiceTest(unittest.TestCase):
         out6 = usb_service([dict(address=0, bytes=len(v6), offset=0)], v6)
         self.assertEqual(out6['replies_lost'], dict(outages=2, out_since_ms=41232, longest_ms=1500))
 
+    def test_stall_log_decodes_the_newest_entries(self):
+        # #314: the stall recorder's block (target/key_ui.hpp StallLog): 16 slots, entry i in slot i % 16.
+        from xy_forever.census import stall_log
+
+        words = [0x314C5453, 1, 18, 0] + [0] * 80
+        for i in (16, 17):  # slots 0 and 1 hold entries 16 and 17
+            at = 4 + 5 * (i % 16)
+            words[at : at + 5] = [1000 + i, 0x8AB03570, 0x8AB04000, 0x8BFFEF00, 0x8000 | (i - 15) << 16]
+        out = stall_log(struct.pack('<84I', *words))
+        self.assertEqual(out['count'], 18)
+        self.assertEqual(len(out['entries']), 16)
+        self.assertEqual(
+            out['entries'][-1],
+            dict(n=17, ms=1017, pc='8ab03570', rets='8ab04000', fp='8bffef00', ipend='0x8000', ticks=2),
+        )
+        self.assertIsNone(stall_log(b'\0' * 336))
+
     def test_spans_match_bootloader_and_cover_calls(self):
         boot = STOCK_121 / 'bootloader.ldr'
         if not boot.exists():

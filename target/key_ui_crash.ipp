@@ -80,8 +80,118 @@ __attribute__((used, noinline)) void crash_show() {
         if (result.presents != sent) return;
     }
 }
+// ---- #314: the stall recorder --------------------------------------------------------------------------------
+// B has stopped as a whole during long reads with a host polling: the screen kept its last frame, no input, no crash
+// screen, USB gone. A core-timer tick at IVG6 every 0.5 s made it go away (0 of 2 runs froze; the same tree without
+// the tick froze), so B's core got stuck at main level in a way only that core-internal interrupt ended. The tick
+// is kept while the menu has the screen, and records each time it finds the menu loop has not moved since the
+// tick before (hang_beat: each pass and each bounded wait's poll): the interrupted instruction (RETI), RETS, FP,
+// IPEND, how many ticks in a row. B keeps running, so STATUS reports them (StallLog, diag.status block STL1).
+// The core timer is unused by the stock code (no 0x1fc03000 in the 1.2.1 listing); nothing else changes: no
+// reset, no storage, no screen. hang_hold (usb_service: the stock boot writer, a long stock call) keeps it quiet.
+const uint32_t evt6 = 0x1fc02018u, ipend = 0x1fc02108u;
+const uint32_t tcntl = 0x1fc03000u, tperiod = 0x1fc03004u, tscale = 0x1fc03008u, tcount = 0x1fc0300cu;
+const uint32_t tmpwr = 1, tmren = 2, tautorld = 4, tint = 8, tick_cycles = 200000000u;   // 0.5 s at 400 MHz
+const uint32_t ivg6 = 0x40u;
+volatile uint32_t& mmr(uint32_t address) { return *reinterpret_cast<volatile uint32_t*>(address); }
+volatile uint32_t hang_armed __attribute__((section(".data"))) = 0;
+volatile uint32_t hang_saved __attribute__((section(".data"))) = 0;   // EVT6 before
+volatile uint32_t hang_seen __attribute__((section(".data"))) = 0;    // hang_beat at the last tick
+volatile uint32_t hang_count __attribute__((section(".data"))) = 0;   // ticks in a row that found it stopped
+volatile uint32_t hang_last __attribute__((section(".data"))) = 0;    // cycles_div1024 at the last tick
+
+__asm__(".text\n"
+        ".align 2\n"
+        ".global xyf_hang_vector\n"
+        ".type xyf_hang_vector, STT_FUNC\n"
+        "xyf_hang_vector:\n"
+        "    [--SP] = ASTAT;\n"
+        "    [--SP] = RETS;\n"
+        "    [--SP] = (R7:0, P5:0);\n"
+        "    [--SP] = I0; [--SP] = I1; [--SP] = I2; [--SP] = I3;\n"
+        "    [--SP] = M0; [--SP] = M1; [--SP] = M2; [--SP] = M3;\n"
+        "    [--SP] = B0; [--SP] = B1; [--SP] = B2; [--SP] = B3;\n"
+        "    [--SP] = L0; [--SP] = L1; [--SP] = L2; [--SP] = L3;\n"
+        "    [--SP] = A0.X; [--SP] = A0.W; [--SP] = A1.X; [--SP] = A1.W;\n"
+        "    [--SP] = LC0; [--SP] = LT0; [--SP] = LB0; [--SP] = LC1; [--SP] = LT1; [--SP] = LB1;\n"
+        "    L0 = 0; L1 = 0; L2 = 0; L3 = 0;\n"
+        "    R0 = RETI;\n"
+        "    R1 = FP;\n"
+        "    R2 = RETS;\n"
+        "    SP += -12;\n"
+        "    CALL xyf_hang_tick;\n"
+        "    SP += 12;\n"
+        "    LB1 = [SP++]; LT1 = [SP++]; LC1 = [SP++]; LB0 = [SP++]; LT0 = [SP++]; LC0 = [SP++];\n"
+        "    A1.W = [SP++]; A1.X = [SP++]; A0.W = [SP++]; A0.X = [SP++];\n"
+        "    L3 = [SP++]; L2 = [SP++]; L1 = [SP++]; L0 = [SP++];\n"
+        "    B3 = [SP++]; B2 = [SP++]; B1 = [SP++]; B0 = [SP++];\n"
+        "    M3 = [SP++]; M2 = [SP++]; M1 = [SP++]; M0 = [SP++];\n"
+        "    I3 = [SP++]; I2 = [SP++]; I1 = [SP++]; I0 = [SP++];\n"
+        "    (R7:0, P5:0) = [SP++];\n"
+        "    RETS = [SP++];\n"
+        "    ASTAT = [SP++];\n"
+        "    RTI;\n"
+        ".size xyf_hang_vector, .-xyf_hang_vector\n");
+extern "C" void xyf_hang_vector() __asm__("xyf_hang_vector");
+void hang_disarm() {
+    if (!hang_armed) return;
+    uint32_t m;
+    __asm__ volatile("CLI %0;" : "=d"(m) : : "memory");
+    m &= ~ivg6;
+    mmr(tcntl) = 0;
+    *reinterpret_cast<volatile uint32_t*>(evt6) = hang_saved;
+    __asm__ volatile("CSYNC;" : : : "memory");
+    hang_armed = 0;
+    __asm__ volatile("STI %0;" : : "d"(m) : "memory");
+}
+void hang_arm() {
+    if (hang_armed) return;
+    hang_count = 0;
+    hang_seen = hang_beat;
+    hang_last = cycles_div1024();
+    hang_saved = word(evt6);
+    *reinterpret_cast<volatile uint32_t*>(evt6) = reinterpret_cast<uint32_t>(&xyf_hang_vector);
+    mmr(tcntl) = tmpwr;
+    mmr(tscale) = 0;
+    mmr(tperiod) = tick_cycles;
+    mmr(tcount) = tick_cycles;
+    __asm__ volatile("CSYNC;" : : : "memory");
+    mmr(tcntl) = tmpwr | tmren | tautorld;
+    hang_armed = 1;
+    uint32_t m;
+    __asm__ volatile("CLI %0;" : "=d"(m) : : "memory");
+    __asm__ volatile("STI %0;" : : "d"(m | ivg6) : "memory");
+}
+extern "C" __attribute__((used, noinline)) void xyf_hang_tick(uint32_t reti, uint32_t fp,
+                                                              uint32_t rets) __asm__("xyf_hang_tick");
+extern "C" __attribute__((used, noinline)) void xyf_hang_tick(uint32_t reti, uint32_t fp, uint32_t rets) {
+    // The sticky TINT: cleared by writing 0 (BF5xx) or 1 (W1C); whichever leaves it clear.
+    mmr(tcntl) = tmpwr | tmren | tautorld;
+    if (mmr(tcntl) & tint) mmr(tcntl) = tmpwr | tmren | tautorld | tint;
+    const uint32_t now = cycles_div1024();
+    if (ms_since(hang_last) < 250u) {              // a storm (TINT not cleared): stop the timer, never stall B
+        hang_last = now;
+        mmr(tcntl) = 0;
+        return;
+    }
+    hang_last = now;
+    if (hang_held || hang_beat != hang_seen) {
+        hang_seen = hang_beat;
+        hang_count = 0;
+        return;
+    }
+    xy_forever::key_ui::StallLog& l = xy_forever::key_ui::stall_log;
+    xy_forever::key_ui::StallEntry& e = l.entry[l.count++ & (xy_forever::key_ui::stall_entries - 1)];
+    e.ms = ms_since(result.start_cycles);
+    e.pc = reti;
+    e.rets = rets;
+    e.fp = fp;
+    e.state = (word(ipend) & 0xffffu) | (++hang_count < 0xffffu ? hang_count : 0xffffu) << 16;
+}
+
 void crash_on() {
     where_screen = 1;                               // key_ui_where.ipp: a long wait may paint its code from here
+    hang_arm();
     if (crash_armed) return;
     crash_record.taken = 0;
     crash_saved = word(evt3);                       // the stock code reads it too (88a33b98)
@@ -91,6 +201,7 @@ void crash_on() {
 }
 void crash_off() {
     where_screen = 0;
+    hang_disarm();
     if (!crash_armed) return;
     *reinterpret_cast<volatile uint32_t*>(evt3) = crash_saved;
     __asm__ volatile("CSYNC;" : : : "memory");

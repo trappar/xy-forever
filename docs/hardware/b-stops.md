@@ -16,10 +16,9 @@ non-knob frames and the power handler's stored status (diag.status block PSC1, `
 
 B has also stopped as a whole during the on-device content read with a host polling STATUS (#314): the screen
 frozen on its last frame, no input, no crash screen, the OP-XY gone from the bus. A core-timer tick every 0.5 s
-(IVG6, tried as a hang detector) made it go away, and the same build without the tick froze again: so the core
-was likely stuck in a way only an interrupt that does not come through the system bus could end. That fits the ADSP-BF70x
-silicon anomaly 19000058, "System MMR Reads Can Cause Core Hang", whose workaround (NOPs on both sides of each
-system MMR read, the load 8-byte aligned) the stock code carries and our GCC-built code did not. B's menu loop
-reads the display DMA's status, a system MMR, at every frame; that read now carries the workaround
-([code rules](../architecture/code-rules.md)). Confirmed only once a build with it, and without the tick, reads
-through repeatedly with a host polling.
+(IVG6) made it go away, and the same build without the tick froze again: the core was likely stuck at main level
+in a way only that core-internal interrupt ended (the stock dispatchers do not nest, so the tick never interrupts
+a handler). The menu loop's display DMA status read now carries the anomaly 19000058 workaround, as the stock
+code's read of the same register does ([code rules](../architecture/code-rules.md)), but B still froze with it.
+So the tick stays, as a stall recorder: each tick that finds the menu loop has not moved since the tick before
+logs the interrupted instruction, RETS, FP and IPEND (STATUS block STL1, `stalls`), and B keeps running.

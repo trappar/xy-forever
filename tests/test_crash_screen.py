@@ -42,6 +42,23 @@ class CrashScreenTest(unittest.TestCase):
         self.assertEqual(software[1], 'Cause 0x03: software exception (EXCPT)')
         self.assertEqual(unknown[1:3], ['Cause 0x3f: unknown exception', 'At 0xffffffff, called from 0xffffffff'])
 
+    def test_stall_recorder_only_records(self):
+        # #314: the core timer (IVG6) only between crash_on and crash_off; the install's stock writer holds it; a tick
+        # writes only its log entry and the timer's own registers (no screen, no reset, no link).
+        crash = (ROOT / 'target/key_ui_crash.ipp').read_text()
+        on, off = crash[crash.index('void crash_on() {') :], crash[crash.index('void crash_off() {') :]
+        self.assertLess(on.index('hang_arm();'), on.index('\n}\n'))
+        self.assertLess(off.index('hang_disarm();'), off.index('\n}\n'))
+        tick = crash[crash.index('void xyf_hang_tick(uint32_t reti, uint32_t fp, uint32_t rets) {') :]
+        tick = tick[: tick.index('\n}\n')]
+        self.assertIn('if (hang_held || hang_beat != hang_seen) {', tick)
+        self.assertIn('if (ms_since(hang_last) < 250u) {', tick)  # a storm turns the timer off
+        for banned in ('present', 'reset', '0x11a03518', 'file_client', 'link', 'IDLE', 'CLI'):
+            self.assertNotIn(banned, tick)
+        install = unit_text(ROOT / 'target/usb_service.cpp')
+        writer = install[install.index('key_ui::hang_hold(true);') : install.index('key_ui::hang_hold(false);')]
+        self.assertIn('write_boot(staged, put_expected)', writer)
+
     def test_where_line_names_the_wait(self):
         # #114: the wait B was in at the fault, else the last one it left, else none.
         self.assertEqual(
@@ -135,8 +152,24 @@ class CrashScreenTest(unittest.TestCase):
 
     def test_vector_touches_only_its_record(self):
         part = (ROOT / 'target/key_ui_crash.ipp').read_text()
-        self.assertIn('const uint32_t evt3 = 0x1fc0200cu;', part)  # EVT3 only: EVT5, IMASK untouched
-        self.assertEqual(re.findall(r'0x1fc0\w+', part), ['0x1fc0200cu', '0x1fc02000'])
+        self.assertIn('const uint32_t evt3 = 0x1fc0200cu;', part)  # the crash vector: EVT3 (EVT5 untouched)
+        # #314, the stall recorder: EVT6 (the core timer's level), IPEND, the core timer; nothing else
+        self.assertEqual(
+            sorted(set(re.findall(r'0x1fc0\w+', part))),
+            sorted(
+                [
+                    '0x1fc0200cu',
+                    '0x1fc02000',
+                    '0x1fc02018u',
+                    '0x1fc02108u',
+                    '0x1fc03000u',
+                    '0x1fc03004u',
+                    '0x1fc03008u',
+                    '0x1fc0300cu',
+                    '0x1fc03000',
+                ]
+            ),
+        )
         vector = part[part.index('"xyf_crash_vector:\\n"') : part.index('".size xyf_crash_vector')]
         stores = re.findall(r'"\s*(\[[^\]]*\]) = ', vector)
         self.assertEqual(stores, ['[P0 + 4]', '[P0 + 8]', '[P0 + 12]', '[P0]'])

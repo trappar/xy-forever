@@ -67,6 +67,24 @@ extern Frames frames;
 // The exception vector the stock code left, back in place if the menu had put the crash screen's there
 // (key_ui_crash.ipp); a no-op otherwise (and on A). usb_service::reset_self calls it before B resets.
 void crash_disarm();
+// #314: the stall recorder (key_ui_crash.ipp) does not record while on: a long stock call that runs interrupts of its
+// own (usb_service: the stock boot writer).
+void hang_hold(bool on);
+// #314: the stall recorder's log (diag.status block STL1): each core-timer tick (0.5 s, while the menu has the
+// screen) that found B's menu loop had not moved since the tick before. pc: the interrupted instruction (RETI);
+// rets, fp: the registers there; state: IPEND (low 16 bits) | ticks in a row << 16; ms: the menu's clock. Entry i of
+// count ever logged is in slot i % stall_entries.
+static const uint32_t stall_magic = 0x314c5453u;          // "STL1"
+static const uint32_t stall_entries = 16;                 // a power of two
+struct StallEntry {
+    uint32_t ms, pc, rets, fp, state;
+};
+struct StallLog {
+    uint32_t magic, version, count, reserved;
+    StallEntry entry[stall_entries];
+};
+static_assert(sizeof(StallLog) == 16 + 20 * stall_entries, "StallLog layout");
+extern StallLog stall_log;
 // #114: B's where codes (where.hpp). A blocking wait on B holds a Where for its whole length (any return
 // clears it) and calls wait() in its loop: past where::paint_ms while the menu has the screen, that paints the
 // code in the top-right corner once (the menu's present, never from an interrupt); the end of a painted wait

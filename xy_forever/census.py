@@ -410,6 +410,36 @@ def psoc_frames(block):
     )
 
 
+STALL_MAGIC = 0x314C5453  # "STL1": target/key_ui.hpp StallLog (#314)
+STALL_ENTRIES = 16
+
+
+def stall_log(block):
+    """The stall recorder's log (diag.status block STL1, #314): each 0.5 s core-timer tick that found B's menu loop had
+    not moved since the tick before; (count ever logged, entries oldest first) or None if not one. An entry: ms, pc
+    (the interrupted instruction), rets, fp, ipend, ticks (in a row)."""
+    if len(block) != 16 + 20 * STALL_ENTRIES:
+        return None
+    magic, version, count, _ = struct.unpack_from('<4I', block)
+    if magic != STALL_MAGIC or version != 1:
+        return None
+    entries = []
+    for i in range(max(0, count - STALL_ENTRIES), count):
+        ms, pc, rets, fp, state = struct.unpack_from('<5I', block, 16 + 20 * (i % STALL_ENTRIES))
+        entries.append(
+            dict(
+                n=i,
+                ms=ms,
+                pc='%08x' % pc,
+                rets='%08x' % rets,
+                fp='%08x' % fp,
+                ipend=hex(state & 0xFFFF),
+                ticks=state >> 16,
+            )
+        )
+    return dict(count=count, entries=entries)
+
+
 FRAMES_MAGIC = 0x314D5246  # "FRM1": target/key_ui.hpp Frames
 FRAMES_VERSION = 2  # 1 (build 242505c6 only) guessed at the DMA; 2 times the stock transfer itself
 FRAMES_FIELDS = (
