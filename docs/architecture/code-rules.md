@@ -20,6 +20,9 @@ Part of [XY Forever architecture](../ARCHITECTURE.md).
 - Every loop is bounded, and every failure falls back to a bootable state.
 - No data loads from L1 instruction memory. No implicit BSS; no memcpy, memset or
   division helpers (`test_xyf_freestanding`).
+- System MMR reads (0x2000_0000 up) in our own code need the ADSP-BF70x anomaly 19000058 workaround: NOPs on
+  both sides, the load 8-byte aligned (`key_ui.cpp` `smmr_read32`). Our GCC does not apply it; Analog Devices'
+  toolchain, which built the stock code, does (#314).
 - The real bootloader is never written. The 1.2.5 bootloader is never installed.
 
 The role-A dispatcher snapshots the pending request pointer once per poll. All

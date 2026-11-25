@@ -119,10 +119,11 @@ void flush_framebuffer(uint32_t fb, uint32_t from = 0, uint32_t to = framebuffer
     __asm__ volatile("SSYNC;" : : : "memory");
 }
 
-// Bounded: the stock 889eed4c spins until the DMA is idle, so check first.
+// Bounded: the stock 889eed4c spins until the DMA is idle, so check first. The DMA status is a system MMR: read
+// with the anomaly 19000058 workaround (key_ui.cpp smmr_read32, #314).
 bool dma_idle(uint32_t limit_ms) {
     const uint32_t start = cycles_div1024();
-    while (word(display_dma_stat) & dma_running)
+    while (smmr_read32(display_dma_stat) & dma_running)
         if (ms_since(start) > limit_ms) return false;
     return true;
 }
