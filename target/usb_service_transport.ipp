@@ -218,9 +218,26 @@ void beacon(U32 step, U32 value) {
     log_line(text);
 }
 
+// #314: a reply that cannot be written within its bound starts an outage (Result reply_out_ms, the menu's activity
+// line); the next reply that gets out ends it.
+void reply_outcome(bool out, U32 started) {
+    Result& r = result;
+    if (!out) {
+        if (!r.reply_out_ms) {
+            r.reply_out_ms = started | 1u;
+            ++r.reply_outages;
+        }
+        return;
+    }
+    if (!r.reply_out_ms) return;
+    const U32 lasted = now() - r.reply_out_ms;
+    if (lasted > r.reply_outage_max_ms) r.reply_outage_max_ms = lasted;
+    r.reply_out_ms = 0;
+}
 bool send(uint8_t type, uint8_t seq, const uint8_t* payload, U32 length) {
     const U32 n = P::encode(uint8_t(type | P::t_reply), seq, payload, length, tx, P::max_frame);
     if (!n) return false;
+    const U32 began = now();
     for (U32 at = 0; at < n;) {
 #if defined(XYF_MTP_USB)
         const U32 most = write_chunk();
@@ -236,12 +253,14 @@ bool send(uint8_t type, uint8_t seq, const uint8_t* payload, U32 length) {
             where.wait();
             if (now() - start > 500u) {
                 ++result.write_errors;
+                reply_outcome(false, began);
                 return false;
             }
         }
         at += U32(wrote) ? U32(wrote) : chunk;
     }
     ++result.replies;
+    reply_outcome(true, began);
     return true;
 }
 bool status_only(uint8_t type, uint8_t seq, U32 status) {

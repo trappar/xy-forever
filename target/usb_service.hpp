@@ -126,7 +126,12 @@ struct Result {
     // image_state: ImageState (0 not started: no menu this boot); image_ms: menu start to known (ms);
     // image_kcycles: the hashing's own time, CYCLES / 1024.
     uint32_t release, image, image_state, image_ms, image_kcycles;
-    uint32_t diag[59]; // unused since Test 041 (diag_count 0)
+    // Version 6 (#314), the next unused diag words: replies that could not be written into the CDC (send's bound
+    // passed; each one also counts in write_errors). reply_outages: outages this boot (a failed reply after one that
+    // got out); reply_out_ms: now() | 1 when the current one began (0: replies get out; the reply that ends an outage was
+    // composed while it ran, so it still shows it); reply_outage_max_ms: the longest that ended.
+    uint32_t reply_outages, reply_out_ms, reply_outage_max_ms;
+    uint32_t diag[56]; // unused since Test 041 (diag_count 0)
     // Version 3 (Test 034 INSTALL gave no reply): install log forwarding.
     uint32_t log_lines, log_sent, log_skipped, log_level_before;
     uint32_t log_sink_before, install_step, install_step_ms, session_cap;
@@ -234,7 +239,9 @@ bool home_usb();
 // host_seen_ms (the USB mark: steady under scripts/keepalive.sh, one status call about every 2.5 s, and out
 // within 5 s of the host's last frame). host_activity: while a job started over USB runs ("USB: building
 // Open-XY", "USB: changing content"), or within host_activity_ms of a request that changes something
-// ("USB: receiving a file", "USB: writing files", "USB: installing XY Forever", ...), that line; else null.
+// ("USB: receiving a file", "USB: writing files", "USB: installing XY Forever", ...), that line; else null. First of
+// all (#314), while replies cannot be written (Result reply_out_ms): "USB: replies are not getting out. Reconnect
+// the cable.", so a USB link that stopped answering while the menu runs is never silent.
 // version_label: "v" and the release version HELLO reports (XYF_VERSION), the home page's corner.
 // image_label: "image " and the image HELLO reports (8 hex digits; "..." until known; "unknown"); another
 // pointer once the hash settles (image_step, about 0.5 s after the menu starts), so a drawn Info page can tell.

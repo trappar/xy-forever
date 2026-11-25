@@ -49,6 +49,7 @@ uint32_t host_marks() {
 #endif
 }
 const char* host_activity() {
+    if (result.reply_out_ms) return "USB: replies are not getting out. Reconnect the cable."; // #314: never silent
 #if defined(XYF_MTP_USB)
     // #144: "transfer" also between a batch's operations (mtp_traffic): not two redraws per small file.
     if (mtp_seen()) return mtp_busy() || mtp_traffic() ? "MTP: transfer" : "MTP: active";   // redraws the MTP mark
@@ -68,7 +69,7 @@ const char* image_label() {
 // while home) makes this boot go home; at most max_crash_restarts such resets in a row.
 bool home_begin() {
     Result& r = result;
-    r.version = 5;
+    r.version = 6;
     r.role = 1;
     r.start_cycles = cycles_div1024();
     start_ms = xyf::clock::ms();

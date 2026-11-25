@@ -99,6 +99,7 @@ std::string command(const std::string& line, bool& quit, int client) {
                       {"drop_request", &shared->drop_request},
                       {"drop_body", &shared->drop_body},
                       {"cable_pull", &shared->cable_pull},
+                      {"stall_replies", &shared->stall_replies},
                       {"cut_after", &shared->cut_after},
                       {"fail_write", &shared->fail_write},
                       {"vanish_marker", &shared->vanish_marker},

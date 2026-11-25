@@ -21,7 +21,8 @@ ends #65's trust moves); `reset a|b`; `set a_boot_ms|b_boot_ms|a_redeliver|boot_
 `set NAME N` with:
 
 - **Link:** `a_silent` (status `a_silenced`: B's class requests kept from A or A's answers to them dropped),
-  `a_slow_ms`, `drop_request`, `drop_body`, `cable_pull` (bytes).
+  `a_slow_ms`, `drop_request`, `drop_body`, `cable_pull` (bytes), `stall_replies` (while set, no reply leaves B, as
+  an IN urb that never completes: #314).
 - **Storage** (storage operations, then a power cut and a PLAY power-on): `space`, `fail_write` (the Nth write,
   boot partition too), `fail_mount`, `vanish_marker`, `cut_after`, `fail_select` (switches, then fails),
   `fail_unmount` (while set), `fail_open` (A's), `full_path` (240 B, no NUL).

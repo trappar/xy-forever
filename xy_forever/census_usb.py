@@ -75,6 +75,8 @@ def usb_diag(words):
 # Version 5 (#107): the build identity in the first unused diag words, after the stage-2 record.
 USB_IDENTITY_FIELDS = 'release image state ms kcycles'.split()
 USB_IMAGE_STATES = 'none hashing known unknown'.split()
+# Version 6 (#314): replies that could not be written into the CDC, in the diag words after the identity.
+USB_REPLY_FIELDS = 'outages out_since_ms longest_ms'.split()
 
 
 def usb_identity(words):
@@ -88,7 +90,7 @@ def usb_identity(words):
 
 
 def usb_service(regions, dump):
-    """XY Forever USB service result block (version 1: 44 words, 2: 120, 3: 128, 4 and 5: 132), or None."""
+    """XY Forever USB service result block (version 1: 44 words, 2: 120, 3: 128, 4 to 6: 132), or None."""
     _peer_name, state_write_summary = _names()
     for r in regions:
         block = dump[r['offset'] : r['offset'] + r['bytes']]
@@ -119,6 +121,10 @@ def usb_service(regions, dump):
                 out['stage2'] = record
                 if out['version'] >= 5:
                     out['build'] = usb_identity(struct.unpack_from('<5I', block, at + 32))
+                if out['version'] >= 6:  # out_since_ms: the current outage's start (0: replies get out)
+                    reply = dict(zip(USB_REPLY_FIELDS, struct.unpack_from('<3I', block, at + 52)))
+                    reply['out_since_ms'] &= ~1
+                    out['replies_lost'] = reply
         if r['bytes'] >= 4 * USB_SERVICE_V3_WORDS:
             out.update(
                 zip(

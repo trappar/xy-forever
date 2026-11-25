@@ -135,6 +135,7 @@ int cdc_read(uint8_t* out, uint32_t n) {
 }
 int cdc_write(const uint8_t* data, uint32_t n) {
     if (client < 0) return int(n);                     // nobody attached: the bytes are lost
+    if (shared->stall_replies) return -1;              // #314: as a serial IN urb that never completes
     uint32_t allowed = n;
     const int32_t pull = shared->cable_pull;
     if (pull > 0 && uint32_t(pull) < allowed) allowed = uint32_t(pull);
