@@ -1,94 +1,56 @@
 # Writing mods for XY Forever
 
-For people who write open-xy mods (machines and extensions) and want to try them on
-an OP-XY that runs XY Forever. See the [serial protocol reference](PROTOCOL.md) and
-the [user guide](GUIDE.md) for the Mods page.
+For people who write Open-XY mods (machines and extensions) and want to try them on an OP-XY running XY Forever,
+with no XY Forever checkout: Open-XY builds the mod, and `xyf` (the `xy-forever` package on PyPI) puts it on the
+OP-XY, builds it there alone and boots it once. An agent can run every step but the power cycle. What each output
+line means and what to do on each failure: the package's page, [pypi/README.md](../pypi/README.md).
 
-## How it works
+## What you need
 
-Your computer never builds firmware for the device. It turns an open-xy kit into
-packages, one per machine or extension, and copies them to the OP-XY. The OP-XY
-links the chosen packages into the stock 1.2.1 firmware itself, installs the matching
-content, and boots the result.
+- An OP-XY running XY Forever, protocol 1.30 or later (update it in the web app: Manage → Device → Update).
+- macOS or Linux, Python 3.11 or later, Node 22.12 or later, and what Open-XY's
+  [build guide](https://github.com/etcetc000/open-xy/blob/staging/docs/build.md) asks for: its toolchain, and Clang
+  with wasm32 for the kit's previews.
+- A copy of the stock 1.2.1 `os.ldr` (the build guide, step 2).
 
-## 1. Make packages from a kit
-
-`xy_forever/modkit.py` reads a published open-xy kit (format `opxy-browser-kit/1`)
-and writes one package set:
-
-```sh
-uv run -m xy_forever.modkit split KIT.json --sdk OPEN_XY --out DIR \
-    [--sdk-commit C] [--sdk-source URL@COMMIT] [--extension-catalog extensions.json]
-```
-
-- `--sdk` is an open-xy tree at the kit's SDK commit. `split` runs open-xy's own
-  `builder/core.mjs` under Node to finish the content (display art, presets). It never
-  changes that tree. With `--sdk-commit`, it takes that commit from the checkout.
-- Objects are copied unchanged. No device and no network are used.
-- How to get a kit file from open-xy is not covered here (not verified).
-
-Other subcommands are for checking the device's assembly against open-xy:
-`rebuild` (packages back into a kit), `prove` and `prove-patch` (byte-for-byte
-comparisons with `core.mjs`), and `known-base` (the list of stock bases the device
-recognises). Run `uv run -m xy_forever.modkit --help` for their options.
-
-## What a package set looks like
-
-`split` writes `DIR/mods/<profile>/<generation>/`:
-
-```
-<generation>/                 for example 0.0.6-<12 hex>
-  base/                       the mod base: SDK objects, edits, tables, the memory limit
-  <machine id>/               one folder per machine
-  ext-<extension id>/         one folder per extension
-```
-
-- `<profile>` is the OS the set targets, today `opxy-1.2.1`.
-- `<generation>` is the kit version plus 12 hex digits of a hash over the whole set.
-  Packages from different generations never mix.
-- A new package holds `manifest.json` and `files.sha256`. The device checks
-  listed file hashes and also accepts legacy `info.txt` metadata.
-- A machine package holds its objects, `objects.txt`, `catalog.txt`, and its content
-  (`content/display/…`, `content/presets/<id>/…`).
-
-The full format is in [storage/mods.md](storage/mods.md), section "Mod packages".
-
-## 2. Send them to the device
+## Once
 
 ```sh
-uv run xyf-host mods push DIR/mods/opxy-1.2.1/<generation> [--only ID ...] [--verify]
+git clone https://github.com/etcetc000/open-xy && cd open-xy
+python sdk.py toolchain fetch                     # on Linux: built with Docker (the build guide)
+python sdk.py new --repository --id mymachine --name "My Machine" --out ../mymachine
+pip install xy-forever                            # the same environment; or no install: uvx xy-forever
 ```
 
-The set goes to `/yaffs2/xy-forever/mods/<generation>/`, stored flat (protocol 1.16 or later;
-[the store](storage/mods-store.md)). `mods list` names an older layout, too deep for the dev menu's MTP:
-`mods remove <folder> --yes`, then push again. The base is always sent. A file in a folder is stored under
-its SHA-256. A changed package is built and SHA-256 verified in `tmp/`, then renamed into its place;
-its old folder is detached first. A package with the same files and `files.sha256` is skipped.
-If a push stops part-way, run it again: an unpublished scratch
-folder is swept, and no half-sent package becomes visible. See [package transactions](storage/package-transactions.md).
+## Each edit
 
-`mods list` shows what is on the device; `mods remove GENERATION --yes` deletes a
-set (without `--yes` it is a dry run).
+From the Open-XY checkout:
 
-## 3. Build and boot today
+```sh
+python sdk.py kit --personal --machine ../mymachine --stock-os STOCK/os.ldr --out ../builds/mine-001
+xyf dev ../builds/mine-001
+```
 
-The library needs the stock 1.2.1 firmware as an entry, with its `content.sha256`.
-Without it booting from the first row stops with "Failed: no stock OP-XY firmware in the library."
-The first start adds it; the first build writes its content set from the live content.
-`uv run xyf-host library-add ... --content DIR` adds both (DIR: the official package's
-`firmware/blackfin/content`).
+Each kit needs a new `--out` folder (or `--overwrite`). `xyf dev` splits the kit with Open-XY's own
+`builder/core.mjs` under Node, then prints one line per step, each with its time:
 
-**On the device (the normal way):** power on holding PLAY, open Mods, turn your
-machines on (saved at once), STOP, then PLAY on the first row. The OP-XY builds,
-installs content, sets the default and boots it.
+- `Power the OP-XY off, then on holding PLAY (let go at the logo)`: only when the OP-XY is off or in its OS; then
+  `[wait]` once its XY Forever menu answers.
+- `[push]`: the mod and its base, as a development set of their own; only changed files are sent.
+- `[build]`: the OP-XY builds the mod alone, on your saved base and Mod memory.
+- `[boot]`: its content installed, the OS starts with it, once.
+- `total`. Exit code 0 only when the mod booted; a refusal says why in plain words (exit 2).
 
-**From the computer:** `uv run xyf-host mods set MACHINE ... [--ext ID ...]` saves the same
-selection (checked, or refused with the reason; none: all off); it is built at the next start.
+Nothing saved changes: the next plain power-on goes back to your own mods. `xyf dev --watch ../builds` repeats this
+for each new kit in that folder (or the folder itself, rebuilt), until Ctrl-C. A kit with several machines needs
+`--only ID`; from outside the checkout, add `--sdk OPEN_XY`.
 
-## 4. Try a mod you are writing
+When the mod misbehaves or crashes the OS: power on holding PLAY, then `xyf logs`. It copies the OS's crash logs
+(`/yaffs2/logs`) and XY Forever's reports of the last boot that are new since its last run into `./xyf-logs`, and
+prints the text ones.
 
-`uv run xyf-host mods dev DIR/mods/opxy-1.2.1/<generation>/<mod>` builds that mod alone on the OP-XY and boots it
-once; nothing saved changes. [How it works](mods-dev/try.md).
+`xyf` checks the protocol the OP-XY reports when it connects. An XY Forever too old for it stops it with one line
+naming both protocols and where to update; one newer than it speaks asks for `pip install -U xy-forever`.
 
 ## Limits
 
@@ -98,13 +60,20 @@ once; nothing saved changes. [How it works](mods-dev/try.md).
 - **At most 64 machines and 8 extensions in one build.** At least one machine.
 - **At most 96 packages** in a set are read by the Mods page.
 - **The base must be a stock image XY Forever knows.** An unknown base is refused
-  unless the user allows it once (SHIFT + PLAY on the Mods page's first row) or you
-  pass `--unverified` to `mods apply`.
+  unless the user allows it once (SHIFT + PLAY on the Mods page's first row), or
+  with `xyf dev --unverified`.
 - A mod may not replace official content files.
 
 ## Not yet
 
+- Windows: `xyf` needs macOS or Linux (its USB serial connection).
 - No measuring build: the memory figure is an estimate, not the size after linking.
-- No CPU or stability checks of a mod before it boots. A mod that crashes the OS needs
-  a power-on holding PLAY to get back to the menu (not verified for every crash).
+- No CPU or stability checks before a mod boots. A mod that crashes the OS needs a power-on holding PLAY to get back
+  to the menu (not verified for every crash). B's own crash records do not survive a power cycle yet (#295).
 - Only the stock 1.2.1 base. Choosing another base firmware is planned.
+
+## For XY Forever contributors
+
+The tools behind `xyf` (`modkit split`, `xyf-host mods push`, the package format): [mods-dev/packages.md](mods-dev/packages.md).
+`xyf-host mods dev`, the device flow `xyf dev` runs: [mods-dev/try.md](mods-dev/try.md). Publishing the package:
+[operating/pypi.md](operating/pypi.md).
