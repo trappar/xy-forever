@@ -78,8 +78,7 @@ content set when the job could not make one: not OS 1.2.1, mods' content install
 official one nor one it puts back.
 
 After Open-XY (#331, `usb_service_adopt.ipp`): only the official paths are read (`xyf_official_content.hpp`);
-another catalog is put back by keeping each list's official entries, only at the official SHA-256 (else 22), the
-device's copy saved as `op1_factory.replaced.json`.
+another catalog is put back by keeping each list's official entries, only at the official SHA-256 (else 22).
 A boot once (`menu.converge` mode 2, `xyf dev`, #284) runs the job first too, on the base `mods.apply` would take, since
 its content switch needs a stock entry's set; its error 15 there (mods' content installed) goes on to the switch, which
 uses the saved official list.

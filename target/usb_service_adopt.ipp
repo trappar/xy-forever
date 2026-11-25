@@ -27,16 +27,15 @@
 // #331, an OP-XY another tool changed (Open-XY): only the official paths are read (xyf_official_content.hpp; other
 // files stay where they are, outside the set), and an op1_factory.json that is not the official one is put back by
 // taking out the entries Open-XY inserted, accepted only when that gives the official SHA-256 (else error 22, before
-// anything is written). Then, after firmware.version, the device's copy is saved (op1_factory.replaced.json) and the
-// official bytes replace it, each through an upload's name (tmp/put-...) renamed over its file: a cut leaves the old
-// file or the new one, never neither, and the next build reads the content again.
+// anything is written). Then, after firmware.version, the official bytes replace it through an upload's name
+// (tmp/put-...), read back and renamed over the file: a cut leaves the old file or the new one, never neither, and the
+// next build reads the content again.
 namespace xa {
 const char source[] = "/yaffs2/upgrade/firmware/blackfin/bin/os.ldr";
 const char root[] = "/yaffs2/xy-forever", tmp[] = "/yaffs2/xy-forever/tmp", firmware[] = "/yaffs2/xy-forever/firmware";
 const char* const names[3] = {"os.ldr", "manifest.json", "files.sha256"};
 const char content[] = "/yaffs2/content", state_old[] = "/yaffs2/xy-forever/content-state.old";
-const char live_catalog[] = "/yaffs2/content/op1_factory.json",
-           replaced[] = "/yaffs2/xy-forever/op1_factory.replaced.json";
+const char live_catalog[] = "/yaffs2/content/op1_factory.json";
 // The list's bounds (docs/storage/packages.md: files.sha256's 4096 entries of at most 160 path bytes).
 const U32 max_files = 4096, max_folders = 1024, max_rel = 160, pool_bytes = 0x40000u, text_bytes = 0x100000u;
 const U32 line_bytes = 64 + 2 + max_rel + 1;
@@ -91,11 +90,10 @@ static_assert(sizeof(AdoptSlot) < 0x10000u, "below the save log's text");
 // #183: the content set's listing and list, above the save log's text (as the pack import's work: one job at a time).
 struct ContentSetWork {
     U32 files, folders, pool_n, text_n, folder_at, skip, file_at;
-    // #331: op1_factory.json as read (catalog_n over catalog_max: too large to keep) and the official bytes put back
-    // from it (restored_n; 0: none); changed: it is not the official one and could not be put back.
+    // #331: op1_factory.json as read (catalog_n over catalog_max: too large to keep), then the official bytes put back
+    // in its place (restored_n; 0: none); changed: it is not the official one and could not be put back.
     U32 catalog_n, restored_n, changed;
-    xyf_core::hash::Digest catalog_sha;  // the device's copy's SHA-256
-    uint8_t catalog[xyf::official::catalog_max], restored[xyf::official::catalog_max];
+    uint8_t catalog[xyf::official::catalog_max];
     U32 file_ref[xa::max_files];      // pool offsets of the files' paths (relative to content/), sorted bytewise
     U32 folder_ref[xa::max_folders];  // the folders still to list, in the order found ("" the root)
     xyf_core::hash::Sha256 list;      // over text, as it grows
@@ -168,16 +166,15 @@ const xo::List* official_lists() {
 #endif
     return xo::lists;
 }
-// #331: w.catalog (catalog_n bytes, not the official file) put back into w.restored: true when that is the official
-// file (restored_n its length).
+// #331: w.catalog (catalog_n bytes, not the official file) put back in place: true when that is the official file
+// (restored_n its length).
 bool catalog_put_back(ContentSetWork& w) {
     w.restored_n = 0;
     if (w.catalog_n > xo::catalog_max) return false;
-    for (U32 i = 0; i != w.catalog_n; ++i) w.restored[i] = w.catalog[i];
-    const U32 n = xo::restore(w.restored, w.catalog_n, official_lists(), xo::list_count);
+    const U32 n = xo::restore(w.catalog, w.catalog_n, official_lists(), xo::list_count);
     xyf_core::hash::Sha256 h;
     xyf_core::hash::Digest d;
-    if (!n || !h.update(w.restored, n) || !h.finish(d) || !sha_equal(d.bytes, official_digest(true))) return false;
+    if (!n || !h.update(w.catalog, n) || !h.finish(d) || !sha_equal(d.bytes, official_digest(true))) return false;
     w.restored_n = n;
     return true;
 }
@@ -394,8 +391,8 @@ bool content_line(ContentSetWork& w, const xyf_core::hash::Digest& d) {
     w.text_n += line;
     return true;
 }
-// The content set's outputs, in order (a.sub): 0 the device's op1_factory.json saved, 1 the official one put back
-// (#331: both only when it was), 2 the list. Each one's bytes and the SHA-256 its read-back must have.
+// The content set's outputs, in order (a.sub): 0 the official op1_factory.json put back (#331: only when it was), 1
+// the list. Each one's bytes and the SHA-256 its read-back must have.
 struct CsOut {
     const uint8_t* data;
     U32 n;
@@ -404,9 +401,9 @@ struct CsOut {
 CsOut cs_out(const AdoptSlot& a) {
     ContentSetWork& w = cwork();
     CsOut o;
-    o.data = a.sub == 0 ? w.catalog : a.sub == 1 ? w.restored : reinterpret_cast<const uint8_t*>(w.text);
-    o.n = a.sub == 0 ? w.catalog_n : a.sub == 1 ? w.restored_n : w.text_n;
-    o.sha = a.sub == 0 ? w.catalog_sha.bytes : official_digest(a.sub == 1);
+    o.data = a.sub == 0 ? w.catalog : reinterpret_cast<const uint8_t*>(w.text);
+    o.n = a.sub == 0 ? w.restored_n : w.text_n;
+    o.sha = official_digest(a.sub == 0);
     return o;
 }
 void adopt_step(AdoptSlot& a) {
@@ -651,7 +648,6 @@ void adopt_step(AdoptSlot& a) {
         save_lap(xl::p_cset_sha);
         if (!a.sha.finish(d)) return adopt_fail(a, xc::e_size, P::s_refused);
         if (catalog && !sha_equal(d.bytes, official_digest(true))) { // #331: put back, it is listed as the official one
-            for (U32 i = 0; i != 32; ++i) w.catalog_sha.bytes[i] = d.bytes[i];
             if (catalog_put_back(w))
                 for (U32 i = 0; i != 32; ++i) d.bytes[i] = official_digest(true)[i];
             else w.changed = 1;
@@ -697,14 +693,14 @@ void adopt_step(AdoptSlot& a) {
         bool same = code == P::s_ok && got == n;
         for (U32 i = 0; same && i != n; ++i) same = a.piece[i] == uint8_t(usb_service::official_version[i]);
         if (!same) return adopt_fail(a, xc::e_verify, P::s_storage);
-        a.sub = cwork().restored_n ? 0u : 2u;
+        a.sub = cwork().restored_n ? 0u : 1u;
         a.step = cs_sweep;
         return;
     }
     case cs_sweep: { // the next output's temporary file (a cut run's replaced), opened
         const CsOut o = cs_out(a);
-        if (a.sub == 2) join(a.folder, xa::tmp, "/cset-", a.target);
-        else file_engine::upload_name(a.folder, o.n, 0x3310u + a.sub);
+        if (a.sub) join(a.folder, xa::tmp, "/cset-", a.target);
+        else file_engine::upload_name(a.folder, o.n, 0x3310u);
         if (a.io.unlink(a.folder) < 0) return adopt_fail(a, xc::e_write, P::s_storage);
         a.out = a.io.open(a.folder, true);
         if (a.out < 0) return adopt_fail(a, xc::e_write, P::s_storage);
@@ -752,13 +748,12 @@ void adopt_step(AdoptSlot& a) {
         a.step = cs_rename;
         return;
     }
-    case cs_rename: // #331: the saved copy and the catalog over their files; the list last: the set complete
-        if (a.sub != 2) {
-            const char* to = a.sub == 0 ? xa::replaced : xa::live_catalog;
-            if ((a.sub == 1 && !xyf::content::allowed(xyf::content::Use::catalog, to, true)) ||
-                a.io.rename(a.folder, to, true) < 0)
+    case cs_rename: // #331: the catalog over its file; the list last: the set complete
+        if (!a.sub) {
+            if (!xyf::content::allowed(xyf::content::Use::catalog, xa::live_catalog, true) ||
+                a.io.rename(a.folder, xa::live_catalog, true) < 0)
                 return adopt_fail(a, xc::e_rename, P::s_storage);
-            ++a.sub;
+            a.sub = 1;
             a.step = cs_sweep;
             return;
         }
