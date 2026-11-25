@@ -89,8 +89,8 @@ nothing. The crash screen names the wait B was in, else the last one it left.
 
 When USB stops answering (#314), the screen tells what stopped. Replies that cannot be written into the CDC put
 "USB: replies are not getting out. Reconnect the cable." on the activity line until one gets out (STATUS: USB1
-`replies_lost`). On the progress screen, STOP shows "Cancelling..." only while B's menu loop runs: no change and no
-`W<code>` means B itself stopped (its loop or its interrupts), not only USB.
+`replies_lost`). A screen that does not change and shows no `W<code>` means B's menu loop itself has stopped, not
+only USB: when B froze (#314) it stayed enumerated on USB, so a device still on the bus does not show B is running.
 
 ## Storage (A, yaffs)
 
