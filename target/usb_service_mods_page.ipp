@@ -106,6 +106,10 @@ uint32_t content_switch_once(const char* id) {
     return code;
 }
 uint32_t adopt_start(const char* id, uint32_t mode) { return adopt_begin(id, mode); }
+void adopt_tidied(uint32_t& files, uint32_t& catalog) {
+    files = aslot().removed;
+    catalog = aslot().restored;
+}
 uint32_t content_set_check(const char* id, const char*& why) {
     why = 0;
     if (job_running() || closing XYF_OR_MTP_BUSY || uploading()) return P::s_busy;

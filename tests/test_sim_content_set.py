@@ -5,7 +5,7 @@ lists /yaffs2/content/ (dlc/ aside), hashes every file and writes firmware.versi
 before it builds, installs the content and boots. Content that is not the official set is refused, with the reason
 named: a catalog that is not the official one at config.set, any other file during the build, before anything is
 written. An OP-XY that had Open-XY (#331: its files beside the official ones, its machines' entries in
-op1_factory.json) builds too: the official file is put back. The official set is the
+op1_factory.json) builds too: the official file is put back and its files are removed (#334). The official set is the
 simulator's synthetic content, given by XYF_SIM_OFFICIAL_CONTENT; the device's 1.2.1 digests are checked against the
 private manifest when it is present. Synthetic packages (test_sim_mod_job's
 kit). Needs clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
@@ -153,7 +153,8 @@ class ContentSet(ConfigBase, unittest.TestCase):
 
     @pytest.mark.gate  # the simulator core keeps the stock build
     def test_an_op_xy_that_had_open_xy_builds(self):
-        """#331: Open-XY's files stay out of the set; op1_factory.json is put back to the official bytes."""
+        """#331: Open-XY's files stay out of the set; op1_factory.json is put back to the official bytes. #334: and
+        Open-XY's files are removed, with the folders they leave empty."""
         extras = {
             'display/fm2op.svg': b'<svg/>',
             'presets/fm2op/init.json': b'{}',
@@ -174,10 +175,9 @@ class ContentSet(ConfigBase, unittest.TestCase):
         self.assertEqual(self.disk_default(), entry)
         self.assertEqual(self.entry('content.sha256'), self.official_text.encode())
         self.assertEqual((self.root / 'xy-forever/content-official/op1_factory.json').read_bytes(), CATALOG)
-        files, dirs = self.expected(entry)  # the mods' content, Open-XY's files beside it (the mod's own replaced)
+        files, dirs = self.expected(entry)  # the mods' content alone (the mod's own file where Open-XY had one)
         self.assertIn('presets/alpha/default.json', files)
-        dirs |= {p.rsplit('/', k)[0] for p in extras for k in (1, 2) if p.count('/') >= k}
-        self.assertEqual(CS.content(self.root), ({**extras, **files}, dirs))
+        self.assertEqual(CS.content(self.root), (files, dirs))
         self.assertEqual(list((self.root / 'xy-forever/tmp').glob('put-*')), [])
 
     @pytest.mark.gate  # a refusal: the simulator core keeps the build
