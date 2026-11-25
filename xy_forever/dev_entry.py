@@ -17,11 +17,11 @@ files), or any other image. Here:
          needs_os, profile), so the content switch installs exactly its content/ files over the official set; its
          content retained as blobs. Without: a plain firmware entry, booted with the official content. Replaced on
          every push; top-level files that did not change are moved over on the device, not sent
-  boot   menu.converge mode 2 (moddev.py): the content switch, then the boot once; nothing saved changes, and the
-         next plain power-on converges back to the saved setup (#204)
+  boot   menu.converge mode 2 (moddev.py): the base's content set first when it has none (#183's job: an OP-XY
+         that never saved mods; [content], once), the content switch, then the boot once; nothing saved changes, and
+         the next plain power-on converges back to the saved setup (#204)
 
-No device-side change: every entry goes through the device's own checks too (the content switch's rules, the boot's
-admission)."""
+Every entry goes through the device's own checks too (the content switch's rules, the boot's admission)."""
 
 import hashlib
 import json
@@ -217,19 +217,8 @@ def stock_entries(dev, needs_os=None):
 
 
 def preflight(dev, needs_os=None):
-    """Refused when the OP-XY cannot take the entry: xyf-dev its default, or, in the official content, no stock OS
-    1.2.1 with a content list in its library: the content switch of a boot once needs one, even to stay official (the
-    menu then says "Installing content failed"), and the device makes it only when mods are saved (#183)."""
-    code, head = dev.read_file(CONTENT_STATE, 0, 256)
-    official = code != 0 or b'state=official' in head
-    if official and not any(
-        dev.read_file('%s/%s/content.sha256' % (package_store.LIBRARY, b), 0, 16)[0] == 0
-        for b in stock_entries(dev, needs_os)
-    ):
-        raise Refused(
-            'the OP-XY has no content list of OS 1.2.1 yet: save mods once on the OP-XY (its Mods page), '
-            'then run xyf dev again'
-        )
+    """Refused when xyf-dev is the OP-XY's default. True when the boot once starts with the content set's job: the
+    official content and no stock OS 1.2.1 entry with a content list (an OP-XY that never saved mods; #183)."""
     slots = {}
     for path in SLOTS:
         code, body = dev.read_file(path)
@@ -237,6 +226,13 @@ def preflight(dev, needs_os=None):
     state = current_state(slots)
     if state and state[2].get('default') == ENTRY:
         raise Refused('%s is the default on the OP-XY: choose another default first' % ENTRY)
+    code, head = dev.read_file(CONTENT_STATE, 0, 256)
+    if code == 0 and b'state=official' not in head:
+        return False
+    return not any(
+        dev.read_file('%s/%s/content.sha256' % (package_store.LIBRARY, b), 0, 16)[0] == 0
+        for b in stock_entries(dev, needs_os)
+    )
 
 
 def push(dev, files, detail=lambda line: None, kind=CUSTOM):
@@ -264,19 +260,53 @@ def push(dev, files, detail=lambda line: None, kind=CUSTOM):
     return '%s: %s, %s, %s' % (ENTRY, kind, image, content)
 
 
-def boot(dev, detail=lambda line: None):
-    """menu.converge mode 2 of the entry, followed until USB goes away: (booted, the phase's note)."""
+def start(dev):
+    """menu.converge mode 2 of the entry: None, or the phase's refusal note."""
     code, _ = moddev.patient(dev, lambda: moddev.converge(dev, moddev.ONCE, ENTRY))
-    if code:
-        return False, 'refused: %s' % moddev.plain(code)
+    return 'refused: %s' % moddev.plain(code) if code else None
+
+
+def content(dev, detail=lambda line: None, poll=0.25):
+    """The boot once's first job, the base's content set (#183): (True, note) once it is done, else (False, why)."""
+    refused = start(dev)
+    if refused:
+        return False, refused
+    seen, done = None, (True, 'recorded the official 1.2.1 content (once)')
+    while True:
+        try:
+            code, f = moddev.converge(dev, moddev.REPORT)
+        except (OSError, TimeoutError):  # USB went away: past the content set, the menu closed to start the boot
+            return done
+        if code:
+            return False, moddev.plain(code)
+        if f['state'] == moddev.ENDED:
+            return False, 'the OP-XY stayed in its menu: %s' % (f['reason'] or 'no reason given')
+        if f['state'] == moddev.BOOTING or (seen and f['job'] != seen):
+            return done
+        if f['job']:
+            code, j = moddev.MS.job_status(dev, f['job'])
+            if not code and j['detail'].startswith('content '):
+                if j['phase'] == moddev.MS.DONE:
+                    return done
+                seen = f['job']
+                detail('job %d (content set): %s' % (f['job'], moddev.MS.describe(j)))
+        moddev.transport.pause(dev.t, poll)
+
+
+def boot(dev, detail=lambda line: None, started=False):
+    """menu.converge mode 2 of the entry (unless started), followed until USB goes away: (booted, the phase's note)."""
+    refused = None if started else start(dev)
+    if refused:
+        return False, refused
     booted, why = moddev.follow(dev, detail)
     if not booted:
         return False, why
     return True, '%s started once; the next plain start goes back to the saved setup' % ENTRY
 
 
-def run(dev, files, out=print, detail=lambda line: None, kind=CUSTOM):
-    """[push], [boot], total on a connected, ready OP-XY. The exit code: 0 booted, 1 not."""
+def run(dev, files, out=print, detail=lambda line: None, kind=CUSTOM, content_first=False):
+    """[push], [content] (content_first: the base's content set, once), [boot], total on a connected, ready OP-XY. The
+    exit code: 0 booted, 1 not."""
     phases = moddev.Phases(out)
 
     def pushed():
@@ -285,6 +315,9 @@ def run(dev, files, out=print, detail=lambda line: None, kind=CUSTOM):
         except package_store.StoreError as error:  # the OP-XY refused a step of the transaction
             return False, 'failed: %s' % error
 
-    booted = phases.run('push', pushed) and phases.run('boot', lambda: boot(dev, detail))
+    booted = phases.run('push', pushed)
+    if booted and content_first:
+        booted = phases.run('content', lambda: content(dev, detail))
+    booted = booted and phases.run('boot', lambda: boot(dev, detail, started=content_first))
     phases.total()
     return 0 if booted else 1

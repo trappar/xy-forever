@@ -199,8 +199,8 @@ def dev_build(args, folder, out=print, connect=checked_connect):
         return 2
 
     def work(dev, detail):
-        dev_entry.preflight(dev)
-        return dev_entry.run(dev, files, out, detail, kind)
+        first = dev_entry.preflight(dev)
+        return dev_entry.run(dev, files, out, detail, kind, content_first=first)
 
     return session('xyf dev', args, work, out, connect)
 
