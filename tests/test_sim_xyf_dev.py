@@ -15,8 +15,9 @@ import unittest
 from pathlib import Path
 
 import pytest
-from test_modpatch import CATALOG, profile_for, stock
+from test_modpatch import profile_for, stock
 from test_sim_adopt import expected_entry
+from test_sim_content_set import official_env
 from test_sim_content_switch import Switch, content
 from test_sim_mod_job import LIB, UNAVAILABLE
 from test_xyf import assemble
@@ -51,7 +52,7 @@ class DevEntry(Switch, unittest.TestCase):
         files = {p: b for p, b in cls.official[0].items() if not p.startswith('dlc/')}
         listed = ''.join('%s  %s\n' % (hashlib.sha256(files[p]).hexdigest(), p) for p in sorted(files)).encode()
         before = os.environ.get(ENV)
-        os.environ[ENV] = '%s %s' % (hashlib.sha256(listed).hexdigest(), hashlib.sha256(CATALOG).hexdigest())
+        os.environ[ENV] = official_env(files)
         cls.addClassCleanup(lambda: os.environ.pop(ENV) if before is None else os.environ.update({ENV: before}))
         cls.listed = listed
         cls.runs = 0

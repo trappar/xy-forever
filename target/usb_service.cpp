@@ -86,6 +86,7 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 #if defined(XYF_CONTENT_SWITCH)
 #include "xyf_job_journal.hpp"
 #include "xyf_content_job.hpp"
+#include "xyf_official_content.hpp"   // #331: the official paths, op1_factory.json put back
 #include "xyf_config_io.hpp"           // the saved configuration (the config job)
 #include "xyf_converge.hpp"         // #197: its fingerprint (mark_store, the config job)
 #include "xyf_mods_io.hpp"           // #26: config.get, config.set (the Mods page's)
