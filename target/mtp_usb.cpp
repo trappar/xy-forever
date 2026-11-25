@@ -216,44 +216,48 @@ int on_recv_urb(Urb* urb) {
     ring_head = h + 1;
     return 0;                                                  // ours until pump() recycles it
 }
+// How a class request ends, as the stock CDC class ends its own (88a1313a; #314). The stack counts a data stage's
+// bytes in done and then sends wanted - done bytes: a request without a reply ends with both 0 and zlp 1, or the
+// stack takes the difference for a reply and puts 64 bytes of the buffer into EP0 in place of the status. A reply
+// is its bytes from done 0, at most wLength.
+int ep0_end(Urb* ep0) {
+    ep0->done = 0;
+    ep0->wanted = 0;
+    ep0->zlp = 1;
+    return 0;
+}
+int ep0_reply(Urb* ep0, uint32_t bytes) {
+    const uint32_t asked = get16(ep0->setup + 6);
+    ep0->wanted = bytes < asked ? bytes : asked;
+    ep0->done = 0;
+    return 0;
+}
 int on_recv_setup(Urb* ep0) {
     setup_seen = true;
     const uint8_t* s = ep0->setup;
     if ((s[0] & 0x60) != 0x20) return 1;                       // class requests only
     if (s[4] == kIfaceComm) switch (s[1]) {                    // CDC ACM by interface (wIndex)
-        case 0x20:
-            copy(line_coding, ep0->buf, 7);
+        case 0x20: {                                               // data stage in: at most wLength of it
+            const uint32_t asked = get16(s + 6);
+            copy(line_coding, ep0->buf, asked < 7 ? asked : 7);
             ++g_stats.line_codings;
-            ep0->wanted = 0;
-            return 0;   // data stage in
-        case 0x21:
-            copy(ep0->buf, line_coding, 7);
-            ep0->wanted = 7;
-            return 0;
-        case 0x22:
-            g_stats.control_lines = get16(s + 2);
-            ep0->wanted = 0;
-            return 0;
-        case 0x23: ep0->wanted = 0; return 0;                      // SEND_BREAK: acknowledged
+            return ep0_end(ep0);
+        }
+        case 0x21: copy(ep0->buf, line_coding, 7); return ep0_reply(ep0, 7);
+        case 0x22: g_stats.control_lines = get16(s + 2); return ep0_end(ep0);
+        case 0x23: return ep0_end(ep0);                            // SEND_BREAK: acknowledged
         default: return 1;
         }
     if (s[4] != kIfaceMtp) return 1;
     switch (s[1]) {
-    case 0x64:
-        cancel_flag = true;
-        ep0->wanted = 0;
-        return 0;  // Cancel (data stage already in)
-    case 0x66:
-        reset_flag = true;
-        ep0->wanted = 0;
-        return 0;   // Device Reset
+    case 0x64: cancel_flag = true; return ep0_end(ep0);  // Cancel (data stage already in)
+    case 0x66: reset_flag = true; return ep0_end(ep0);   // Device Reset
     case 0x67:                                                 // Get Device Status
         put16(ep0->buf, 4);
         put16(ep0->buf + 2, g_handler && phase == Phase::command && src == Src::none ? uint32_t(g_handler->status()) :
                             (in_inflight && sent_count == in_inflight_seen) || phase != Phase::command ? 0x2019u :
                                                                                                          rc_ok);
-        ep0->wanted = 4;
-        return 0;
+        return ep0_reply(ep0, 4);
     }
     return 1;
 }

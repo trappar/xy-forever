@@ -447,7 +447,13 @@ static void cdc_requests(Urb& ep0, uint8_t* buf) {
     memcpy(ep0.setup, set, 8);
     memcpy(buf, coding, 7);
     const uint32_t codings = stats().line_codings;
+    ep0.done = 7;                                  // #314: the stack counted the data stage's bytes
+    ep0.zlp = 0;
     REQUIRE(stack::slot->ops->recv_setup(&ep0) == 0 && ep0.wanted == 0 && stats().line_codings == codings + 1);
+    REQUIRE(ep0.done == 0 && ep0.zlp == 1);         // ended as the stock class ends it: nothing left to send
+    const uint8_t get_short[8] = {0xa1, 0x21, 0, 0, kIfaceComm, 0, 3, 0};
+    memcpy(ep0.setup, get_short, 8);
+    REQUIRE(stack::slot->ops->recv_setup(&ep0) == 0 && ep0.wanted == 3 && ep0.done == 0);   // at most wLength
     memset(buf, 0, 7);
     memcpy(ep0.setup, get, 8);
     REQUIRE(stack::slot->ops->recv_setup(&ep0) == 0 && ep0.wanted == 7 && !memcmp(buf, coding, 7));
