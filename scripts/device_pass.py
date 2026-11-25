@@ -510,6 +510,15 @@ class StepFail(Exception):
     pass
 
 
+def service_check(usb):
+    """B's USB service, its result block version 4 or later (5: the build identity, 6: replies that could not get out,
+    #314; a later version only uses words that were unused before, so the pass reads every one), else StepFail. A pass
+    must be able to update a device running any newer build."""
+    version = usb.get('version')
+    if not isinstance(version, int) or version < 4 or usb.get('role') != 1:
+        raise StepFail('unexpected service: version %s, role %s' % (version, usb.get('role')))
+
+
 class StepSkip(Exception):
     """The step does not apply (a pre-v1 device): a SKIP row with this detail."""
 
@@ -897,8 +906,7 @@ class Pass:
         if confirm_on(self.ok(['wait'], self.opts.wait)):  # HELLO only: nothing asks
             raise StepFail(CONFIRM_ON)
         decoded, usb = self.status(self.opts.wait)
-        if usb.get('version') not in (4, 5) or usb.get('role') != 1:  # 5: the build identity
-            raise StepFail('unexpected service: version %s, role %s' % (usb.get('version'), usb.get('role')))
+        service_check(usb)
         self.state['check'] = usb
         return 'home answers; identity %s, crash restarts %s' % (usb.get('identity'), usb.get('crash_restarts'))
 
@@ -909,9 +917,9 @@ class Pass:
     # -- read ----------------------------------------------------------------------------------
     def step_status(self):
         decoded, usb = self.status()
-        if usb.get('version') not in (4, 5) or usb.get('role') != 1:  # 5: the build identity
-            raise StepFail('unexpected service: version %s, role %s' % (usb.get('version'), usb.get('role')))
-        return 'version 4, frames %s, reads %s, blocks %s' % (
+        service_check(usb)
+        return 'version %s, frames %s, reads %s, blocks %s' % (
+            usb.get('version'),
             usb.get('frames'),
             usb.get('reads'),
             len(decoded.get('blocks', ())),
