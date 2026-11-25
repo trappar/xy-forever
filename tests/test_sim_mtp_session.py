@@ -28,8 +28,8 @@ class TunnelClient(R.Client):
     """test_mtp_responder.Client over diag.mtp: out = op 2 (retried while B answers busy), take = op 3 until
     the response container is complete (the session steps the responder from B's menu loop meanwhile)."""
 
-    def __init__(self, dev):
-        self.dev, self.tid, self.zlps = dev, 0, 0
+    def __init__(self, dev, sim):
+        self.dev, self.sim, self.tid, self.zlps = dev, sim, 0, 0
 
     def tunnel(self, op, body=b''):
         info, self.dev.hello_info = self.dev.hello_info, None  # diag.mtp is not in the hello list
@@ -99,7 +99,7 @@ class MtpSessionTests(unittest.TestCase):
         self.sim = sim.Simulator(self.root, self.dir / 'bootpart.bin', log=self.dir / 'log.txt').start()
         self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
         self.assertEqual(self.dev.hello()[0], 0)
-        self.c = TunnelClient(self.dev)
+        self.c = TunnelClient(self.dev, self.sim)
 
     def tearDown(self):
         self.dev.t.close()
