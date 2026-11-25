@@ -2,7 +2,9 @@
 // store.txt names its version ("version=1"); each package folder holds its files flat, a top-level file under its
 // own name, any other under its stored name (its SHA-256's first 12 hex digits plus its extension), so every file
 // sits 4 folders below /yaffs2 whatever the package's folders are. files.sha256 maps a path to its stored name;
-// the device job reads it that way (native/mod_job.hpp stored_name). No store.txt: an older layout.
+// the device job reads it that way (native/mod_job.hpp stored_name). No store.txt: an older layout. A development set
+// (#204: xyf dev's, in mods/dev-<generation>/) says so on a later line, "development=1": the device's Mods page and
+// config.set never take it for the saved mods' set.
 import type { CallOptions, Client } from './client.ts';
 import { isXyfError } from './errors.ts';
 
@@ -25,6 +27,14 @@ export function storedName(path: string, sha: string): string {
 export function storeVersion(data: Uint8Array | null): number {
   const m = /^version=([0-9]{1,9})(?:[\r\n]|$)/.exec(new TextDecoder().decode(data ?? new Uint8Array()));
   return m ? Number(m[1]) : 0;
+}
+
+/** store.txt marks a development set (a line "development=1", as the device reads it). */
+export function storeDevelopment(data: Uint8Array | null): boolean {
+  return new TextDecoder()
+    .decode(data ?? new Uint8Array())
+    .split('\n')
+    .some((line) => line.replace(/\r$/, '') === 'development=1');
 }
 
 export interface RemoteTree {
@@ -60,12 +70,7 @@ export async function remoteTree(client: Client, folder: string, options: CallOp
 }
 
 /** The store version of the generation folder genPath (has: it holds store.txt); 0 without one. */
-export async function generationVersion(
-  client: Client,
-  genPath: string,
-  has: boolean,
-  options: CallOptions,
-): Promise<number> {
+async function generationVersion(client: Client, genPath: string, has: boolean, options: CallOptions): Promise<number> {
   return has ? storeVersion(await client.readFile(`${genPath}/${STORE_FILE}`, options)) : 0;
 }
 

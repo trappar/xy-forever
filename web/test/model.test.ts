@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { HeldPackage } from 'xy-forever-client';
 import {
+  bootedOnce,
   changeRefusal,
   configText,
   contentText,
@@ -47,6 +48,12 @@ describe('config parsing', () => {
     expect(c.base).toBeNull();
     expect(configText(c)).toBe('all mods off, not built yet.');
     expect(configText(null)).toMatch(/No mods saved/);
+  });
+  it('finds a development build booted once (#204)', () => {
+    expect(bootedOnce('state=installed\nentry=mods-b\n', 'mods-a')).toBe('mods-b');
+    expect(bootedOnce('state=installed\nentry=mods-a\n', 'mods-a')).toBeNull();
+    expect(bootedOnce('state=official\n', 'opxy-121')).toBeNull();
+    expect(bootedOnce(null, 'opxy-121')).toBeNull();
   });
   it('describes the content state', () => {
     expect(contentText(null, false)).toBe('Official content.');

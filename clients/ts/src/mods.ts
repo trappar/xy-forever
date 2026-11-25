@@ -15,7 +15,15 @@
 import { sha256 } from './client.ts';
 import type { CallOptions, Client, ReplyOf } from './client.ts';
 import { depthRefusal, readsFlatMods } from './depth.ts';
-import { STORE_FILE, STORE_VERSION, generationVersion, remoteTree, storeRefusal, storedName } from './modstore.ts';
+import {
+  STORE_FILE,
+  STORE_VERSION,
+  remoteTree,
+  storeDevelopment,
+  storeRefusal,
+  storeVersion,
+  storedName,
+} from './modstore.ts';
 import { XyfError, isXyfError } from './errors.ts';
 import { parseFileList, parseManifest } from './package-manifest.ts';
 import { NATIVE_MANIFEST, packageValues, recordName } from './package-records.ts';
@@ -284,13 +292,15 @@ export interface HeldPackage {
   readonly complete: boolean;
 }
 /** older: a folder without store.txt (mods/<profile>/ from before protocol 1.16, or a package tree from before the flat
- * store), newer: a newer store version; either has profile '' and no packages; removePackage(generation) deletes it. */
+ * store), newer: a newer store version; either has profile '' and no packages; removePackage(generation) deletes it.
+ * development: xyf dev's development set (#204), never the saved mods' set. */
 export interface HeldGeneration {
   readonly profile: string;
   readonly generation: string;
   readonly packages: readonly HeldPackage[];
   readonly older: boolean;
   readonly newer: boolean;
+  readonly development: boolean;
 }
 
 /** A device before protocol 1.16 reads mods/<profile>/<generation>/: refused, nothing sent. */
@@ -310,12 +320,10 @@ export async function listPackages(client: Client, options: CallOptions = {}): P
   const nonfiles = new Set([...tree.dirs, ...tree.other]);
   const out: HeldGeneration[] = [];
   for (const gen of tree.dirs.filter((d) => !d.includes('/')).sort(order)) {
-    const version = await generationVersion(
-      client,
-      `${MODS_ROOT}/${gen}`,
-      tree.files.has(`${gen}/${STORE_FILE}`),
-      options,
-    );
+    const store = tree.files.has(`${gen}/${STORE_FILE}`)
+      ? await client.readFile(`${MODS_ROOT}/${gen}/${STORE_FILE}`, options)
+      : null;
+    const version = storeVersion(store);
     if (version !== STORE_VERSION) {
       out.push({
         profile: '',
@@ -323,6 +331,7 @@ export async function listPackages(client: Client, options: CallOptions = {}): P
         packages: [],
         older: version < STORE_VERSION,
         newer: version > STORE_VERSION,
+        development: false,
       });
       continue;
     }
@@ -353,7 +362,14 @@ export async function listPackages(client: Client, options: CallOptions = {}): P
       packages.push({ name, info, files: mine.size, bytes: [...mine.values()].reduce((n, s) => n + s, 0), complete });
     }
     const base = packages.find((p) => p.name === 'base');
-    out.push({ profile: base?.info['profile'] ?? '?', generation: gen, packages, older: false, newer: false });
+    out.push({
+      profile: base?.info['profile'] ?? '?',
+      generation: gen,
+      packages,
+      older: false,
+      newer: false,
+      development: storeDevelopment(store),
+    });
   }
   return out;
 }

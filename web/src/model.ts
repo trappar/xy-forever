@@ -74,6 +74,13 @@ export function contentText(text: string | null, oldExists: boolean): string {
   return `Unknown content state "${s['state']}".`;
 }
 
+/** #204: the library entry whose mod content is installed while another entry is the default (xyf dev booted it once;
+ * the next plain start goes back to the saved mods), or null. */
+export function bootedOnce(content: string | null, defaultId: string | null): string | null {
+  const s = parseKeyValues(content ?? '');
+  return s['state'] === 'installed' && s['entry'] && s['entry'] !== defaultId ? s['entry'] : null;
+}
+
 /** Package kinds in the device menu's order (GUIDE: synths, drums, samplers, effects, players, extensions). */
 const KINDS = ['synth', 'drum', 'sample', 'effect', 'player', 'extension'] as const;
 type Kind = (typeof KINDS)[number] | 'other';
