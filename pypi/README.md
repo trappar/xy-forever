@@ -9,43 +9,54 @@ stays as it is: the next plain start goes back to it, and holding PLAY at power-
 
 - An OP-XY running XY Forever with protocol 1.31 or later (update at https://xy-forever.trappar.com, Manage → Device
   → Update), connected over USB.
-- macOS, Linux or Windows, Python 3.11 or later.
+- macOS, Linux or Windows, and Python 3.11 or later in a virtual environment (a stock Mac has only `python3` 3.9 and
+  no `python`; [uv](https://docs.astral.sh/uv/) brings its own Python).
 - An Open-XY checkout with its toolchain (`python sdk.py toolchain fetch`) and your machine (`python sdk.py new`).
+  Open-XY's `sdk.py` runs in the same environment.
 
 ## Install
 
+In your Open-XY checkout:
+
 ```sh
-pip install xy-forever          # in the environment you run sdk.py with; the command is xyf
-uvx xy-forever dev BUILD        # or without installing: uvx (or pipx run) runs xyf as xy-forever
+uv venv --python 3.12 .venv && source .venv/bin/activate    # or: python3.11 -m venv .venv (Windows: .venv\Scripts\activate)
+uv pip install xy-forever                                    # with python3.11 -m venv: pip install xy-forever; the command is xyf
 ```
+
+Or without installing: `uvx xy-forever dev BUILD` (or `pipx run xy-forever …`) runs `xyf` as `xy-forever`.
 
 ## The loop
 
-Run these from your Open-XY checkout. `STOCK` is where `xyf stock-os` puts the stock OS, and it prints the path:
-`~/Library/Application Support/OPXY-SDK/private/stock-1.2.1/os.ldr` on macOS, the same under `~/.local/share/` on
-Linux and `%LOCALAPPDATA%` on Windows.
+In the checkout, with that environment active:
 
 ```sh
-xyf stock-os                                               # once: the stock OS 1.2.1 from your OP-XY's library
-python sdk.py build --machine ../mymachine --stock-os STOCK --out ../builds/mine-001
-xyf dev ../builds/mine-001                                 # the folder sdk.py build --out wrote
+xyf stock-os            # once: prints "xyf stock-os: STOCK (2373336 bytes, SHA-256 checked, ...)"
+python sdk.py build --machine ../mymachine --stock-os "STOCK" --out ../builds/mine-001
+xyf dev ../builds/mine-001
 ```
 
-After an edit, build again into a new `--out` folder (or with `--overwrite`) and run `xyf dev` on it. Any other
-firmware works the same way: `xyf dev FOLDER` (holding `os.ldr`, and optionally `content/` with files to put over the
-official content) or `xyf dev path/to/os.ldr`. The push line says `Open-XY build on 1.2.1` when the image is exactly
-Open-XY's build on the stock OS (checked against the stock os.ldr and your checkout's profile), else `custom image`.
-Without content it boots with the official content. Or leave
-`xyf dev --watch ../builds` running: it does the same for every new build in that folder. `xyf logs` copies the OP-XY's
-new crash logs and XY Forever's reports of the last boot into `./xyf-logs` and prints the text ones.
+`STOCK` is the path `xyf stock-os` printed: the os.ldr itself, under Open-XY's private folder
+(`~/Library/Application Support/OPXY-SDK/private/stock-1.2.1/os.ldr` on macOS, the same under `~/.local/share/` on
+Linux and `%LOCALAPPDATA%` on Windows); quote it. After an edit, build into a new folder with the last build's machine
+numbers, as Open-XY's build asks: `python sdk.py build --machine ../mymachine --stock-os "STOCK" --layout
+../builds/mine-001/layout.json --out ../builds/mine-002`, then `xyf dev ../builds/mine-002`. Or leave `xyf dev --watch
+../builds` running: it does the same for every new build in that folder.
+
+Any other firmware works the same way: `xyf dev FOLDER` (holding `os.ldr`, and optionally `content/` with files to put
+over the official content) or `xyf dev path/to/os.ldr`. The push line says `Open-XY build on 1.2.1` when the image is
+exactly Open-XY's build on the stock OS (checked against the stock os.ldr and your checkout's profile), else `custom
+image`; without content it boots with the official content. `xyf logs` copies the OP-XY's new crash logs and XY
+Forever's reports of the last boot into `./xyf-logs` and prints the text ones.
 
 ## For AI agents
 
 Run every step in a terminal and read its output; only the power cycle needs the person at the OP-XY.
 
-The loop: edit the machine → `python sdk.py build --machine M --stock-os STOCK --out NEW_FOLDER` → `xyf dev
+The loop, in the Open-XY checkout with its Python 3.11+ environment active: edit the machine → `python sdk.py build
+--machine M --stock-os "STOCK" --layout LAST/layout.json --out NEW_FOLDER` (no `--layout` the first time) → `xyf dev
 NEW_FOLDER` → if it prints the power line, ask the person to do exactly that → read the result → `xyf logs` when the
-mod misbehaved or crashed. Run `xyf stock-os` once first; it prints where `STOCK` is.
+mod misbehaved or crashed. Run `xyf stock-os` once first; `STOCK` is the path it prints. Each command waits up to
+`--wait` (600 s) for the menu: leave it at that, the power cycle takes the person a while.
 
 What each line means:
 
@@ -67,7 +78,7 @@ What to do on each failure (the line starts with `xyf dev:`, `xyf stock-os:` or 
 | `refused: the os.ldr is ...` (not an OS image, its size, where it starts or writes) | XY Forever would not boot it either: fix the build. |
 | `custom image` where you expected `Open-XY build on 1.2.1` | Not an error. Run `xyf stock-os` and run from the Open-XY checkout (or add `--sdk DIR`) so it can be compared. |
 | `the OP-XY speaks XY Forever protocol X; xyf needs Y ... Update XY Forever at ...` | Ask the person to update XY Forever as the line says (or, when it says so, update xyf). |
-| `XY Forever USB service not found ...` | The menu never answered: check the USB cable, then ask for the power cycle again. |
+| `the XY Forever menu did not answer within N s (--wait)` (or `XY Forever USB service not found ...`) | The menu never answered in time: check the USB cable, ask for the power cycle holding PLAY again and run it again. |
 | `[push] ...: failed: ...` | The OP-XY refused a step of the copy (the reason follows). Run it again; if it repeats, report it. |
 | `[boot] ...: refused: ...` or `the OP-XY stayed in its menu: ...` | The build did not start; the reason follows (a content file that would replace an official one, say). Run `xyf logs`. |
 | `connection lost (...)` | Run the same command again. |
