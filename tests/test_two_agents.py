@@ -279,8 +279,8 @@ class DeviceLock(unittest.TestCase):
         from xy_forever import xyf_host
 
         with (
-            mock.patch.object(xyf_host, 'SIM', '127.0.0.1:1,2'),
-            mock.patch.object(xyf_host, 'find_port', lambda: None),
+            mock.patch.object(xyf_host.device_client, 'SIM', '127.0.0.1:1,2'),
+            mock.patch.object(xyf_host.device_client, 'find_port', lambda: None),
             mock.patch.object(device_lock, 'hold') as hold,
             contextlib.redirect_stderr(io.StringIO()),
             self.assertRaisesRegex(SystemExit, 'no simulator control port at 127.0.0.1:2'),  # never a wall-clock wait
@@ -288,8 +288,8 @@ class DeviceLock(unittest.TestCase):
             xyf_host.connect(0.05)
         hold.assert_not_called()
         with (
-            mock.patch.object(xyf_host, 'SIM', None),
-            mock.patch.object(xyf_host, 'find_port', lambda: None),
+            mock.patch.object(xyf_host.device_client, 'SIM', None),
+            mock.patch.object(xyf_host.device_client, 'find_port', lambda: None),
             mock.patch.object(device_lock, 'hold') as hold,
             contextlib.redirect_stderr(io.StringIO()),
             self.assertRaisesRegex(SystemExit, 'not found'),

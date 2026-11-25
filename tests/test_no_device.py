@@ -64,7 +64,7 @@ class GuardTest(unittest.TestCase):
 class SerialTest(unittest.TestCase):
     def test_find_port_refuses_before_listing_ports(self):
         with (
-            mock.patch.object(host, 'SIM', None),
+            mock.patch.object(host.device_client, 'SIM', None),
             mock.patch.object(transport.list_ports, 'comports', reached('the port list')),
         ):
             with self.assertRaisesRegex(DeviceRefused, REFUSED + r'the serial port \(/dev/cu\.usbmodem\*\)$'):
@@ -72,7 +72,7 @@ class SerialTest(unittest.TestCase):
 
     def test_connect_refuses(self):
         with (
-            mock.patch.object(host, 'SIM', None),
+            mock.patch.object(host.device_client, 'SIM', None),
             mock.patch.object(transport.list_ports, 'comports', reached('the port list')),
         ):
             with self.assertRaisesRegex(DeviceRefused, REFUSED):
@@ -109,7 +109,7 @@ class SerialTest(unittest.TestCase):
         self.addCleanup(server.close)
         sim = '127.0.0.1:%d,1' % server.getsockname()[1]
         with (
-            mock.patch.object(host, 'SIM', sim),
+            mock.patch.object(host.device_client, 'SIM', sim),
             mock.patch.object(transport.list_ports, 'comports', reached('the port list')),
         ):
             port = host.find_port()
@@ -118,7 +118,7 @@ class SerialTest(unittest.TestCase):
 
     def test_conformance_without_sim_refuses(self):
         with (
-            mock.patch.object(host, 'SIM', None),
+            mock.patch.object(host.device_client, 'SIM', None),
             mock.patch.object(transport.list_ports, 'comports', reached('the port list')),
         ):
             for call in (conformance.Target().present, conformance.Target().open):

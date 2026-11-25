@@ -289,7 +289,7 @@ def run_script(argv):
         folders = list(Path(sessions.name).iterdir())
         summary = json.loads((folders[0] / 'summary.json').read_text()) if folders else None
     finally:
-        host.SIM = None
+        host.device_client.SIM = None
         sessions.cleanup()
     return code, out.getvalue(), summary
 

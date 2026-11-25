@@ -519,7 +519,7 @@ class DevicePassTest(unittest.TestCase):
             self.assertTrue(self.folder.name.endswith('-sim-pass-2'))
             self.assertEqual(self.summary['failed'], 1)
         finally:
-            dp.host.SIM = None
+            dp.host.device_client.SIM = None
 
     def test_ask_before_usb_control_stops_the_pass(self):
         """#65: a HELLO with confirm=1 (the device would ask before any other command) FAILs the check with what to
@@ -913,7 +913,7 @@ class DevicePassTest(unittest.TestCase):
     @pytest.mark.gate
     def test_host_device_closes_ports_and_reports_no_answer(self):
         dev = dp.HostDevice()
-        with patch.object(dp.host, 'find_port', return_value=None):
+        with patch.object(dp.host.device_client, 'find_port', return_value=None):
             code, out, err = dev.command(['status'], 0.2)
             with self.assertRaises(dp.NoAnswer):
                 dev.open(0.2)

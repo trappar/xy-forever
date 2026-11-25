@@ -7,7 +7,7 @@ Part of [XY Forever architecture](../ARCHITECTURE.md).
 | Path | What |
 |---|---|
 | `xy_forever/xyf_build.py` (`uv run xyf-build`) | build + verify a candidate `os.ldr` (all audits) |
-| `xy_forever/xyf_host.py` (`uv run xyf-host`) | host tool for XY Forever's USB service; its serial and simulator ports in `xy_forever/transport.py` (the serial port is exclusive to one process) |
+| `xy_forever/xyf_host.py` (`uv run xyf-host`) | host tool for XY Forever's USB service; the connection and calls in `xy_forever/device_client.py` (shared with `xyf`), its serial and simulator ports in `xy_forever/transport.py` (the serial port is exclusive to one process) |
 | `tests/ui_preview.py` | render the device UI to PNG on the host (same C++, through the test bridges; `mise run preview`) |
 | `tests/test_ldr.py` | the LDR parser; OfficialImages: the native one against official images |
 | `xy_forever/xyf_package.py` (`uv run xyf-package`) | review and stage a decrypted official ZIP on the host (HARDWARE, `.tfw`); `extract-os`: OS-only library entry from an official `.tfw`, run by the device's own extractor compiled for the Mac (`host/tfw_extract.cpp`, `xy_forever/tfw_extract.py`) |

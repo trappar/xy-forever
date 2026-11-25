@@ -277,7 +277,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
     except (ValueError, OSError, KeyError) as error:
         print('crash_trigger: %s' % error, file=sys.stderr)
         return dp.EXIT_USAGE
-    host.SIM = opts.sim or None
+    host.device_client.SIM = opts.sim or None
     opts.build_sha = None
     if opts.install:
         import hashlib

@@ -292,7 +292,7 @@ def main(argv=None, device=None, sleep=time.sleep, folder=None):
     o = parse_args(argv)
     if o.sim:
         host.sim_address(o.sim)
-        host.SIM = o.sim
+        host.device_client.SIM = o.sim
     run = TestEntry(device or dp.HostDevice(), o, None, sleep)
     run.folder = (
         Path(folder)

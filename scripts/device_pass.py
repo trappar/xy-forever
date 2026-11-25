@@ -679,9 +679,9 @@ class HostDevice:
         endpoint stops listening)."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if host.SIM and not host.sim_listening(host.SIM):
+            if host.device_client.SIM and not host.sim_listening(host.device_client.SIM):
                 return True
-            if not host.SIM and (not self.port or not os.path.exists(self.port)):
+            if not host.device_client.SIM and (not self.port or not os.path.exists(self.port)):
                 return True
             host.pause(0.05)
         return False
@@ -2433,7 +2433,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=None):
         except ValueError as error:
             print('device_pass: %s' % error, file=sys.stderr)
             return EXIT_USAGE
-        host.SIM = opts.sim
+        host.device_client.SIM = opts.sim
     if opts.plan:
         print_plan(opts, chosen)
         return EXIT_PASS

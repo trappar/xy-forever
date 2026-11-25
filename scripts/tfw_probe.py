@@ -255,7 +255,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, cleanup_dir=None
             raise tfw_extract.ExtractError('official package missing: %s' % ', '.join(missing or ['(none named)']))
         if opts.sim:
             host.sim_address(opts.sim)
-            host.SIM = opts.sim
+            host.device_client.SIM = opts.sim
     except (tfw_extract.ExtractError, ValueError) as error:
         print('tfw_probe: %s' % error, file=sys.stderr)
         return dp.EXIT_USAGE
