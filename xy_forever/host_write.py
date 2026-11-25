@@ -39,13 +39,32 @@ def write_stream(dev, path, data, progress=None):
     )
     if code:
         return code, 0, 0, 0
-    for offset in range(0, len(data), P.ids.PUT_CHUNK):
-        piece = data[offset : offset + P.ids.PUT_CHUNK]
-        code, _ = dev.call(P.ids.WRITE_DATA, struct.pack('<I', offset) + piece, timeout=timeout_of(P.ids.WRITE_DATA))
-        if code:
-            return code, offset, 0, 0
-        if progress:
-            progress(offset + len(piece), len(data))
+    info = getattr(dev, 'hello_info', None)
+    depth = info.pipe if info is not None and hasattr(dev, 'pipeline') else 1
+    step = P.ids.MAX_DATA if depth > 1 else P.ids.PUT_CHUNK  # 1.33 pipe=: max_data pieces, several in flight
+    offsets = range(0, len(data), step)
+    if depth > 1:
+        replies = dev.pipeline(
+            P.ids.WRITE_DATA,
+            (struct.pack('<I', at) + data[at : at + step] for at in offsets),
+            depth,
+            timeout_of(P.ids.WRITE_DATA),
+        )
+    else:
+        replies = (
+            dev.call(
+                P.ids.WRITE_DATA, struct.pack('<I', at) + data[at : at + step], timeout=timeout_of(P.ids.WRITE_DATA)
+            )
+            for at in offsets
+        )
+    try:
+        for offset, (code, _) in zip(offsets, replies):
+            if code:
+                return code, offset, 0, 0
+            if progress:
+                progress(min(offset + step, len(data)), len(data))
+    finally:
+        replies.close()
     code, body = dev.call(P.ids.WRITE_END, timeout=60.0 + len(data) / 20000.0)
     written, back, error = struct.unpack_from('<III', body) if len(body) >= 12 else (0, 0, 0)
     return code, written, back, error

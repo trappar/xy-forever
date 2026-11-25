@@ -23,7 +23,8 @@ from xy_forever.transport import SerialPort, TcpPort, device_ports, sim_address
 # 256 bytes per poll; a 4 KiB PUT_DATA frame overflowed it (no reply). One
 # 1 KiB frame (+ 20 bytes framing) is in flight at a time.
 PUT_CHUNK = 1024
-READ_RANGE = 1024  # device read_range_max (Test 038: 4 KiB replies hung)
+READ_RANGE = 1024  # device read_range_max (Test 038: 4 KiB replies hung B on the stock serial; file.read keeps it)
+RESEND_S = 3.0  # Device.pipeline: the last request in flight is sent once more when its reply has not come in this
 INSTALL_TIMEOUT = 900.0  # host bound for one INSTALL (v3 link sessions have no device cap)
 COPY_RATE = 10000.0  # file.copy: the host waits its timeout plus 1 s per this many bytes
 SLOTS = ('/yaffs2/xy-forever/state-a.txt', '/yaffs2/xy-forever/state-b.txt')
@@ -112,6 +113,59 @@ class Device:
                     return struct.unpack_from('<I', body)[0], body[4:]
         raise TimeoutError('no reply to 0x%02x within %.1f s' % (kind, timeout))
 
+    def pipeline(self, kind, payloads, depth, timeout):
+        """(status, body) of each request in payloads (an iterable), in order, with up to depth requests in flight
+        (protocol 1.33, hello pipe=: file.read_stream and file.write_data only; depth 1 is one at a time). The device
+        answers in order, so a reply that is missing while a later one came was lost on the way: that request is sent
+        once more (both commands answer a resend), as is the last one when its reply has not come in RESEND_S. Closing
+        the generator early leaves the requests still out unanswered: their replies are dropped as stale. The caller
+        sends the first request of a transfer with call() (the #65 question)."""
+        payloads = iter(payloads)
+        out = []  # [seq, payload, sent at, resent], oldest first
+        early = {}  # seq -> (status, body) of a reply that came before the oldest's
+
+        def send(entry):
+            self.seq = self.seq % 255 + 1
+            entry[0], entry[2] = self.seq, time.monotonic()
+            self.t.write(P.encode(kind, self.seq, entry[1]))
+
+        def fill():
+            while len(out) < depth:
+                payload = next(payloads, None)
+                if payload is None:
+                    return
+                out.append([0, payload, 0.0, False])
+                send(out[-1])
+
+        fill()
+        while out:
+            head = out[0]
+            if head[0] in early:
+                yield early.pop(head[0])
+                out.pop(0)
+                fill()
+                continue
+            waited = time.monotonic() - head[2]
+            if waited > (timeout if head[3] else min(timeout, RESEND_S)):
+                if head[3]:
+                    raise TimeoutError('no reply to 0x%02x within %.1f s' % (kind, timeout))
+                head[3] = True
+                send(head)
+                continue
+            for k, seq, body in self.parser.feed(self.t.read(0.05)):
+                if k == P.LOG | P.REPLY and seq == 0:
+                    self._log_frame(body)
+                    continue
+                at = next((i for i, e in enumerate(out) if e[0] == seq), None)
+                if k != kind | P.REPLY or at is None:
+                    continue  # stale
+                if len(body) < 4:
+                    raise OSError('short reply')
+                early[seq] = struct.unpack_from('<I', body)[0], body[4:]
+                if at and out[0][0] not in early and not out[0][3]:
+                    out[0][3] = True  # a later reply came first: the oldest's was lost
+                    send(out[0])
+
     def hello(self):
         code, body = self.call(P.HELLO)
         text = body.decode('ascii', 'replace')
@@ -126,7 +180,11 @@ class Device:
         return code, body
 
     def read_all(self, path, limit=16 << 20, progress=None):
-        """Any size: ranged reads until a short range."""
+        """Any size: from 1.33 a read stream (file.read_stream: the file kept open, hello pipe= pieces in flight), before
+        ranged reads (file.read); until a short piece."""
+        info = self.hello_info
+        if info is not None and not info.pre_v1 and info.answers(P.ids.READ_STREAM):
+            return self.read_stream(path, limit, progress)
         data = bytearray()
         while len(data) < limit:
             code, body = self.read_file(path, len(data))
@@ -137,6 +195,38 @@ class Device:
                 progress(len(data))
             if len(body) < READ_RANGE:
                 return 0, bytes(data)
+        return P.STATUS_NAMES.index('too_large'), bytes(data)
+
+    def read_stream(self, path, limit=16 << 20, progress=None):
+        """read_all over file.read_stream (1.33): max_data pieces with up to pipe in flight (max_read, one at a time,
+        on the stock serial fallback)."""
+        depth = self.hello_info.pipe
+        piece = P.ids.MAX_DATA if depth > 1 else READ_RANGE
+        head = path.encode() + b'\0'
+        timeout = P.ids.COMMANDS[P.ids.READ_STREAM]['timeout_ms'] / 1000.0
+        code, body = self.call(P.ids.READ_STREAM, head + struct.pack('<II', 0, piece), timeout=timeout)
+        data = bytearray(body)
+        if code or len(body) < piece:
+            if progress and not code:
+                progress(len(data))
+            return code, bytes(data)
+        offsets = range(piece, limit + piece, piece)
+        replies = self.pipeline(
+            P.ids.READ_STREAM, (head + struct.pack('<II', at, piece) for at in offsets), depth, timeout
+        )
+        try:
+            for code, body in replies:
+                if code:
+                    return code, bytes(data)
+                data += body
+                if progress:
+                    progress(len(data))
+                if len(body) < piece:
+                    return 0, bytes(data)
+                if len(data) >= limit:
+                    break
+        finally:
+            replies.close()
         return P.STATUS_NAMES.index('too_large'), bytes(data)
 
     def stage(self, data, progress=None):
