@@ -3,7 +3,7 @@
   "ignoreBinaries": ["uv"],
   "workspaces": {
     ".": {
-      "entry": ["scripts/*.mjs"],
+      "entry": ["scripts/*.mjs", "xy_forever/*.mjs"],
       "ignoreDependencies": ["turbo"]
     },
     "web": {

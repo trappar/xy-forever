@@ -45,7 +45,7 @@ from .xyf_entry import ManifestError, files_sha256_text
 
 KIT_FORMAT = 'opxy-browser-kit/1'
 PROFILE_SCHEMA = 1
-DRIVER = Path(__file__).resolve().parents[1] / 'scripts/modkit_core.mjs'
+DRIVER = Path(__file__).with_name('modkit_core.mjs')  # shipped beside this module (the xy-forever package too)
 DRIVERS = (
     4  # Node processes at once (run_driver): the published kit's 16 jobs took 1.4 s in one, 0.8 s in 4, 1.4 s in 9
 )
@@ -751,7 +751,7 @@ def notice_sections(notices, names):
 
 
 def run_driver(sdk, jobs, scratch):
-    """Run scripts/modkit_core.mjs (open-xy's core.mjs from sdk) on jobs; returns its results, in job order.
+    """Run modkit_core.mjs (open-xy's core.mjs from sdk) on jobs; returns its results, in job order.
     Opening a kit takes most of a job's time, so each kit's jobs stay in one Node process; the kits are spread
     over up to DRIVERS processes, run at once, most jobs first."""
     core = Path(sdk) / 'builder/core.mjs'
