@@ -87,6 +87,11 @@ nothing. The crash screen names the wait B was in, else the last one it left.
 | W11 | a USB reply into the CDC |
 | W12 | an install log line over USB (never paints: 200 ms bound) |
 
+When USB stops answering (#314), the screen tells what stopped. Replies that cannot be written into the CDC put
+"USB: replies are not getting out. Reconnect the cable." on the activity line until one gets out (STATUS: USB1
+`replies_lost`). On the progress screen, STOP shows "Cancelling..." only while B's menu loop runs: no change and no
+`W<code>` means B itself stopped (its loop or its interrupts), not only USB.
+
 ## Storage (A, yaffs)
 
 - No YAFFS device is registered at cold entry on a normal boot (the sentinel at
