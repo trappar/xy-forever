@@ -61,11 +61,6 @@ void draw_screen(uint16_t* fb) {
 #else
     const Chrome chrome = {"", false, 0, false, ""};
 #endif
-    if (hang_shown) {                                // #314, key_ui_crash.ipp: as the crash screen
-        const Chrome still = {chrome.version, false, 0, false, chrome.image};
-        draw_message(fb, xyf::crash::hang_message(hang_record, hang_text, &still));
-        return;
-    }
     if (crash_shown) {                               // key_ui_crash.ipp: the marks off (USB no longer answers)
         const Chrome still = {chrome.version, false, 0, false, chrome.image};
         draw_message(fb, xyf::crash::message(crash_text, &still));

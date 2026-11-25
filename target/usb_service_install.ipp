@@ -141,9 +141,7 @@ void install(uint8_t seq, const uint8_t* payload, U32 length, bool uninstall) {
         say("Installing XY Forever...", "Do not unplug or power off.");
         beacon(step_writer, put_expected);
         hook_logs();
-        key_ui::hang_hold(true);                    // #314: a long stock call, interrupts of its own
         result.install_written = write_boot(staged, put_expected);
-        key_ui::hang_hold(false);
         unhook_logs();                              // before any session step (verify ticks)
         result.install_ms = now() - start;
         // The writer may have encrypted the staging in place: never write it again.

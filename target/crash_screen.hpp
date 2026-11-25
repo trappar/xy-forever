@@ -78,58 +78,5 @@ inline ui::Message message(const Text& t, const ui::Chrome* chrome) {
                            chrome};
     return m;
 }
-// #314: B stuck inside an interrupt handler. While the menu has the screen, a core-timer tick (key_ui_crash.ipp)
-// that finds the menu loop stopped and an interrupt level 7..14 still active, hang_ticks ticks in a row, records
-// this and draws the hang screen. pc: the instruction the tick interrupted (RETI); fp: the frame pointer there;
-// caller: [fp + 4], where that frame's function was called from; text: the string [fp - 4] points to (a stock
-// assert keeps its message there: 11a01f4c, LINK 0x14, R0 at [SP + 0x10]), "" when it is no string; crumb: the
-// menu loop's last step (usb_service::crumb).
-static const uint32_t hang_ticks = 4;                // ticks of 0.5 s
-static const uint32_t text_bytes = 128;            // a stock assert's message, whole (its path cut on screen)
-struct Hang {
-    uint32_t ipend, pc, fp, caller;
-    char text[text_bytes], crumb[line_bytes];
-};
-struct HangText {
-    char at[line_bytes], frame[line_bytes], text[line_bytes], where[line_bytes];
-};
-// A string at address p (printable ASCII up to its NUL, at most cap - 1 bytes kept) copied into out, else false.
-// read: a byte at an address that may be read (the caller's map check).
-template<class Read> inline bool copy_text(char* out, uint32_t cap, uint32_t p, Read read) {
-    uint32_t n = 0, k = 0;
-    out[0] = 0;
-    for (; k != cap; ++k) {
-        int c = -1;
-        if (!read(p + k, c)) return false;
-        if (!c) break;
-        if (c < 32 || c > 126) return false;
-        if (n + 1 < cap) out[n++] = char(c);
-    }
-    out[n] = 0;
-    return k > 3;
-}
-inline void hang_describe(const Hang& h, uint32_t where, HangText& t) {
-    uint32_t n = put_hex(t.at, put(t.at, 0, "IPEND "), h.ipend, 4);
-    put_hex(t.at, put(t.at, n, ", at "), h.pc, 8);
-    n = put_hex(t.frame, put(t.frame, 0, "Frame "), h.fp, 8);
-    put_hex(t.frame, put(t.frame, n, ", called from "), h.caller, 8);
-    const char* said = h.text;                       // a stock source path: its "../../../src/" left out (room)
-    while (said[0] == '.' && said[1] == '.' && said[2] == '/') said += 3;
-    if (said[0] == 's' && said[1] == 'r' && said[2] == 'c' && said[3] == '/') said += 4;
-    put(t.text, put(t.text, 0, h.text[0] ? "Says: " : "No message at the frame"), said);
-    const uint32_t in = xyf::where::current(where), code = in ? in : xyf::where::last(where);
-    n = put(t.where, 0, in ? "Waiting in " : code ? "Not waiting; last wait " : "No wait yet");
-    if (code) xyf::where::label(t.where, n, line_bytes - n, code);
-}
-inline ui::Message hang_message(const Hang& h, const HangText& t, const ui::Chrome* chrome) {
-    const char* image = chrome && chrome->image ? chrome->image : "";
-    const ui::Message m = {"Stopped",
-                           {"XY Forever stopped inside an interrupt (processor B).", t.at, t.frame, t.text, t.where,
-                            h.crumb, image, "Turn the OP-XY off and on again."},
-                           8,
-                           "Please photograph this screen (#314).",
-                           chrome};
-    return m;
-}
 }}
 #endif

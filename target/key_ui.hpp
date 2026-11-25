@@ -67,9 +67,6 @@ extern Frames frames;
 // The exception vector the stock code left, back in place if the menu had put the crash screen's there
 // (key_ui_crash.ipp); a no-op otherwise (and on A). usb_service::reset_self calls it before B resets.
 void crash_disarm();
-// #314: the hang screen (key_ui_crash.ipp) does not look while on: a long stock call that runs interrupts of its own
-// (usb_service: the stock boot writer).
-void hang_hold(bool on);
 // #114: B's where codes (where.hpp). A blocking wait on B holds a Where for its whole length (any return
 // clears it) and calls wait() in its loop: past where::paint_ms while the menu has the screen, that paints the
 // code in the top-right corner once (the menu's present, never from an interrupt); the end of a painted wait

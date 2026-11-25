@@ -21,8 +21,7 @@ class CrashScreenTest(unittest.TestCase):
     def setUpClass(cls):
         binary = xyf_hosttest.program('crash_screen')  # tests/crash_screen_main.cpp, sanitized
         out = subprocess.run([str(binary)], check=True, capture_output=True, text=True).stdout
-        screens = [s.strip('\n').split('\n') for s in out.split('--\n') if s.strip()]
-        cls.screens, cls.hangs = screens[:4], screens[4:]  # #314: the hang screens after the crash screens
+        cls.screens = [s.strip('\n').split('\n') for s in out.split('--\n') if s.strip()]
         cls.lib = P.build()
         cls.fb = P.framebuffer(cls.lib)
 
@@ -42,45 +41,6 @@ class CrashScreenTest(unittest.TestCase):
         self.assertEqual(undefined[3], 'SEQSTAT 0x00002021')
         self.assertEqual(software[1], 'Cause 0x03: software exception (EXCPT)')
         self.assertEqual(unknown[1:3], ['Cause 0x3f: unknown exception', 'At 0xffffffff, called from 0xffffffff'])
-
-    def test_hang_screen_names_the_level_the_place_and_the_message(self):
-        # #314: B stuck inside an interrupt: IPEND, the interrupted instruction, the frame and its caller, the
-        # message a stock assert left at [FP - 4] (none when there is no string), the wait, the menu loop's last step.
-        with_text, without = self.hangs
-        self.assertEqual(
-            with_text,
-            [
-                'Stopped',
-                'XY Forever stopped inside an interrupt (processor B).',
-                'IPEND 0x8810, at 0x0803dfcc',
-                'Frame 0x8bffef00, called from 0x11a002e0',
-                'Says: bf/spi_bridge_bfm.cpp:288 _this->currentRequest!=NULL',
-                'Not waiting; last wait W1',
-                'USB 0x02 #124349, job 1.1 93/121 MB, file 0x2a o0 3 ms ago',
-                'image f458e3cc',
-                'Turn the OP-XY off and on again.',
-                'Please photograph this screen (#314).',
-            ],
-        )
-        self.assertEqual(without[4:6], ['No message at the frame', 'Waiting in W1'])
-        for line in with_text + without:
-            self.assertLessEqual(len(line) * 6 - 1, P.WIDTH - 2 * 16, line)
-
-    def test_hang_tick_only_looks_while_the_menu_has_the_screen(self):
-        # #314: the core timer (IVG6) only between crash_on and crash_off; the install's stock writer holds it.
-        crash = (ROOT / 'target/key_ui_crash.ipp').read_text()
-        on, off = crash[crash.index('void crash_on() {') :], crash[crash.index('void crash_off() {') :]
-        self.assertLess(on.index('hang_arm();'), on.index('\n}\n'))
-        self.assertLess(off.index('hang_disarm();'), off.index('\n}\n'))
-        tick = crash[crash.index('void xyf_hang_tick(uint32_t reti, uint32_t fp) {') :]
-        tick = tick[: tick.index('\n}\n')]
-        self.assertIn('if (hang_held || hang_beat != hang_seen || !(active & levels_7_14)) {', tick)
-        self.assertIn('if (ms_since(hang_last) < 250u) {', tick)  # a storm turns the timer off
-        for banned in ('reset', '0x11a03518', 'file_client', 'link'):
-            self.assertNotIn(banned, tick)
-        install = unit_text(ROOT / 'target/usb_service.cpp')
-        writer = install[install.index('key_ui::hang_hold(true);') : install.index('key_ui::hang_hold(false);')]
-        self.assertIn('write_boot(staged, put_expected)', writer)
 
     def test_where_line_names_the_wait(self):
         # #114: the wait B was in at the fault, else the last one it left, else none.
@@ -175,24 +135,8 @@ class CrashScreenTest(unittest.TestCase):
 
     def test_vector_touches_only_its_record(self):
         part = (ROOT / 'target/key_ui_crash.ipp').read_text()
-        self.assertIn('const uint32_t evt3 = 0x1fc0200cu;', part)  # the crash vector: EVT3 (EVT5 untouched)
-        # #314, the hang screen: EVT6 (the core timer's level), IPEND, the core timer; nothing else
-        self.assertEqual(
-            sorted(set(re.findall(r'0x1fc0\w+', part))),
-            sorted(
-                [
-                    '0x1fc0200cu',
-                    '0x1fc02000',
-                    '0x1fc02018u',
-                    '0x1fc02108u',
-                    '0x1fc03000u',
-                    '0x1fc03004u',
-                    '0x1fc03008u',
-                    '0x1fc0300cu',
-                    '0x1fc03000',
-                ]
-            ),
-        )
+        self.assertIn('const uint32_t evt3 = 0x1fc0200cu;', part)  # EVT3 only: EVT5, IMASK untouched
+        self.assertEqual(re.findall(r'0x1fc0\w+', part), ['0x1fc0200cu', '0x1fc02000'])
         vector = part[part.index('"xyf_crash_vector:\\n"') : part.index('".size xyf_crash_vector')]
         stores = re.findall(r'"\s*(\[[^\]]*\]) = ', vector)
         self.assertEqual(stores, ['[P0 + 4]', '[P0 + 8]', '[P0 + 12]', '[P0]'])

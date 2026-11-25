@@ -9,10 +9,6 @@ volatile uint32_t where_word_now __attribute__((section(".data"))) = 0;
 volatile uint32_t where_since __attribute__((section(".data"))) = 0;
 volatile uint32_t where_shown __attribute__((section(".data"))) = 0;
 volatile uint32_t where_screen __attribute__((section(".data"))) = 0;
-// #314 (key_ui_crash.ipp, the hang screen): the menu loop moved (each pass, each bounded wait's poll); a long
-// stock call with interrupts of its own (usb_service: the boot writer) holds the hang screen off.
-volatile uint32_t hang_beat __attribute__((section(".data"))) = 0;
-volatile uint32_t hang_held __attribute__((section(".data"))) = 0;
 void present();
 // From present, after the screen: the label in the top-right corner (where.hpp draw).
 void where_draw(uint16_t* fb) {
@@ -27,7 +23,6 @@ uint32_t where_enter(uint32_t code) {
     return before;
 }
 void where_wait() {
-    hang_beat = hang_beat + 1;
     if (!where_screen || where_shown) return;
     const uint32_t code = xyf::where::current(where_word_now);
     if (!code || ms_since(where_since) < xyf::where::paint_ms || (word(0x1fc02108u) & 0x7fe0u)) return;

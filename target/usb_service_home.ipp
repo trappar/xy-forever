@@ -59,64 +59,6 @@ const char* host_activity() {
 #endif
     return host_change && now() - host_change_ms < host_activity_ms ? host_line(host_change) : nullptr;
 }
-// crumb's pieces (no lambdas: each call stays a direct call for the call audit).
-struct CrumbOut {
-    char* line;
-    U32 n, cap;
-};
-void crumb_put(CrumbOut& o, const char* s) {
-    while (*s && o.n + 1 < o.cap) o.line[o.n++] = *s++;
-    if (o.cap) o.line[o.n] = 0;
-}
-void crumb_hex(CrumbOut& o, U32 v) {
-    char d[3];
-    d[0] = "0123456789abcdef"[v >> 4 & 15u];
-    d[1] = "0123456789abcdef"[v & 15u];
-    d[2] = 0;
-    crumb_put(o, d);
-}
-void crumb_dec(CrumbOut& o, U32 v) {
-    char d[12];
-#if defined(XYF_USB_FILE_WRITE)
-    decimal_text(d, v);
-#else
-    d[0] = v ? '+' : '0';
-    d[1] = 0;
-#endif
-    crumb_put(o, d);
-}
-void crumb(char* line, uint32_t bytes) {
-    CrumbOut o = {line, 0, bytes};
-    crumb_put(o, "USB 0x");
-    crumb_hex(o, result.last_type);
-    crumb_put(o, " #");
-    crumb_dec(o, result.frames);
-#if defined(XYF_USB_FILE_WRITE)
-    JobView v;
-    job_view(v);
-    crumb_put(o, ", job ");
-    crumb_dec(o, v.state);
-    crumb_put(o, ".");
-    crumb_dec(o, v.phase);
-    crumb_put(o, " ");
-    crumb_dec(o, v.done >> 20);
-    crumb_put(o, "/");
-    crumb_dec(o, v.total >> 20);
-    crumb_put(o, " MB");
-#endif
-    uint32_t e[4];
-    if (file_client::log_last(e)) {
-        crumb_put(o, ", file 0x");
-        crumb_hex(o, e[0]);
-        crumb_put(o, " o");
-        crumb_dec(o, e[0] >> 8 & 15u);
-#if defined(XYF_ONE_SESSION)
-        crumb_put(o, " ");
-        crumb_dec(o, xyf_boot::clock_ms() - e[1]);
-        crumb_put(o, " ms ago");
-#endif
-    }
-}
 const char* version_label() { return "v" XYF_VERSION; }
 // A separate text until the hash settles: the pointer changes when it does, and the Info page redraws.
 const char* image_label() {

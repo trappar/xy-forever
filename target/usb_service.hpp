@@ -253,10 +253,6 @@ bool mtp_seen();
 #endif
 // 188: the marks the screen shows: bit 0 host_seen (USB), bit 1 mtp_seen (MTP; 0 without the composite).
 uint32_t host_marks();
-// #314: the menu loop's last step, one line for the hang screen (key_ui_crash.ipp): the last request's type and
-// the frame count, the job's state, phase and bytes, B's last file request (op, outcome, its time to B's clock).
-// Reads only; no stock call.
-void crumb(char* line, uint32_t bytes);
 const char* host_activity();
 const char* version_label();
 const char* image_label();
