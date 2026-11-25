@@ -10,11 +10,11 @@ static const uint32_t trailer_bytes = 4;        // the CRC-32
 static const uint32_t max_payload = 4160;       // largest payload in either direction; a frame announcing more is treated as noise
 static const uint32_t max_data = 4096;          // largest file or image data in one reply
 static const uint32_t max_read = 1024;          // largest length of a ranged file.read, and the most data screen.read returns per reply
-static const uint32_t put_chunk = 1024;         // data bytes per stage.data request that tools should send: the device's USB receive buffer holds 2048 bytes, and a 4 KiB frame overflowed it (no reply)
+static const uint32_t put_chunk = 1024;         // data bytes per stage.data and file.write_data request that tools should send when hello has no pipe above 1: the stock serial's USB receive buffer holds 2048 bytes, and a 4 KiB frame overflowed it (no reply)
 static const uint32_t max_path = 240;           // largest device path, including its NUL
 static const uint32_t max_stage = 7340032;      // largest staged image (7 MiB)
 static const uint32_t max_log_text = 200;       // largest text of a log event
-static const uint32_t max_pipe = 4;             // most file.read_stream and file.write_data requests a tool keeps in flight when hello says pipe is above 1 (1.33)
+static const uint32_t max_pipe = 4;             // most file.read_stream, file.write_data and stage.data requests a tool keeps in flight when hello says pipe is above 1 (1.33)
 static const uint32_t idle_reset_ms = 250;      // the device drops a partial frame once its receive buffer has been empty for this long
 static const uint32_t max_hello = 256;          // largest hello text (240 before 1.25, 224 before 1.23, 200 before 1.15); a build's text is fixed but for its run-time parts (228 bytes in the product build without stage 2, nothing asked, serial on), checked when it is compiled
 enum Type : uint8_t {

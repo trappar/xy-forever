@@ -41,17 +41,17 @@
     {"name": "max_payload", "value": 4160, "doc": "largest payload in either direction; a frame announcing more is treated as noise"},
     {"name": "max_data", "value": 4096, "doc": "largest file or image data in one reply"},
     {"name": "max_read", "value": 1024, "doc": "largest `length` of a ranged `file.read`, and the most data `screen.read` returns per reply"},
-    {"name": "put_chunk", "value": 1024, "doc": "data bytes per `stage.data` request that tools should send: the device's USB receive buffer holds 2048 bytes, and a 4 KiB frame overflowed it (no reply)"},
+    {"name": "put_chunk", "value": 1024, "doc": "data bytes per `stage.data` and `file.write_data` request that tools should send when `hello` has no `pipe` above 1: the stock serial's USB receive buffer holds 2048 bytes, and a 4 KiB frame overflowed it (no reply)"},
     {"name": "max_path", "value": 240, "doc": "largest device path, including its NUL"},
     {"name": "max_stage", "value": 7340032, "doc": "largest staged image (7 MiB)"},
     {"name": "max_log_text", "value": 200, "doc": "largest text of a `log` event"},
-    {"name": "max_pipe", "value": 4, "doc": "most `file.read_stream` and `file.write_data` requests a tool keeps in flight when `hello` says `pipe` is above 1 (1.33)"},
+    {"name": "max_pipe", "value": 4, "doc": "most `file.read_stream`, `file.write_data` and `stage.data` requests a tool keeps in flight when `hello` says `pipe` is above 1 (1.33)"},
     {"name": "idle_reset_ms", "value": 250, "doc": "the device drops a partial frame once its receive buffer has been empty for this long"},
     {"name": "max_hello", "value": 256, "doc": "largest `hello` text (240 before 1.25, 224 before 1.23, 200 before 1.15); a build's text is fixed but for its run-time parts (228 bytes in the product build without stage 2, nothing asked, serial on), checked when it is compiled"}
   ],
   "rules": [
     {"name": "request_types", "text": "Request types are below 0x80. A reply has the request's type plus 0x80 and the request's seq, and its payload starts with a u32 status code (0 = ok); the fields listed under each command follow it."},
-    {"name": "one_outstanding", "text": "One request at a time: send a request, then wait for its reply (or the command's timeout) before sending the next. The device handles requests one by one and its receive buffer is small. One exception (1.33): when `hello` says `pipe` is above 1, a tool may keep up to `pipe` `file.read_stream` or `file.write_data` requests in flight, all of one transfer (the next sent before the earlier replies came); the device answers them in order. A reply that is missing while a later one arrived was lost on the way: the tool sends that request again (both commands answer a resend)."},
+    {"name": "one_outstanding", "text": "One request at a time: send a request, then wait for its reply (or the command's timeout) before sending the next. The device handles requests one by one and its receive buffer is small. One exception (1.33): when `hello` says `pipe` is above 1, a tool may keep up to `pipe` `file.read_stream`, `file.write_data` or `stage.data` requests in flight, all of one transfer (the next sent before the earlier replies came); the device answers them in order. A reply that is missing while a later one arrived was lost on the way: the tool sends that request again (all three answer a resend)."},
     {"name": "hello_first", "text": "Send `hello` first. Until the device has answered a `hello` since it started, it answers every other request with status `state` and does nothing."},
     {"name": "unsupported_types", "text": "A request type this build does not answer gets status `unsupported`. The `cmds` key of the `hello` reply lists the types a build answers; tools send no others and tell the user to update XY Forever instead. A command with an optional build switch is missing from a build without it; a command whose switch is not optional is in every build that has this service (the firmware does not build without it)."},
     {"name": "pre_v1", "text": "Devices that send `proto=1` and no `cmds` speak 1.0 without the `hello` keys added in 1.1: tools treat every 1.0 command as answered (one the build lacks gets status 2) and expect no status above 13."},
@@ -212,7 +212,7 @@
       "timeout_ms": 5000, "destructive": false,
       "request": {"size": [5, 4160], "fields": [
         {"name": "offset", "type": "u32", "doc": "must equal the bytes received so far"},
-        {"name": "data", "type": "rest", "min_bytes": 1, "max_bytes": 4156, "doc": "the next bytes; send `put_chunk` (1024) at a time"}
+        {"name": "data", "type": "rest", "min_bytes": 1, "max_bytes": 4156, "doc": "the next bytes; send `put_chunk` (1024) at a time, or (1.33) `max_data` (4096) when `hello` says `pipe` is above 1"}
       ]},
       "reply": {"size": [4, 4], "extensible": true, "on_error": "status", "fields": [
         {"name": "received", "type": "u32", "doc": "bytes received so far"}
@@ -1260,7 +1260,7 @@
       {"name": "confirm", "since": "1.23", "source": "confirm", "doc": "Ask before USB control (Settings): `1` when the first command but `hello` of a connection makes the device ask \"Allow this computer to control your OP-XY?\" (`trust`), `0` when every command runs at once. No USB command changes it, only the device's Settings row with its own keys; file transfers (MTP, the serial file commands) stay open and can replace or delete `settings.txt` like any file; `1` until the device has read its settings (the default when it has none)"},
       {"name": "trust", "since": "1.23", "source": "trust", "doc": "the question's state on this connection: `none` (not asked: the setting is off, or no command but `hello` came yet), `asking` (every command but `hello` answers `waiting`), `allowed` (the user allowed: commands run), `refused` (the user did not: every command but `hello` answers `declined`). An answer lasts until the USB cable is unplugged (seen as a USB bus reset; closing and reopening the port keeps it) or the device restarts; on the stock serial fallback (no composite) the device sees no unplug, so until it restarts"},
       {"name": "serial", "since": "1.25", "source": "serial", "doc": "USB mode (Settings) for serial: `on`, or `off` when it is MTP: then every command but `hello` answers `serial_off` and tools show \"Serial is off on your OP-XY: Settings > USB mode\". The USB device always carries both MTP and serial; the mode switches each in place (with Serial, MTP sessions are refused), the moment it is picked, never re-enumerating"},
-      {"name": "pipe", "since": "1.33", "source": "pipe", "doc": "how many `file.read_stream` and `file.write_data` requests a tool may keep in flight (the rules): `max_pipe` (4) when the device's serial runs on its own composite USB, where those requests also take `max_data` bytes; `1` on the stock serial fallback (pieces of `max_read` and `put_chunk`, one at a time). Absent before 1.33: one at a time"},
+      {"name": "pipe", "since": "1.33", "source": "pipe", "doc": "how many `file.read_stream`, `file.write_data` and `stage.data` requests a tool may keep in flight (the rules): `max_pipe` (4) when the device's serial runs on its own composite USB, where those requests also take `max_data` bytes; `1` on the stock serial fallback (pieces of `max_read` and `put_chunk`, one at a time). Absent before 1.33: one at a time"},
       {"name": "stage2", "since": "1.6", "source": "stage2", "doc": "the loaded stage 2's version, decimal; `0` when none is loaded (no file, or it failed a check). Always the last key"}
     ]
   },

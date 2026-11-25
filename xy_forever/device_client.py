@@ -21,7 +21,7 @@ from xy_forever.transport import SerialPort, TcpPort, device_ports, sim_address
 
 # Test 034: the stock CDC receive ring holds 0x800 bytes and the device drains it
 # 256 bytes per poll; a 4 KiB PUT_DATA frame overflowed it (no reply). One
-# 1 KiB frame (+ 20 bytes framing) is in flight at a time.
+# 1 KiB frame (+ 20 bytes framing) is in flight at a time, unless hello says pipe= above 1 (1.33).
 PUT_CHUNK = 1024
 READ_RANGE = 1024  # device read_range_max (Test 038: 4 KiB replies hung B on the stock serial; file.read keeps it)
 RESEND_S = 3.0  # Device.pipeline: the last request in flight is sent once more when its reply has not come in this
@@ -115,9 +115,9 @@ class Device:
 
     def pipeline(self, kind, payloads, depth, timeout):
         """(status, body) of each request in payloads (an iterable), in order, with up to depth requests in flight
-        (protocol 1.33, hello pipe=: file.read_stream and file.write_data only; depth 1 is one at a time). The device
-        answers in order, so a reply that is missing while a later one came was lost on the way: that request is sent
-        once more (both commands answer a resend), as is the last one when its reply has not come in RESEND_S. Closing
+        (protocol 1.33, hello pipe=: file.read_stream, file.write_data and stage.data only; depth 1 is one at a time).
+        The device answers in order, so a reply that is missing while a later one came was lost on the way: that request
+        is sent once more (all three answer a resend), as is the last one when its reply has not come in RESEND_S. Closing
         the generator early leaves the requests still out unanswered: their replies are dropped as stale. The caller
         sends the first request of a transfer with call() (the #65 question)."""
         payloads = iter(payloads)
@@ -234,13 +234,23 @@ class Device:
         code, _ = self.call(P.PUT_BEGIN, struct.pack('<II', len(data), zlib.crc32(data) & 0xFFFFFFFF) + sha)
         if code:
             return code
-        for offset in range(0, len(data), PUT_CHUNK):
-            chunk = data[offset : offset + PUT_CHUNK]
-            code, body = self.call(P.PUT_DATA, struct.pack('<I', offset) + chunk)
-            if code:
-                return code
-            if progress:
-                progress(offset + len(chunk), len(data))
+        depth = self.hello_info.pipe if self.hello_info is not None else 1
+        step = P.ids.MAX_DATA if depth > 1 else PUT_CHUNK  # 1.33 pipe=: max_data pieces, several in flight
+        offsets = range(0, len(data), step)
+        payloads = (struct.pack('<I', at) + data[at : at + step] for at in offsets)
+        replies = (
+            self.pipeline(P.PUT_DATA, payloads, depth, 5.0)
+            if depth > 1
+            else (self.call(P.PUT_DATA, p) for p in payloads)
+        )
+        try:
+            for offset, (code, _) in zip(offsets, replies):
+                if code:
+                    return code
+                if progress:
+                    progress(min(offset + step, len(data)), len(data))
+        finally:
+            replies.close()
         code, _ = self.call(P.PUT_END, timeout=10.0)
         return code
 

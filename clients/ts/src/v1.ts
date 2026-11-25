@@ -17,7 +17,7 @@ export const MAX_PAYLOAD = 4160;
 export const MAX_DATA = 4096;
 /** largest length of a ranged file.read, and the most data screen.read returns per reply */
 export const MAX_READ = 1024;
-/** data bytes per stage.data request that tools should send: the device's USB receive buffer holds 2048 bytes, and a 4 KiB frame overflowed it (no reply) */
+/** data bytes per stage.data and file.write_data request that tools should send when hello has no pipe above 1: the stock serial's USB receive buffer holds 2048 bytes, and a 4 KiB frame overflowed it (no reply) */
 export const PUT_CHUNK = 1024;
 /** largest device path, including its NUL */
 export const MAX_PATH = 240;
@@ -25,7 +25,7 @@ export const MAX_PATH = 240;
 export const MAX_STAGE = 7340032;
 /** largest text of a log event */
 export const MAX_LOG_TEXT = 200;
-/** most file.read_stream and file.write_data requests a tool keeps in flight when hello says pipe is above 1 (1.33) */
+/** most file.read_stream, file.write_data and stage.data requests a tool keeps in flight when hello says pipe is above 1 (1.33) */
 export const MAX_PIPE = 4;
 /** the device drops a partial frame once its receive buffer has been empty for this long */
 export const IDLE_RESET_MS = 250;

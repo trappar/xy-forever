@@ -363,11 +363,13 @@ describe('read streams and pipelined writes (1.33, hello pipe)', () => {
         const offset = le(p, p.length - 8),
           length = le(p, p.length - 4);
         this.reply(f, 0, FILE.subarray(offset, offset + length));
-      } else if (f.type === v1.TYPE['file.write_begin']) {
-        this.written = new Uint8Array(le(p, p.length - 40));
+      } else if (f.type === v1.TYPE['file.write_begin'] || f.type === v1.TYPE['stage.begin']) {
+        this.written = new Uint8Array(le(p, f.type === v1.TYPE['stage.begin'] ? 0 : p.length - 40));
         this.received = 0;
         this.reply(f, 0);
-      } else if (f.type === v1.TYPE['file.write_data']) {
+      } else if (f.type === v1.TYPE['stage.end']) {
+        this.reply(f, 0);
+      } else if (f.type === v1.TYPE['file.write_data'] || f.type === v1.TYPE['stage.data']) {
         const offset = le(p, 0),
           piece = p.subarray(4);
         if (offset === this.received) {
@@ -444,6 +446,14 @@ describe('read streams and pipelined writes (1.33, hello pipe)', () => {
     expect(progress).toEqual([4096, 8192, 12288, 16384, 20480, FILE.length]);
     expect(dev.count(v1.TYPE['file.write_data'])).toBe(6 + 1);
     expect(dev.mostOutstanding).toBe(v1.MAX_PIPE);
+  });
+
+  test('staging: MAX_DATA pieces, pipe of them in flight', async () => {
+    const dev = new FileDevice();
+    const client = await connected(dev);
+    await client.stage(FILE);
+    expect(dev.written).toEqual(FILE);
+    expect([dev.count(v1.TYPE['stage.data']), dev.mostOutstanding]).toEqual([6, v1.MAX_PIPE]);
   });
 
   test('a piece the device refuses stops the write: the error, no write_end', async () => {

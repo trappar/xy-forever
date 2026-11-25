@@ -9,7 +9,7 @@ import type { Trace } from './link.ts';
 import type { Opener, Transport } from './transport.ts';
 import { keyValues, readLibraryEntry } from './package-records.ts';
 import { SCREEN } from './screen.ts';
-import { writeStream } from './stream.ts';
+import { sendPieces, writeStream } from './stream.ts';
 import { inWriteArea } from './write-area.ts';
 import { RETRY_MS, type Trust } from './trust.ts';
 import { fileReason } from './file-reason.ts';
@@ -493,17 +493,7 @@ export class Client {
     }
     const staged: Staged = { size: data.length, crc32: v1.crc32(data), sha256: await sha256(data) };
     await this.call('stage.begin', staged, options);
-    const chunk = Math.min(v1.PUT_CHUNK, this.infoNow.limits.payload - 4);
-    for (let at = 0; at < data.length; at += chunk) {
-      const piece = data.subarray(at, at + chunk);
-      const { received } = await this.call('stage.data', { offset: at, data: piece }, options);
-      if (received !== at + piece.length) {
-        throw new XyfError('protocol', `stage.data: the device has ${received} bytes, expected ${at + piece.length}`, {
-          command: 'stage.data',
-        });
-      }
-      options.onProgress?.(at + piece.length, data.length);
-    }
+    await sendPieces(this, 'stage.data', data, options); // 1.33: MAX_DATA pieces, hello pipe of them in flight
     await this.call('stage.end', undefined, options);
     return staged;
   }

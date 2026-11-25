@@ -28,7 +28,7 @@ request without data.
 | Request field (5 to 4160 bytes) | Type | Meaning |
 |---|---|---|
 | `offset` | u32 | must equal the bytes received so far |
-| `data` | rest, 1..4156 B | the next bytes; send `put_chunk` (1024) at a time |
+| `data` | rest, 1..4156 B | the next bytes; send `put_chunk` (1024) at a time, or (1.33) `max_data` (4096) when `hello` says `pipe` is above 1 |
 
 | Reply field, after the status (4 bytes) | Type | Meaning |
 |---|---|---|
