@@ -48,6 +48,9 @@ USB timing and host enumeration still require device qualification.
   structures in `mtp_usb.hpp`; do not infer them from USB wire descriptor sizes.
 - Start once per boot. Stop `88a34fec(0)` keeps GP timer 7 open; nonzero closes it. Controller init
   waits five timer ticks with no bound, so closing/reopening that timer inside a boot can hang B.
+- `recv_setup` gets the static EP0 urb (`880732d0`, 640-byte buffer) after any data stage, whose bytes the stack
+  has counted in `done`; it then sends `wanted - done`. End a request without a reply as the stock CDC class does
+  (`88a1313a`): `done` 0, `wanted` 0, `zlp` 1; a reply is `wanted` bytes from `done` 0, at most `wLength` (#314).
 - Most callbacks run in the USB ISR; stop can also complete IN callbacks in the main loop.
   `recv_urb` returning 0 retains an OUT urb; nonzero requeues it. `urb_sent` returning nonzero frees
   the IN urb. Callbacks queue work; filesystem and MTP execution stay in the main loop.
