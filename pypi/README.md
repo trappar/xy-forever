@@ -54,6 +54,7 @@ What each line means:
 | `Power the OP-XY off, then on holding PLAY (let go at the logo)` | The OP-XY is off or running its OS. Ask the person to do this; `xyf` waits (up to `--wait`, 600 s). |
 | `[wait] 12.30 s` | The OP-XY's XY Forever menu answered after that wait. |
 | `[push] 41.20 s: xyf-dev: Open-XY build on 1.2.1, os.ldr 2318 KB, 2 of 2 content files sent` | The build is on the OP-XY as library entry `xyf-dev` (or `custom image`; `the official content` when it has none). |
+| `[content] 43.10 s: recorded the official 1.2.1 content (once)` | Only the first time on an OP-XY that never saved mods: it read its official content (the OP-XY shows "Reading OS 1.2.1 content"). |
 | `[boot] 3.00 s: xyf-dev started once; ...` | Its content is installed and it is starting: try it now. |
 | `total 44.20 s` | The run ended. Exit code 0 only when the build booted. |
 
@@ -65,7 +66,6 @@ What to do on each failure (the line starts with `xyf dev:`, `xyf stock-os:` or 
 | `refused: ... holds no candidate/os.ldr or os.ldr` | Give the folder `sdk.py build --out` wrote, or an os.ldr. |
 | `refused: the os.ldr is ...` (not an OS image, its size, where it starts or writes) | XY Forever would not boot it either: fix the build. |
 | `custom image` where you expected `Open-XY build on 1.2.1` | Not an error. Run `xyf stock-os` and run from the Open-XY checkout (or add `--sdk DIR`) so it can be compared. |
-| `refused: the OP-XY has no content list of OS 1.2.1 yet ...` | Ask the person to save mods once on the OP-XY's Mods page, then run it again. |
 | `the OP-XY speaks XY Forever protocol X; xyf needs Y ... Update XY Forever at ...` | Ask the person to update XY Forever as the line says (or, when it says so, update xyf). |
 | `XY Forever USB service not found ...` | The menu never answered: check the USB cable, then ask for the power cycle again. |
 | `[push] ...: failed: ...` | The OP-XY refused a step of the copy (the reason follows). Run it again; if it repeats, report it. |

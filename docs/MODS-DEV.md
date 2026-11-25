@@ -66,7 +66,8 @@ naming both protocols and where to update; one newer than it speaks asks for `pi
 - **Content:** a build may not replace official content files (the device refuses the switch); the catalog,
   `op1_factory.json`, is the one it may replace.
 - **The push** sends the whole `os.ldr` (about 2.3 MB) each time a build changes it.
-- **A fresh OP-XY** with no mods ever saved has no content list of OS 1.2.1 yet: save mods once on its Mods page.
+- **The first `xyf dev`** on an OP-XY that never saved mods records its official OS 1.2.1 content once first
+  (`[content]`, about 45 s on the device, "Reading OS 1.2.1 content" on its screen); later runs skip it.
 
 ## Not yet
 
