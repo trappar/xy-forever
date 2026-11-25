@@ -84,6 +84,37 @@ extend-exclude = [
   "xy_forever/usb_proto_ids.py",   # generated (scripts/protogen.py; `mise run protogen` compares it byte for byte)
 ]
 
+[tool.ruff.per-file-target-version]
+# The modules of the developer package (pypi/pyproject.toml [tool.xyf] modules; tests/test_xyf_dist.py keeps the lists
+# equal): they run on Python 3.11, Open-XY's minimum, so they are linted and formatted as 3.11.
+"xy_forever/__init__.py" = "py311"
+"xy_forever/bounds.py" = "py311"
+"xy_forever/build_formats.py" = "py311"
+"xy_forever/depth.py" = "py311"
+"xy_forever/device_client.py" = "py311"
+"xy_forever/device_lock.py" = "py311"
+"xy_forever/host_trust.py" = "py311"
+"xy_forever/host_write.py" = "py311"
+"xy_forever/ldr.py" = "py311"
+"xy_forever/moddev.py" = "py311"
+"xy_forever/modconfig.py" = "py311"
+"xy_forever/modkit.py" = "py311"
+"xy_forever/modkit_read.py" = "py311"
+"xy_forever/modsend.py" = "py311"
+"xy_forever/modsend_local.py" = "py311"
+"xy_forever/modstore.py" = "py311"
+"xy_forever/native_json.py" = "py311"
+"xy_forever/no_device.py" = "py311"
+"xy_forever/package_records.py" = "py311"
+"xy_forever/package_store.py" = "py311"
+"xy_forever/paths.py" = "py311"
+"xy_forever/startup_ready.py" = "py311"
+"xy_forever/transport.py" = "py311"
+"xy_forever/usb_proto.py" = "py311"
+"xy_forever/usb_proto_ids.py" = "py311"
+"xy_forever/xyf.py" = "py311"
+"xy_forever/xyf_entry.py" = "py311"
+
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "UP", "B", "C4", "PIE", "RUF"]
 ignore = [

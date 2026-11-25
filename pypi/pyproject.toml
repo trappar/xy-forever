@@ -1,0 +1,76 @@
+# The mod developer's package, `xy-forever` on PyPI (#284): the `xyf` command and only what it runs. Its inputs are
+# this folder, ../LICENSE and the modules listed below; scripts/xyf_dist.py stages them into one folder and runs
+# `uv build` there, and .github/workflows/pypi.yml publishes the result (docs/operating/pypi.md). The repository's own
+# project is ../pyproject.toml.
+[project]
+name = "xy-forever"
+version = "0.1.0"   # the lowest the next normal version may be: scripts/xyf_dist.py version picks the real one
+description = "Try your Open-XY mod on an OP-XY running XY Forever: xyf dev, xyf logs"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"   # Open-XY's sdk.py's
+dependencies = [
+    "pyelftools>=0.31",   # the kit's objects (modkit.py)
+    "pyserial>=3.5",      # finding the OP-XY's serial port (transport.py)
+]
+keywords = ["op-xy", "open-xy", "xy-forever", "teenage engineering", "mods"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio",
+]
+
+[project.urls]
+Homepage = "https://xy-forever.trappar.com"
+Source = "https://github.com/trappar/xy-forever"
+Issues = "https://github.com/trappar/xy-forever/issues"
+
+[project.scripts]
+xyf = "xy_forever.xyf:main"
+xy-forever = "xy_forever.xyf:main"   # the same: `uvx xy-forever dev ...` and `pipx run xy-forever dev ...` run the package's name
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["xy_forever"]
+
+[tool.xyf]
+# The package's modules (xy_forever/NAME.py) besides modkit_core.mjs. They run on Python 3.11 too: ../pyproject.toml
+# lints them as 3.11 (per-file-target-version; tests/test_xyf_dist.py keeps both lists equal), and the PyPI workflow
+# runs the installed package on 3.11.
+modules = [
+    "__init__",
+    "bounds",
+    "build_formats",
+    "depth",
+    "device_client",
+    "device_lock",
+    "host_trust",
+    "host_write",
+    "ldr",
+    "moddev",
+    "modconfig",
+    "modkit",
+    "modkit_read",
+    "modsend",
+    "modsend_local",
+    "modstore",
+    "native_json",
+    "no_device",
+    "package_records",
+    "package_store",
+    "paths",
+    "startup_ready",
+    "transport",
+    "usb_proto",
+    "usb_proto_ids",
+    "xyf",
+    "xyf_entry",
+]

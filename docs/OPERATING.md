@@ -14,3 +14,4 @@ with the developer at the device. The rules in [SAFETY.md](SAFETY.md) are bindin
 - [Two agents at once](operating/two-agents.md): two agents on one machine: worktrees, the device lock
 - [Host C++](operating/host-build.md): the one CMake build of the tests', host tools' and simulator's C++ (`hosttest/`)
 - [Development tools](operating/dev-tools.md): mise, uv, pnpm, the private folder (`xyf.local.json`), Docker and the build image, Open-XY upstream
+- [The developer package](operating/pypi.md): `xy-forever` on PyPI (`xyf`): what goes in, its check, versions and publishing
