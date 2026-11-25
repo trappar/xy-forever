@@ -277,22 +277,22 @@ def add_arguments(sub):
 STOPPED = 130  # the exit code after Ctrl-C (128 + SIGINT)
 
 
-def command(args, connect, out=print, name='mods dev'):
+def command(args, connect, out=print):
     """connect(timeout, log=, waiting=) -> (device, port, hello text), as xyf_host.connect. Ctrl-C anywhere (the wait
-    for the power cycle included): one line, exit code 130. name starts the lines that end the run (xyf: xyf dev)."""
+    for the power cycle included): one line, exit code 130."""
     try:
-        return run(args, connect, out, name)
+        return run(args, connect, out)
     except KeyboardInterrupt:
-        out('%s: stopped' % name)
+        out('mods dev: stopped')
         return STOPPED
 
 
-def run(args, connect, out=print, name='mods dev'):
+def run(args, connect, out=print):
     try:
         gen, package = resolve(args.package_dir, args.only)
         MS.local_set(gen, [package])
     except (MS.Refused, OSError) as error:
-        out('%s: refused: %s' % (name, error))
+        out('mods dev: refused: %s' % error)
         return 2
     verbose = getattr(args, 'verbose', False)
     detail = (lambda line: out('  ' + line)) if verbose else (lambda line: None)
@@ -307,7 +307,7 @@ def run(args, connect, out=print, name='mods dev'):
     detail('connected %s: %s' % (port, text))
     hello = P.Hello(text)
     if hello.major != '1' or not hello.answers(P.ids.MENU_CONVERGE):
-        out('%s: refused: %s' % (name, PLAIN['unsupported']))
+        out('mods dev: refused: %s' % PLAIN['unsupported'])
         dev.t.close()
         return 2
     try:
@@ -316,13 +316,13 @@ def run(args, connect, out=print, name='mods dev'):
             out('[wait] %.2f s' % (time.monotonic() - t))
         return dev_once(dev, args, gen, package, out, detail)
     except StartupNotReady as error:
-        out('%s: %s' % (name, error))
+        out('mods dev: %s' % error)
         return 1
     except MS.Refused as error:
-        out('%s: %s' % (name, error))
+        out('mods dev: %s' % error)
         return 1
     except (OSError, TimeoutError) as error:
-        out('%s: connection lost (%s); run it again' % (name, error))
+        out('mods dev: connection lost (%s); run it again' % error)
         return 1
     finally:
         with contextlib.suppress(OSError):
