@@ -262,7 +262,9 @@ bool role1_menu_boot(U32& bytes) {
         // #197: A doubts the saved inputs are applied (a fingerprint not matching or missing, the journal, a switch
         // unfinished, no default): the menu converges on the progress screen first, then boots the default.
         const U32 doubt = !b_lost && b_status().magic == xyf_boot::check_magic ? b_status().converge : 0u;
-        if (reason == reason_ok && b_status().power_on == xyf::settings::power_always) {
+        // #204: also when only the default's content is missing (an entry booted once): the menu, whose first row
+        // converges it back; a plain power-on (no Start at menu) converges first.
+        if ((reason == reason_ok || reason == reason_content) && b_status().power_on == xyf::settings::power_always) {
             b_power_on = 1;
             r.menu.play = 1;
         } else if (doubt) b_doubt = doubt;

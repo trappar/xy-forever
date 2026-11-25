@@ -18,5 +18,19 @@ inline __attribute__((always_inline)) uint32_t version_of(const uint8_t* text, u
     const bool ends = i == bytes || text[i] == '\n' || text[i] == '\r';
     return digits && ends ? n : 0;
 }
+// #204: a development set (xyf dev's, one mod and its base) says so on a later line of store.txt, "development=1". The
+// Mods page and config.set never take it as the newest set (it never mixes with saved mods); mods.apply builds from it
+// by its generation name. Older readers take only the first line: to them it is an ordinary set.
+inline __attribute__((always_inline)) bool development(const uint8_t* text, uint32_t bytes) {
+    const char* key = "development=1";
+    for (uint32_t at = 0; at < bytes;) {
+        uint32_t i = 0;
+        while (key[i] && at + i < bytes && text[at + i] == uint8_t(key[i])) ++i;
+        if (!key[i] && (at + i == bytes || text[at + i] == '\n' || text[at + i] == '\r')) return true;
+        while (at < bytes && text[at] != '\n') ++at;
+        ++at;
+    }
+    return false;
+}
 }}
 #endif

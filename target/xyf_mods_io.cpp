@@ -55,6 +55,7 @@ struct Io {
     uint32_t job_units, drawn_bar, drawn_done;    // the job's start; the bar and done of the last redraw
     uint32_t waiting;                             // the reading waits for another job (page_busy)
     uint32_t newer, broken;                       // any unreadable native metadata while opening the list
+    uint32_t development;                         // #204: development sets skipped (xyf dev's own)
     fc::NameScan metadata_scan;
     config_io::Scan config_scan;
     const char* config_error;
@@ -184,6 +185,17 @@ bool read_text(const char* path, uint32_t& bytes) {   // the whole small file in
     return io.why == s_ok;
 }
 #include "xyf_mods_metadata.ipp"
+// #204: the name of an Open-XY entry whose content is installed while another entry is the default (xyf dev booted it
+// once: the next plain start converges back to the saved setup), else 0.
+const char* booted_once() {
+    const xyf::catalog::Catalog* c = xyf_boot::catalog();
+    for (uint32_t i = 0; c && i != c->count; ++i)
+        if (i != c->default_index && c->items[i].kind == xyf::store::kind_open_xy &&
+            (c->items[i].flags & xyf::catalog::flag_usable) &&
+            !(c->items[i].flags & xyf::catalog::flag_content_missing))
+            return c->items[i].name;
+    return 0;
+}
 void finish(const char* error) {              // the list is final
     if (io.folder) {
         fc::closedir(io.folder);
@@ -196,6 +208,8 @@ void finish(const char* error) {              // the list is final
     else if (io.newer || io.broken)
         m::say(the_page, m::line_info,
                io.newer ? "Some packages need a newer XY Forever." : "Some packages have invalid manifest.json.");
+    else if (const char* once = booted_once())
+        m::say(the_page, m::line_info, "Booted once: ", once, ". The next start returns to the saved mods.");
     else the_page.line = m::line_none;
     io.dirty = 1;
 }
@@ -207,10 +221,10 @@ void lost() {
 void next_candidate() {
     ++io.candidate_at;
     if (io.candidate_at >= io.candidate_count) {
-        finish(io.newer           ? "The mod packages need a newer XY Forever." :
-               io.broken          ? "The mod packages have invalid manifest.json." :
-               io.candidate_count ? "No complete mod package set found." :
-                                    0);
+        finish(io.newer                             ? "The mod packages need a newer XY Forever." :
+               io.broken                            ? "The mod packages have invalid manifest.json." :
+               io.candidate_count != io.development ? "No complete mod package set found." :
+                                                      0);
         return;
     }
     io.step = s_store;
@@ -248,7 +262,7 @@ void open() {
     restart_config_lookup();
     m::reset(p);
     io.step = s_serving;
-    io.candidate_count = io.package_at = io.newer = io.broken = 0;
+    io.candidate_count = io.package_at = io.newer = io.broken = io.development = 0;
     io.dirty = 1;
     io.waiting = 0;
     m::say(p, m::line_info, "Reading mod packages...");
@@ -334,7 +348,7 @@ uint32_t pump(bool shown) {
     if (shown && busy && !io.waiting) {
         m::reset(the_page);
         io.step = s_serving;
-        io.candidate_count = io.package_at = io.newer = io.broken = 0;
+        io.candidate_count = io.package_at = io.newer = io.broken = io.development = 0;
         io.waiting = 1;
         io.dirty = 1;
         m::say(the_page, m::line_info, "Busy: a build or content change is running.");
@@ -385,8 +399,12 @@ bool menu_state(xyf::menu::State& a) {
     const uint32_t def = c ? c->default_index : ~0u, slot = have ? index_of(rec.slot) : ~0u;
     const xc::Inputs in = {base ? base : "", want, have ? rec.count : 0u, have ? rec.expanded : 0u,
                            have ? rec.safe : 0u};
-    const xc::Actual act = {&rec, slot != ~0u ? rec.stamp : "", c && def < c->count ? c->items[def].id : "",
-                            installed(index_of(in.base)), installed(slot)};
+    const xc::Actual act = {&rec,
+                            slot != ~0u ? rec.stamp : "",
+                            c && def < c->count ? c->items[def].id : "",
+                            installed(index_of(in.base)),
+                            installed(slot),
+                            installed(def)};
     const uint32_t ops = have || rec.state == xg::none ? xc::plan(in, act).ops : 0u;
     const bool unsaved = pick.flipped || pick.stage; // a flip not written yet: PLAY writes it, then converges
     a.pending = unsaved || ops || io.config_error;
@@ -451,7 +469,7 @@ bool menu_state(xyf::menu::State& a) {
 void converge_begin(uint32_t why) { // never the page: the list, its toggles and views stay as they are
     if (sv.stage != sv_idle) return;
     sv.why = why;
-    sv.ops = sv.length = sv.adopted = 0;
+    sv.ops = sv.length = sv.adopted = sv.failed = 0;
     sv.looked = 1;
     ++sv.serial;
     sv.reason[0] = 0;
@@ -468,6 +486,7 @@ void converge_begin(uint32_t why) { // never the page: the list, its toggles and
               why == why_restore  ? "Restoring Open-XY" :
               why == why_power_on ? "Checking the saved setup" :
               why == why_adopt    ? "Adding OS 1.2.1" :
+              why == why_once     ? "Booting once" :
                                     "Applying changes";
     r.job_name[0] = 0;
     r.note[0] = 0;
@@ -477,6 +496,22 @@ void converge_begin(uint32_t why) { // never the page: the list, its toggles and
 }
 
 bool converging() { return sv.stage != sv_idle && sv.stage != sv_failed; }
+
+// #204: entry id booted once with its own content: the switch (always: a rebuilt entry keeps its id), then the boot.
+uint32_t converge_once(const char* id) {
+    const uint32_t i = index_of(id);
+    if (i == ~0u) return xyf::usbp::s_not_found;
+    if (!(xyf_boot::catalog()->items[i].flags & (xyf::catalog::flag_usable | xyf::catalog::flag_content_missing)))
+        return xyf::usbp::s_state; // no os.ldr
+    converge_begin(why_once);
+    usb_service::save_log_drop(); // no record follows: the switch writes its own line in the save-time log
+    copy(sv.target, id, sizeof(sv.target));
+    sv.ops = xc::op_switch;
+    sv.stage = sv_switch;
+    return s_ok;
+}
+
+uint32_t converge_entry() { return sv.why == why_once ? index_of(sv.target) : ~0u; }
 
 const m::Progress& progress() { return run; }
 
@@ -499,6 +534,25 @@ const char* converge_reason() { // at sv_boot only why_adopt's line (converge_no
 
 void converge_done() {
     if (sv.stage == sv_boot || sv.stage == sv_failed) sv.stage = sv_idle;
+}
+
+uint32_t converge_request(uint32_t mode, const char* id) {
+    if (sv.stage != sv_idle || usb_service::page_busy()) return xyf::usbp::s_busy;
+    if (usb_service::page_serving() != s_ok) return xyf::usbp::s_link;
+    if (mode == 1) {
+        converge_begin(why_apply);
+        return s_ok;
+    }
+    if (usb_service::content_unfinished()) return xyf::usbp::s_busy; // the menu's replay first
+    return converge_once(id);
+}
+
+void converge_report(ConvergeView& v) {
+    usb_service::JobView j;
+    usb_service::job_view(j);
+    v.state = sv.stage == sv_boot && sv.why != why_adopt ? 3u : converging() ? 1u : sv.failed ? 2u : 0u;
+    v.job = j.state ? j.id : 0u;
+    v.reason = v.state == 2 ? sv.reason : "";
 }
 
 uint32_t config_view(ConfigView& v) { return remote_view(v); }

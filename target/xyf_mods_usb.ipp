@@ -59,7 +59,7 @@ uint32_t remote_set(uint32_t flags, const char* mods, uint32_t crc, const char*&
         restart_config_lookup();
         m::reset(p);
         io.step = s_serving;
-        io.candidate_count = io.package_at = io.newer = io.broken = 0;
+        io.candidate_count = io.package_at = io.newer = io.broken = io.development = 0;
         io.dirty = 1;
         io.waiting = 0;
         m::say(p, m::line_info, "Reading mod packages...");

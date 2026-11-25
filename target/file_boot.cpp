@@ -326,7 +326,8 @@ U32 a_power_on(cold_storage::Stock121ReadOnlySession& storage, bool mounted) {
 
 #if defined(XYF_POWER_ON_CONVERGE)
 // #197: why a plain power-on converges before it boots (xyf_converge.hpp Doubt; 0: it boots at once): the journal
-// (job.txt or job.old), a switch unfinished, no default in the library, or a stored fingerprint that is not the one
+// (job.txt or job.old), a switch unfinished, no default in the library, the default's content not installed (#204: an
+// entry booted once with its own content), or a stored fingerprint that is not the one
 // the selected configuration record and the default make. Reads go into the scan scratch,
 // as a_power_on; never the image again. Not mounted: 0 (the check failed; the menu says why).
 // One call site each for the library's file templates: a weak function is a register call, which the build's call
@@ -374,7 +375,9 @@ U32 a_converge(cold_storage::Stock121ReadOnlySession& storage, bool mounted, con
     U32 doubt = 0;
     if (a_present(storage, xyf::journal::path) || a_present(storage, xyf::journal::old)) doubt |= xc::doubt_job;
     if (lib.content.kind == xyf::content::switching) doubt |= xc::doubt_switching;
-    if (xyf::library::find(lib, lib.state.default_id) < 0) doubt |= xc::doubt_default;
+    const int32_t def = xyf::library::find(lib, lib.state.default_id);
+    if (def < 0) doubt |= xc::doubt_default;
+    else if (lib.entries[def].content_missing) doubt |= xc::doubt_content; // #204: another entry's content, booted once
     Byte* text = reinterpret_cast<Byte*>(xyf_boot::scan_buffer);
     uint32_t length = 0;
     if (!a_config(storage, text, length)) return doubt | xc::doubt_mark;

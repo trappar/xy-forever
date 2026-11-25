@@ -24,7 +24,7 @@ enum SaveStage : uint32_t {
 // unverified, base, built), the plan (ops, target), the slot and stamp the record names (a build's new ones), the
 // record made for the record step (length bytes in io.buffer).
 struct Save {
-    uint32_t stage, job, serial, why, ops, unverified, count, expanded, safe, length, adopted, looked;
+    uint32_t stage, job, serial, why, ops, unverified, count, expanded, safe, length, adopted, looked, failed;
     char target[32], base[32], built[100], slot[8], stamp[65], reason[80];
 };
 xg::Record rec XYF_DATA = {};
@@ -102,6 +102,7 @@ uint32_t fail(const char* a, const char* b = "", const char* c = "") {
     xg::put(o, c);
     *o.at = 0;
     sv.stage = sv_failed;
+    sv.failed = 1; // menu.converge reports it until the next sequence (#204)
     usb_service::save_log_drop();               // a failed sequence writes no line
     rec.state = xg::unread;                     // read again: the record or the default may have changed
     return 1;
@@ -196,8 +197,12 @@ uint32_t check() {
         if (io.why == xyf::usbp::s_link) return fail(prefix(), "no answer from storage.");
     }
     const xc::Inputs in = {sv.base, sv.built, sv.count, sv.expanded, sv.safe};
-    const xc::Actual a = {&rec, sv.stamp, c && c->default_index < c->count ? c->items[c->default_index].id : "",
-                          installed(index_of(sv.base)), installed(have ? index_of(rec.slot) : ~0u)};
+    const xc::Actual a = {&rec,
+                          sv.stamp,
+                          c && c->default_index < c->count ? c->items[c->default_index].id : "",
+                          installed(index_of(sv.base)),
+                          installed(have ? index_of(rec.slot) : ~0u),
+                          installed(c ? c->default_index : ~0u)};
     const xc::Plan plan = xc::plan(in, a);
     sv.ops = plan.ops;
     copy(sv.target, plan.target ? plan.target : "", sizeof(sv.target));
@@ -518,7 +523,7 @@ uint32_t converge_follow() {
         return 1;
     case sv_switch: { // the record made first: the switch's write window serves no reads
         if (usb_service::page_busy()) return moved(false);
-        if (!sv.length) {
+        if (!sv.length && (sv.ops & xc::op_record)) {
             const uint32_t draw = compose();
             if (!sv.length) return draw;
         }
@@ -528,8 +533,10 @@ uint32_t converge_follow() {
         }
         const uint32_t i = index_of(sv.target);
         if (i == ~0u) return fail(prefix(), "the firmware is not in the library.");
-        if (usb_service::content_switch(sv.target) != s_ok)
-            return fail(prefix(), "installing content could not start.");
+        // #204: no record follows (a boot once, or no setup saved): the switch ends its own journal.
+        const uint32_t started = sv.ops & xc::op_record ? usb_service::content_switch(sv.target) :
+                                                          usb_service::content_switch_once(sv.target);
+        if (started != s_ok) return fail(prefix(), "installing content could not start.");
         usb_service::JobView v;
         usb_service::job_view(v);
         sv.job = v.id;
@@ -557,6 +564,10 @@ uint32_t converge_follow() {
     }
     case sv_record: // the record, then the default (the config job)
         if (usb_service::page_busy()) return moved(false);
+        if (!(sv.ops & xc::op_record)) { // #204: no record: a boot once boots (no fingerprint), else the fingerprint
+            sv.stage = sv.why == why_once ? sv_boot : sv_mark;
+            return 1;
+        }
         if (usb_service::config_store(reinterpret_cast<const char*>(io.buffer), sv.length, sv.target) != s_ok)
             return fail(prefix(), "storage is busy.");
         {

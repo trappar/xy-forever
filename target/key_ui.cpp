@@ -425,8 +425,10 @@ extern "C" void xy_forever_key_ui() {
                         if (lost || !xy_forever::xyf_boot::link_idle() || xy_forever::usb_service::page_busy())
                             continue;
 #endif
+                        const uint32_t once = xy_forever::mods_io::converge_entry(); // #204: a boot once
                         xy_forever::mods_io::converge_done();
-                        xy_forever::xyf_boot::choose_default();
+                        if (once != ~0u) xy_forever::xyf_boot::choose(once);
+                        else xy_forever::xyf_boot::choose_default();
                         r.exit_reason = exit_play;
                         break;
                     }

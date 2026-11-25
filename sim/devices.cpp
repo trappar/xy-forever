@@ -167,6 +167,7 @@ extern "C" const xyf_core::Byte xy_forever_trace_expected[sizeof(xy_forever::sto
 namespace {
 xyf::menu::State sim_app;
 bool sim_menu = false, sim_mods = false, sim_leave = false;   // sim_leave: Continue / Discard boots
+uint32_t sim_once = ~0u;                                            // #204: sim_leave boots this catalog entry once
 xyf::key_repeat::Held sim_held = {xyf::key_repeat::none, 0};        // as key_ui
 int sim_pending = -1;                                               // logged on a change
 // #315: the screen saver as key_ui's (xyf_saver.hpp); no screen here: its start and end are logged, with the
@@ -499,6 +500,7 @@ extern "C" void xy_forever_key_ui() {
                 if (xyf_sim::shared->defer_save_boot) {
                     if (xyf_sim::shared->defer_save_boot.exchange(2) == 1) xyf_sim::log("menu: deferred Save boot");
                 } else if (!xyf_boot::link_lost() && xyf_boot::link_idle() && !usb_service::page_busy()) {
+                    sim_once = mods_io::converge_entry(); // #204: as key_ui.cpp (a boot once)
                     mods_io::converge_done();
                     xyf_sim::log("menu: saved");
                     sim_leave = true;
@@ -514,9 +516,15 @@ extern "C" void xy_forever_key_ui() {
 #endif
         if (sim_leave) {
             const xyf::catalog::Catalog* c = xyf_boot::catalog();
+            sim_leave = false;
+            if (sim_once != ~0u) { // #204: menu.converge mode 2
+                xyf_sim::log("menu: boots once %s", c && sim_once < c->count ? c->items[sim_once].id : "(none)");
+                xyf_boot::choose(sim_once);
+                sim_once = ~0u;
+                break;
+            }
             xyf_sim::log("menu: boots the default %s",
                          c && c->default_index < c->count ? c->items[c->default_index].id : "(none)");
-            sim_leave = false;
             xyf_boot::choose_default();
             break;
         }

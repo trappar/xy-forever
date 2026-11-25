@@ -56,7 +56,11 @@ uint32_t longest_ms();
 // at the first start after Track 5): the stock entry adopted (xyf_mods_save.ipp adopt), made the default, the
 // fingerprint stored; it ends in converge_note (no boot: the menu stays, converge_reason its line: what was added or
 // made the default). Every other why adopts too when the check finds nothing to boot.
-enum Why : uint32_t { why_apply = 0, why_safe, why_restore, why_power_on, why_adopt };
+// why_once (#204, converge_once): library entry id booted once with its own content, the saved inputs, the default and
+// the fingerprint unchanged: its content switch (a job; its journal ends when it succeeds), then converge_boot with
+// converge_entry() its catalog index (~0u for every other why: the default). The next plain power-on finds the default's
+// content missing and converges back (xyf_converge.hpp doubt_content). s_not_found: no such entry; s_state: no os.ldr.
+enum Why : uint32_t { why_apply = 0, why_safe, why_restore, why_power_on, why_adopt, why_once };
 enum ConvergeState : uint32_t { converge_idle = 0, converge_running, converge_boot, converge_failed, converge_note };
 bool menu_state(xyf::menu::State& app);
 void converge_begin(uint32_t why);
@@ -66,6 +70,18 @@ xyf::mods::Effect progress_key(uint32_t key, bool pressed);
 uint32_t converge_state();
 const char* converge_reason();
 void converge_done();
+uint32_t converge_once(const char* id);
+uint32_t converge_entry();
+// #204, usb_service's menu.converge: request (mode 1: converge_begin(why_apply) and boot, as PLAY on the first row;
+// mode 2: converge_once(id)): s_ok started; s_busy while a sequence runs or a job holds the storage; s_link, A not
+// serving; converge_once's statuses. converge_report: state (0 idle, 1 running, 2 it ended without booting: reason,
+// 3 booting: the menu closes on its next pass), job (the job running now, or the last: job.status), reason.
+struct ConvergeView {
+    uint32_t state, job;
+    const char* reason;
+};
+uint32_t converge_request(uint32_t mode, const char* id);
+void converge_report(ConvergeView& v);
 // #26, usb_service's config.get and config.set: the saved inputs over USB. config_view reads the record fresh (s_ok;
 // s_busy while the sequence runs or a job holds the storage; else the read's status): record (1: saved), count, flags
 // (bit 0 the 4 MiB layout, bit 1 safe mode, bit 2 an unknown base allowed), saving (1: a flip waits for its quiet

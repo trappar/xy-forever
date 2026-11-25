@@ -265,9 +265,12 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
             U32 reason = a_prepare(storage, mounted, lib, index, bytes, crc);
             if (reason == reason_no_library) reason = a_content_reason(lib, index);   // the menu says why
             a_prepared = reason == reason_ok ? index : 0xffffffffu;
-            // #21: Menu at power-on, read before the status is built (both use the scan scratch)
+            // #21: Menu at power-on, read before the status is built (both use the scan scratch); also when only the
+            // default's content is missing (#204: Start at menu opens the menu after a boot once, not the converge)
             const U32 power_on =
-                item == xyf_boot::item_check_default && reason == reason_ok ? a_power_on(storage, mounted) : 0u;
+                item == xyf_boot::item_check_default && (reason == reason_ok || reason == reason_content) ?
+                    a_power_on(storage, mounted) :
+                    0u;
             const U32 converge = item == xyf_boot::item_check_default ? a_converge(storage, mounted, lib) : 0u; // #197
             xyf_boot::CheckStatus& s = *reinterpret_cast<xyf_boot::CheckStatus*>(xyf_boot::status_buffer);
             for (U32 i = 0; i != sizeof(s); ++i) reinterpret_cast<volatile Byte*>(&s)[i] = 0;

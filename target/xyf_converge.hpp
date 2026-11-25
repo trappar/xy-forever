@@ -7,7 +7,9 @@
 // record (config.json), the stamp the record's slot holds now, the library's default and which content is installed.
 // plan() compares the two and returns only the operations still needed, always in this order: build (the selection
 // into the spare slot), switch (the target's content), record (config.json), default (the target); the boot follows.
-// A switch always brings the record and the default after it: the config job ends the switch's journal. Running a
+// A switch always brings the record and the default after it: the config job ends the switch's journal. With no setup
+// saved the default boots as it is, once its own content is installed: a boot once of another entry (#204, xyf dev)
+// leaves that entry's content, so the plan is the switch back alone (no record; the switch ends its journal). Running a
 // plan and planning again returns nothing (tests/native/converge_test.cpp). xyf_mods_io's converge sequence runs the plan.
 // Pure and header-only: static functions (an inline, weak function is a register call on Blackfin).
 namespace xyf { namespace converge {
@@ -22,6 +24,7 @@ struct Actual {
     const char* stamp; // the record's slot's info.txt sha256= now ("": not in the library, unreadable)
     const char* default_id; // the library's default entry ("": none)
     uint32_t base_installed, slot_installed; // the base's / the record's slot's content is installed
+    uint32_t default_installed;              // the default's content is installed
 };
 struct Plan {
     uint32_t ops; // Op bits
@@ -46,7 +49,10 @@ static inline bool built(const Inputs& in, const Actual& a) {
 static inline Plan plan(const Inputs& in, const Actual& a) {
     const config::Record& r = *a.record;
     Plan p = {0, a.default_id};
-    if (r.state != config::present && !in.count && !in.expanded) return p; // no setup: the default boots as it is
+    if (r.state != config::present && !in.count && !in.expanded) { // no setup: the default boots as it is
+        if (a.default_id[0] && !a.default_installed) p.ops = op_switch;   // its content back first (#204)
+        return p;
+    }
     const bool mods = in.count && !in.safe; // safe mode: the base with its official content
     if (mods && !built(in, a)) {
         p.ops = op_build | op_switch | op_record | op_default;
@@ -64,11 +70,12 @@ static inline Plan plan(const Inputs& in, const Actual& a) {
 // memory=, safe=) and what they converged to (the default). A plain power-on (file_boot.cpp a_converge) boots at once
 // when the stored text is the one these inputs and the library's default make and nothing is in doubt (Doubt), else B
 // converges first. Any other text (missing, another format, malformed) is no match: the sequence writes it again.
+// doubt_content (#204): the default's content is not installed (another entry was booted once with its own content).
 static const char mark_path[] = "/yaffs2/xy-forever/converged.txt";
 static const char mark_old[] = "/yaffs2/xy-forever/converged.old";
 static const char mark_part[] = "/yaffs2/xy-forever/converged.txt.part";
 static const uint32_t mark_max = 160;
-enum Doubt : uint32_t { doubt_mark = 1, doubt_job = 2, doubt_switching = 4, doubt_default = 8 };
+enum Doubt : uint32_t { doubt_mark = 1, doubt_job = 2, doubt_switching = 4, doubt_default = 8, doubt_content = 16 };
 // "format=1\ninputs=<64 hex>\ndefault=<id>\n" into out: bytes, 0 when it does not fit.
 static inline uint32_t mark_text(char* out, uint32_t capacity, const uint8_t* digest, const char* target) {
     static const char hex[] = "0123456789abcdef";

@@ -45,7 +45,10 @@ class SettingsTests(unittest.TestCase):
         a_menu = (ROOT / 'target/file_boot_a_menu.ipp').read_text()
         self.assertLess(a_menu.index('a_power_on(storage, mounted)'), a_menu.index('xyf_boot::CheckStatus& s = '))
         b_menu = (ROOT / 'target/file_boot_b_menu.ipp').read_text()
-        self.assertIn('if (reason == reason_ok && b_status().power_on == xyf::settings::power_always)', b_menu)
+        self.assertIn(
+            'if ((reason == reason_ok || reason == reason_content) && b_status().power_on == xyf::settings::power_always)',
+            b_menu,
+        )
 
 
 if __name__ == '__main__':

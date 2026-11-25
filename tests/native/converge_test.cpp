@@ -4,6 +4,7 @@
 #include "xyf_converge.hpp"
 #include <stdio.h>
 #include <string.h>
+#include <string>
 namespace xc = xyf::converge;
 namespace xg = xyf::config;
 namespace {
@@ -20,7 +21,12 @@ uint32_t slot_index(const char* id) { return strcmp(id, "mods-b") == 0 ? 1u : st
 void set(char* out, uint32_t room, const char* s) { snprintf(out, room, "%s", s); }
 xc::Actual actual(const World& w) {
     const uint32_t s = slot_index(w.rec.slot);
-    return xc::Actual{&w.rec, s < 2 ? w.stamp[s] : "", w.def, 0, w.rec.slot[0] && strcmp(w.installed, w.rec.slot) == 0};
+    return xc::Actual{&w.rec,
+                      s < 2 ? w.stamp[s] : "",
+                      w.def,
+                      0,
+                      w.rec.slot[0] && strcmp(w.installed, w.rec.slot) == 0,
+                      w.def[0] && strcmp(w.installed, w.def) == 0};
 }
 // The actual state for the inputs: their base's content installed or not.
 xc::Actual actual_for(const World& w, const xc::Inputs& in) {
@@ -42,7 +48,7 @@ void run(const xc::Plan& p, const xc::Inputs& in, World& w) {
     const char* target = p.target ? p.target : slot;
     char kept[32];
     set(kept, sizeof(kept), target);
-    if (p.ops & xc::op_switch) set(w.installed, sizeof(w.installed), kept);
+    if (p.ops & xc::op_switch) set(w.installed, sizeof(w.installed), kept); // no record: the default's own content
     if (p.ops & xc::op_record) {
         xg::Record& r = w.rec;
         const bool built = (p.ops & xc::op_build) != 0;
@@ -84,8 +90,15 @@ uint32_t ops(const World& w, const xc::Inputs& in) { return xc::plan(in, actual_
 const uint32_t B = xc::op_build, S = xc::op_switch, R = xc::op_record, D = xc::op_default;
 void table() {
     const xc::Inputs none = {base, "", 0, 0, 0}, two = {base, "A", 2, 0, 0}, safe = {base, "A", 2, 0, 1};
-    // No setup saved, nothing selected: the default boots as it is (whatever it is).
+    // No setup saved, nothing selected: the default boots as it is (whatever it is), once its own content is back
+    // (#204: another entry was booted once with its content): the switch alone, to the default.
     CHECK(ops(world(0, 0, 2, "", 0, 0, 0, base, "mods-a", "mods-a"), none) == 0);
+    CHECK(ops(world(0, 0, 2, "", 0, 0, 0, base, "mods-a", "mods-b"), none) == S);
+    CHECK(xc::plan(none, actual_for(world(0, 0, 2, "", 0, 0, 0, base, base, "mods-b"), none)).target ==
+          std::string(base));
+    // A setup saved, another entry's content installed (a boot once): the switch back, the record, the default.
+    CHECK(ops(world(1, 2, 0, "A", 1, 0, 0, base, "mods-a", "mods-b"), two) == (S | R | D));
+    CHECK(ops(world(1, 0, 0, "A", 1, 0, 0, base, base, "mods-b"), none) == (S | R | D));
     // The first Save: build, switch, record, default.
     CHECK(ops(world(0, 0, 2, "", 0, 0, 0, base, base, base), two) == (B | S | R | D));
     // Saved and applied: nothing; again with Mod memory changed alone (no mods): the record only.
@@ -102,7 +115,7 @@ void table() {
     // The slot gone from the library ("(rebuild)"), another selection, another base: a build.
     World gone = applied;
     gone.stamp[0][0] = 0;
-    CHECK(xc::plan(two, xc::Actual{&gone.rec, "", "mods-a", 0, 0}).ops == (B | S | R | D));
+    CHECK(xc::plan(two, xc::Actual{&gone.rec, "", "mods-a", 0, 0, 1}).ops == (B | S | R | D));
     CHECK(ops(applied, xc::Inputs{base, "C", 2, 0, 0}) == (B | S | R | D));
     CHECK(ops(applied, xc::Inputs{other_base, "", 2, 0, 0}) == (B | S | R | D));
     // Only the default differs (set over USB): the default; its content gone too: the switch, record, default.
@@ -149,11 +162,11 @@ void every() {
                                                                 const xc::Plan p = xc::plan(in, actual_for(w, in));
                                                                 CHECK((!(p.ops & B) ||
                                                                        (p.ops & S))); // a build is switched to
-                                                                CHECK((
-                                                                    !(p.ops & S) ||
-                                                                    ((p.ops & R) &&
-                                                                     (p.ops &
-                                                                      D)))); // a switch: the record and default after it
+                                                                // a switch: the record and default after it, or
+                                                                // (no setup saved) the default's own content back
+                                                                CHECK((!(p.ops & S) || ((p.ops & R) && (p.ops & D)) ||
+                                                                       (p.ops == S && !state && !ic && !ie &&
+                                                                        strcmp(p.target, w.def) == 0)));
                                                                 CHECK((p.target == 0) == ((p.ops & B) != 0));
                                                                 run(p, in, w);
                                                                 const xc::Plan again = xc::plan(in, actual_for(w, in));
