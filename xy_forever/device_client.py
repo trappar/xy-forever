@@ -7,10 +7,12 @@ Protocol (docs/PROTOCOL.md): the HELLO reply's `cmds` lists the commands the dev
 any other. A device without `cmds` (pre-v1, build 153 and earlier) is assumed to answer every 1.0 command.
 """
 
+import errno
 import hashlib
 import os
 import socket
 import struct
+import subprocess
 import sys
 import time
 import zlib
@@ -399,6 +401,48 @@ def current_state(slot_bytes):
 
 
 T0 = time.monotonic()
+BUSY_S = 3.0  # connect: a port another program holds this long without a break is reported, never waited out
+
+
+class PortBusy(SystemExit):
+    """connect(): the OP-XY's serial port is held by another program (its open refused: EBUSY on macOS and Linux,
+    access denied on Windows). The device itself is fine: no power cycle helps; the other program has to let go."""
+
+
+def port_busy(error):
+    """Whether an open's OSError means another program holds the port."""
+    if isinstance(error, PermissionError) or getattr(error, 'errno', None) in (errno.EBUSY, errno.EACCES, errno.EPERM):
+        return True
+    text = str(error).lower()
+    return 'busy' in text or 'access is denied' in text or 'permissionerror' in text
+
+
+def port_holders(port, run=subprocess.run):
+    """[(name, pid)] of the other processes that have port open, as lsof tells (macOS, Linux); [] when it cannot."""
+    if sys.platform == 'win32' or port.startswith('sim:'):
+        return []
+    try:
+        listed = run(['lsof', '-F', 'pc', port], capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    holders, pid = [], None
+    for line in listed.stdout.splitlines():
+        if line.startswith('p') and line[1:].isdigit():
+            pid = int(line[1:])
+        elif line.startswith('c') and pid is not None and pid != os.getpid():
+            holders.append((line[1:], pid))
+            pid = None
+    return holders
+
+
+def busy_text(port, holders):
+    """What to tell the user when another program holds the OP-XY's port: who, when the system can tell, and how to
+    free it (no power cycle: the device is fine)."""
+    who = ', '.join('%s (PID %d)' % holder for holder in holders) or 'another program'
+    return (
+        "the OP-XY's serial port %s is in use by %s: click Disconnect in the XY Forever page or close it (or the other "
+        'tool using the port), then run this again' % (port, who)
+    )
 
 
 def log(message):
@@ -416,7 +460,7 @@ def connect(timeout, hello_every=0.5, hello_window=8.0, log=log, waiting=None):
     deadline = time.monotonic() + (min(timeout, bounds.SIM_CONNECT_S) if SIM else timeout)
     if not SIM:
         device_lock.hold(timeout)
-    seen = None
+    seen, busy_since = None, None
 
     def wait_once():
         nonlocal waiting
@@ -437,8 +481,15 @@ def connect(timeout, hello_every=0.5, hello_window=8.0, log=log, waiting=None):
             transport = open_port(port)
         except OSError as error:
             log('open %s failed: %s' % (port, error))
+            if not port_busy(error):
+                busy_since = None
+            elif busy_since is None:
+                busy_since = time.monotonic()
+            elif time.monotonic() - busy_since >= BUSY_S or time.monotonic() + 0.3 >= deadline:
+                raise PortBusy(busy_text(port, port_holders(port))) from None
             pause(0.3)
             continue
+        busy_since = None
         dev, sent, received = Device(transport), 0, 0
         window = min(deadline, time.monotonic() + hello_window)
         try:

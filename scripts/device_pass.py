@@ -134,7 +134,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 EXIT_PASS, EXIT_FAIL, EXIT_USAGE, EXIT_NEED = 0, 1, 2, 3
 NEED = 'NEED: power off, then power on holding PLAY; release it at the logo'
-NO_ANSWER, ERROR = 100, 101  # command results: connect failed (no HELLO), exception
+NO_ANSWER, ERROR, PORT_BUSY = 100, 101, 102  # command results: connect failed (no HELLO), exception, port held
 NOT_FOUND = P.STATUS_NAMES.index('not_found')
 SESSIONS = paths.SESSIONS
 STOCK_OS_LDR = paths.STOCK_121 / 'os.ldr'
@@ -649,6 +649,9 @@ class HostDevice:
         try:
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 code = host.main(['--timeout', '%g' % timeout] + list(argv))
+        except host.device_client.PortBusy as error:  # another program holds the port: no power cycle helps
+            code = PORT_BUSY
+            err.write('%s\n' % error.code)
         except SystemExit as error:  # connect(): no service answered HELLO
             code = error.code if isinstance(error.code, int) else NO_ANSWER
             err.write('%s\n' % error.code)
@@ -692,6 +695,8 @@ def why(code, out, err):
     if code == NO_ANSWER:
         tail = [line for line in text if 'HELLO' in line or 'not found' in line]
         return 'no answer (%s)' % (tail[-1] if tail else 'no port')[:120]
+    if code == PORT_BUSY:
+        return next((line for line in text if 'in use by' in line), 'the port is in use by another program')[:240]
     return ('%s (exit %d)' % (text[-1] if text else 'no output', code))[:160]
 
 
@@ -728,6 +733,7 @@ class Pass:
         self.pending = []  # (file name, text) written once the folder exists
         self.state = {}
         self.no_answer = False
+        self.port_busy = None  # the host's line when another program held the port
         self.hello = None  # P.Hello of the protocol stage
 
     # -- helpers -----------------------------------------------------------------------------
@@ -742,9 +748,15 @@ class Pass:
         )
         return code, out, err
 
+    def busy(self, code, err):
+        """A held port: what to tell the user (the host's own line), kept for the NEED line."""
+        if code == PORT_BUSY:
+            self.port_busy = next((line for line in err.splitlines() if 'in use by' in line), err.strip())
+
     def ok(self, argv, timeout=T_ANSWER, **limits):
         code, out, err = self.host(argv, timeout, **limits)
         if code:
+            self.busy(code, err)
             if code == NO_ANSWER:
                 self.no_answer = True
             detail = why(code, out, err)
@@ -785,6 +797,7 @@ class Pass:
         if code == NOT_FOUND:
             return None
         if code:
+            self.busy(code, err)
             if code == NO_ANSWER:
                 self.no_answer = True
             raise StepFail('read %s: %s' % (path, why(code, text, err)))
@@ -2218,7 +2231,7 @@ class Pass:
 
     # -- runner --------------------------------------------------------------------------------
     def run_step(self, index, stage, name):
-        self.prefix, self.log, self.no_answer = '%02d-%s' % (index, name), [], False
+        self.prefix, self.log, self.no_answer, self.port_busy = '%02d-%s' % (index, name), [], False, None
         start = time.monotonic()
         try:
             if self.opts.sim and name in SIM_SKIPS:
@@ -2445,6 +2458,9 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=None):
     rows, index = [], 0
     index += 1
     check = run.run_step(index, 'check', 'check')
+    if check['result'] == 'FAIL' and run.port_busy:  # another program holds the port: not a power cycle
+        print('NEED: %s' % run.port_busy)
+        return EXIT_NEED
     if check['result'] == 'FAIL' and run.no_answer:
         print(SIM_NEED if opts.sim else NEED)
         return EXIT_NEED
@@ -2485,7 +2501,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=None):
         row = run.run_step(index, 'end', name)
         rows.append(row)
         if name == 'end-status' and row['result'] == 'FAIL':
-            lost = (
+            lost = run.port_busy or (
                 'device not answering: if it stays so, power off, then power on holding PLAY'
                 if run.no_answer
                 else 'after FAIL of end/end-status'
