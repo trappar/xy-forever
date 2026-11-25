@@ -103,6 +103,7 @@ extend-exclude = [
 "xy_forever/modsend.py" = "py311"
 "xy_forever/modsend_local.py" = "py311"
 "xy_forever/modstore.py" = "py311"
+"xy_forever/mtp_read.py" = "py311"
 "xy_forever/native_json.py" = "py311"
 "xy_forever/no_device.py" = "py311"
 "xy_forever/package_records.py" = "py311"

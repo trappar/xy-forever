@@ -17,8 +17,8 @@ import time
 from serial.tools import list_ports
 
 from xy_forever import device_lock, no_device
+from xy_forever.mtp_read import OP_XY_VID
 
-OP_XY_VID = 0x2367  # teenage engineering: its USB vendor id (the serial port here, MTP in mtp_read.py)
 WRITE_STALL = 2.0  # seconds a write may make no progress before it is a timeout
 OPEN_LIMIT = 3.0  # seconds SerialPort waits for the port to open before it is a timeout
 DETACHED = [sys.executable, '-m', 'xy_forever.transport']  # the detached side's command (_detached)

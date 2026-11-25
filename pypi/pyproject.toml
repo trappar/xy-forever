@@ -62,6 +62,7 @@ modules = [
     "modsend",
     "modsend_local",
     "modstore",
+    "mtp_read",
     "native_json",
     "no_device",
     "package_records",
