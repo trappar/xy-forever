@@ -73,13 +73,22 @@ class ContentsTest(unittest.TestCase):
             self.assertTrue((ROOT / path).exists(), path)
 
     def test_the_facts_it_carries(self):
-        """dev_entry's stock OS 1.2.1 pin and image capacity are the repository's."""
-        from xy_forever import dev_entry, host_install
+        """dev_entry's stock OS 1.2.1 pin, the boot's staging size and the cold policy are the repository's."""
+        import re
+
+        from xy_forever import dev_entry, xyf_build
 
         facts = json.loads((ROOT / 'stock_facts.json').read_text())
         found = [v for v in _walk(facts) if v.get('sha256') == dev_entry.STOCK_SHA256]
         self.assertEqual([v['bytes'] for v in found], [dev_entry.STOCK_BYTES])
-        self.assertEqual(dev_entry.CAPACITY, host_install.IMAGE_CAPACITY)
+        staging = re.search(r'staging_bytes = (0x[0-9a-f]+)u', (ROOT / 'target/file_boot.hpp').read_text())
+        self.assertEqual(dev_entry.STAGING_BYTES, int(staging.group(1), 16))
+        cold = (ROOT / 'target/cold.cpp').read_text().replace('XYF_STACK_END', '%#xu' % xyf_build.WIDE_STACK_END)
+        for name, ranges in (('allowed', dev_entry.ALLOWED), ('protected_ranges', dev_entry.PROTECTED)):
+            body = cold[cold.index('const Range %s[] = {' % name) :]
+            body = body[: body.index('};')]
+            found = [(int(a, 16), int(b, 16)) for a, b in re.findall(r'\{(0x[0-9a-fA-F]+)u, (0x[0-9a-fA-F]+)u\}', body)]
+            self.assertEqual(tuple(found), ranges, name)
 
 
 def _walk(value):

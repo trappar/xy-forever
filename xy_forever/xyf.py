@@ -1,8 +1,9 @@
 """xyf: the mod developer's commands, published on PyPI as `xy-forever` (#284; its page: pypi/README.md).
 
   xyf stock-os [OUT]           the stock OS 1.2.1 os.ldr from the OP-XY's own library, for `sdk.py build --stock-os`
-  xyf dev BUILD                Open-XY's build (`sdk.py build --out BUILD`): checked, pushed as library entry xyf-dev
-                               with its content, booted once (dev_entry.py)
+  xyf dev BUILD                a full firmware image (Open-XY's `sdk.py build --out BUILD`, or any other): checked as
+                               the device checks library images, pushed as library entry xyf-dev with its content
+                               (if any), booted once (dev_entry.py)
   xyf dev --watch FOLDER       the same for every new build in FOLDER (a build folder inside it, or FOLDER itself)
   xyf logs [--out DIR]         the OP-XY's new crash logs and reports, copied to DIR
 
@@ -185,21 +186,21 @@ def stock_os(args, out=print, connect=checked_connect):
 
 # -- xyf dev --------------------------------------------------------------------------------------------
 def dev_build(args, folder, out=print, connect=checked_connect):
-    """One build: checked here, then pushed and booted once. The exit code."""
+    """One build: checked here as the device checks a library image, then pushed and booted once. The exit code."""
     from xy_forever import dev_entry
 
     try:
         image, content = dev_entry.read_build(folder)
-        stock = dev_entry.read_stock(args.stock_os or default_stock())
-        dev_entry.check_image(image, stock, dev_entry.read_profile(args.sdk or Path.cwd()))
-        files = dev_entry.entry_files(image, content)
+        dev_entry.check_image(image)
+        kind = dev_entry.which(image, args.stock_os or default_stock(), args.sdk or Path.cwd())
+        files = dev_entry.entry_files(image, content, kind)
     except dev_entry.Refused as error:
         out('xyf dev: refused: %s' % error)
         return 2
 
     def work(dev, detail):
         dev_entry.preflight(dev)
-        return dev_entry.run(dev, files, out, detail)
+        return dev_entry.run(dev, files, out, detail, kind)
 
     return session('xyf dev', args, work, out, connect)
 
@@ -353,8 +354,12 @@ def parser():
         'builds appear in',
     )
     d.add_argument('--watch', action='store_true', help='repeat for every new build in FOLDER, until Ctrl-C')
-    d.add_argument('--sdk', type=Path, metavar='DIR', help='your Open-XY checkout (default: the current folder)')
-    d.add_argument('--stock-os', type=Path, metavar='FILE', help='the stock OS 1.2.1 os.ldr (default: as stock-os)')
+    d.add_argument(
+        '--sdk', type=Path, metavar='DIR', help='your Open-XY checkout, for its profile (default: the current folder)'
+    )
+    d.add_argument(
+        '--stock-os', type=Path, metavar='FILE', help='the stock OS 1.2.1 os.ldr (default: where stock-os writes it)'
+    )
     lg = sub.add_parser(
         'logs',
         help="copy the OP-XY's new crash logs and reports from the last boot",

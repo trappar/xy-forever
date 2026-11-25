@@ -15,7 +15,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import pytest
-from test_ldr import header
+from test_ldr import header, image
 from test_modpatch import profile_for, stock
 
 from xy_forever import dev_entry, device_client, moddev, package_records, sim, transport, xyf
@@ -104,27 +104,40 @@ class ProtocolTest(unittest.TestCase):
 
 
 class CheckTest(Synthetic, unittest.TestCase):
-    def test_open_xy_s_assembly_of_the_stock_image_passes(self):
-        dev_entry.check_image(self.image, self.stock, self.profile)
+    def test_what_the_device_admits_passes(self):
+        for data in (self.image, self.stock):  # Open-XY's build, and any other image the device boots
+            dev_entry.check_image(data)
 
-    def test_anything_else_is_refused(self):
+    def test_what_the_device_refuses_is_refused_first(self):
+        entry = parse_ldr(self.stock)[-1].target
+        cases = [
+            (b'not an image', 'is 12 bytes: XY Forever boots 32 to'),
+            (b'\0' * 64, 'is not an OS image'),
+            (image([(4, 0x8A000000, 4, 0, b'\0\0\0\0'), (4, entry, 4, 0, b'\0' * 4)], entry), 'never loads an image'),
+            (image([(4, 0x70000000, 4, 0, b'\0\0\0\0'), (4, entry, 4, 0, b'\0' * 4)], entry), 'never loads an image'),
+            (image([(4, 0x11A10000, 4, 0, b'\0' * 4)], 0x11A10000), 'starts at 0x11a10000'),
+        ]
+        for data, pattern in cases:
+            with self.subTest(pattern=pattern), self.assertRaisesRegex(dev_entry.Refused, pattern):
+                dev_entry.check_image(data)
+
+    def test_which_it_is(self):
+        self.assertTrue(dev_entry.open_xy_build(self.image, self.stock, self.profile))
         changed = bytearray(self.image)
         changed[112 + 0x90] ^= 1  # a byte of the stock text record outside every edit (test_modpatch's TEXT_AT)
-        cases = [
-            (bytes(changed), 'differs from stock OS 1.2.1 outside the edits Open-XY makes'),
-            (self.stock, r'3 records|5 records; Open-XY adds one'),
-            (assemble(self.stock, dict(self.profile, module_base=0x8D000000)), 'module is not where Open-XY puts it'),
-            (b'not an image', 'is not an OS image'),
-        ]
-        for image, pattern in cases:
-            with self.subTest(pattern=pattern), self.assertRaisesRegex(dev_entry.Refused, pattern):
-                dev_entry.check_image(image, self.stock, self.profile)
+        for other in (bytes(changed), self.stock, assemble(self.stock, dict(self.profile, module_base=0x8D000000))):
+            self.assertFalse(dev_entry.open_xy_build(other, self.stock, self.profile))
+        self.assertEqual(dev_entry.which(self.image, self.stock_path, self.sdk), dev_entry.OPEN_XY)
+        self.assertEqual(dev_entry.which(bytes(changed), self.stock_path, self.sdk), dev_entry.CUSTOM)
+        self.assertEqual(dev_entry.which(self.image, self.tmp / 'none', self.sdk), dev_entry.CUSTOM)  # no stock here
+        self.assertEqual(dev_entry.which(self.image, self.stock_path, self.tmp), dev_entry.CUSTOM)  # no profile
 
     def test_the_build_and_the_entry(self):
         image, content = dev_entry.read_build(self.build())
         self.assertEqual((image, sorted(content)), (self.image, ['display/mine.svg', 'op1_factory.json']))
         self.assertEqual(dev_entry.read_build(self.build() / 'candidate')[0], self.image)  # the candidate folder too
-        files = dev_entry.entry_files(image, content)
+        self.assertEqual(dev_entry.read_build(self.build() / 'candidate' / 'os.ldr'), (self.image, {}))  # a file
+        files = dev_entry.entry_files(image, content, dev_entry.OPEN_XY)
         self.assertEqual(
             sorted(files),
             ['content/display/mine.svg', 'content/op1_factory.json', 'files.sha256', 'manifest.json', 'os.ldr'],
@@ -142,57 +155,43 @@ class CheckTest(Synthetic, unittest.TestCase):
                 sha256=digest,
             ),
         )
+        plain = dev_entry.entry_files(self.stock, {})  # a custom image without content: a plain firmware entry
+        self.assertEqual(sorted(plain), ['files.sha256', 'manifest.json', 'os.ldr'])
+        fields = package_records.parse(plain['manifest.json'], 'manifest.json')
+        self.assertEqual((fields['kind'], 'generation' in fields, 'needs_os' in fields), ('custom', False, False))
         with self.assertRaisesRegex(dev_entry.Refused, 'cannot be a library entry'):
             dev_entry.entry_files(image, {'bootloader.dev': b'x'})
         (self.build() / 'candidate' / 'notes.txt').write_text('?')
         with self.assertRaisesRegex(dev_entry.Refused, 'files xyf dev does not know: notes.txt'):
             dev_entry.read_build(self.build())
-        with self.assertRaisesRegex(dev_entry.Refused, 'holds no candidate/os.ldr'):
+        with self.assertRaisesRegex(dev_entry.Refused, 'holds no candidate/os.ldr or os.ldr'):
             dev_entry.read_build(self.tmp)
 
 
 class DevTest(Synthetic, unittest.TestCase):
     def dev(self, folder, connect=None, **kw):
         lines = []
-        args = dev_args(sdk=self.sdk, stock_os=self.stock_path, **kw)
+        args = dev_args(**{'sdk': self.sdk, 'stock_os': self.stock_path, **kw})
         code = xyf.dev_build(args, folder, lines.append, connect or (lambda *a, **k: self.fail('connected')))
         return code, lines
 
-    def test_refusals_before_the_device(self):
-        build = self.build()
-        stock_line = 'xyf dev: refused: no stock OS 1.2.1 at %s: run `xyf stock-os` (it copies it from your OP-XY)'
-        cases = [
-            (dict(stock_os=self.tmp / 'none'), stock_line % (self.tmp / 'none')),
-            (
-                dict(sdk=self.tmp),
-                'xyf dev: refused: no Open-XY profile at %s' % (self.tmp / 'profiles/opxy-1.2.1.json'),
-            ),
-        ]
-        for overrides, line in cases:
-            lines = []
-            args = dev_args(**{'sdk': self.sdk, 'stock_os': self.stock_path, **overrides})
-            self.assertEqual(xyf.dev_build(args, build, lines.append, lambda *a, **k: self.fail('connected')), 2)
-            self.assertEqual(len(lines), 1)
-            self.assertTrue(lines[0].startswith(line), lines)
-        code, lines = self.dev(self.build('plain', image=self.stock))
+    def test_a_refusal_before_the_device(self):
         self.assertEqual(
-            (code, lines),
-            (
-                2,
-                [
-                    'xyf dev: refused: the candidate os.ldr is not an Open-XY build of OS '
-                    '1.2.1 (5 records; Open-XY adds one to the stock 5)'
-                ],
-            ),
+            self.dev(self.build('broken', image=b'\0' * 64)),
+            (2, ['xyf dev: refused: the os.ldr is not an OS image (Invalid header/checksum at 0x0)']),
         )
 
-    def test_a_checked_build_reaches_the_connection(self):
+    def test_any_image_reaches_the_connection(self):
         def connect(timeout, log, waiting):
             waiting()
             raise xyf.Incompatible('the OP-XY speaks XY Forever protocol 1.21; ...')
 
-        code, lines = self.dev(self.build(), connect)
-        self.assertEqual((code, lines), (2, [moddev.POWER, 'xyf dev: the OP-XY speaks XY Forever protocol 1.21; ...']))
+        for build in (self.build(), self.build('custom', image=self.stock, content={})):
+            with self.subTest(build=build.name):
+                code, lines = self.dev(build, connect, stock_os=self.tmp / 'none')  # no stock: still pushed
+                self.assertEqual(
+                    (code, lines), (2, [moddev.POWER, 'xyf dev: the OP-XY speaks XY Forever protocol 1.21; ...'])
+                )
 
 
 class WatchTest(Synthetic, unittest.TestCase):
