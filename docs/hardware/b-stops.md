@@ -13,3 +13,13 @@ so the OP-XY leaves the bus) and wait for the power to go; its command handler c
 (`target/knob_input.hpp`). So the menu draws any such frame top left before that poll takes it: `P31:16 off` (type,
 status; "off": the power handler shuts down on it) or `P<type>:<byte 4>` (a command frame). STATUS keeps the last 16
 non-knob frames and the power handler's stored status (diag.status block PSC1, `psoc_frames`).
+
+B has also stopped as a whole during the on-device content read with a host polling STATUS (#314): the screen
+frozen on its last frame, no input, no crash screen, the OP-XY gone from the bus. A core-timer tick every 0.5 s
+(IVG6, tried as a hang detector) made it go away, and the same build without the tick froze again: so the core
+was likely stuck in a way only an interrupt that does not come through the system bus could end. That fits the ADSP-BF70x
+silicon anomaly 19000058, "System MMR Reads Can Cause Core Hang", whose workaround (NOPs on both sides of each
+system MMR read, the load 8-byte aligned) the stock code carries and our GCC-built code did not. B's menu loop
+reads the display DMA's status, a system MMR, at every frame; that read now carries the workaround
+([code rules](../architecture/code-rules.md)). Confirmed only once a build with it, and without the tick, reads
+through repeatedly with a host polling.
