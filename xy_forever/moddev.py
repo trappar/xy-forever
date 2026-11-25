@@ -171,7 +171,7 @@ def follow(dev, detail=print, poll=0.25, sleep=None):
                 if not code and j['phase'] != shown:
                     shown = j['phase']
                     detail('job %d (content): %s' % (f['job'], MS.describe(j)))
-        except OSError, TimeoutError:  # USB went away: the menu closed to start it
+        except (OSError, TimeoutError):  # USB went away: the menu closed to start it
             return True, ''
         sleep(poll)
 
@@ -277,22 +277,22 @@ def add_arguments(sub):
 STOPPED = 130  # the exit code after Ctrl-C (128 + SIGINT)
 
 
-def command(args, connect, out=print):
+def command(args, connect, out=print, name='mods dev'):
     """connect(timeout, log=, waiting=) -> (device, port, hello text), as xyf_host.connect. Ctrl-C anywhere (the wait
-    for the power cycle included): one line, exit code 130."""
+    for the power cycle included): one line, exit code 130. name starts the lines that end the run (xyf: xyf dev)."""
     try:
-        return run(args, connect, out)
+        return run(args, connect, out, name)
     except KeyboardInterrupt:
-        out('mods dev: stopped')
+        out('%s: stopped' % name)
         return STOPPED
 
 
-def run(args, connect, out=print):
+def run(args, connect, out=print, name='mods dev'):
     try:
         gen, package = resolve(args.package_dir, args.only)
         MS.local_set(gen, [package])
     except (MS.Refused, OSError) as error:
-        out('mods dev: refused: %s' % error)
+        out('%s: refused: %s' % (name, error))
         return 2
     verbose = getattr(args, 'verbose', False)
     detail = (lambda line: out('  ' + line)) if verbose else (lambda line: None)
@@ -307,7 +307,7 @@ def run(args, connect, out=print):
     detail('connected %s: %s' % (port, text))
     hello = P.Hello(text)
     if hello.major != '1' or not hello.answers(P.ids.MENU_CONVERGE):
-        out('mods dev: refused: %s' % PLAIN['unsupported'])
+        out('%s: refused: %s' % (name, PLAIN['unsupported']))
         dev.t.close()
         return 2
     try:
@@ -316,13 +316,13 @@ def run(args, connect, out=print):
             out('[wait] %.2f s' % (time.monotonic() - t))
         return dev_once(dev, args, gen, package, out, detail)
     except StartupNotReady as error:
-        out('mods dev: %s' % error)
+        out('%s: %s' % (name, error))
         return 1
     except MS.Refused as error:
-        out('mods dev: %s' % error)
+        out('%s: %s' % (name, error))
         return 1
     except (OSError, TimeoutError) as error:
-        out('mods dev: connection lost (%s); run it again' % error)
+        out('%s: connection lost (%s); run it again' % (name, error))
         return 1
     finally:
         with contextlib.suppress(OSError):
