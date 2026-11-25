@@ -117,7 +117,6 @@ class DevEntry(Switch, unittest.TestCase):
         self.assertEqual((self.root / SET / 'content.sha256').read_bytes(), self.listed)
         self.assertEqual((self.root / SET / 'firmware.version').read_bytes(), b'1.2.1+0\n')
         self.assertEqual(content(self.root)[0], {**self.official[0], **BUILD})
-        self.first_use = lines
 
         self.menu_again()  # later runs skip it
         code, lines, _ = self.xyf_dev(dev_entry.entry_files(self.stock, {}))
