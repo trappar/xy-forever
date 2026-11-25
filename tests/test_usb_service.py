@@ -216,6 +216,13 @@ class UsbServiceTest(unittest.TestCase):
         words[base + 14] = 3  # unknown
         v5 = struct.pack('<%dI' % len(words), *words)
         self.assertEqual(usb_service([dict(address=0, bytes=len(v5), offset=0)], v5)['build']['image'], 'unknown')
+        self.assertNotIn('replies_lost', out5)
+        # Version 6 (#314): replies that could not be written, after the identity.
+        words[1] = 6
+        words[base + 17 : base + 20] = [2, 41233, 1500]
+        v6 = struct.pack('<%dI' % len(words), *words)
+        out6 = usb_service([dict(address=0, bytes=len(v6), offset=0)], v6)
+        self.assertEqual(out6['replies_lost'], dict(outages=2, out_since_ms=41232, longest_ms=1500))
 
     def test_spans_match_bootloader_and_cover_calls(self):
         boot = STOCK_121 / 'bootloader.ldr'

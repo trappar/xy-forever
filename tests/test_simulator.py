@@ -170,7 +170,7 @@ class SimulatorTest(unittest.TestCase):
         dev = self.connect()
         code, body = dev.call(P.STATUS)
         decoded = host.decode_status(body)
-        self.assertEqual((code, decoded['usb_service']['version'], decoded['usb_service']['identity']), (0, 5, '0x0'))
+        self.assertEqual((code, decoded['usb_service']['version'], decoded['usb_service']['identity']), (0, 6, '0x0'))
         self.assertEqual(dev.read_file(BASE + 'state-a.txt'), (0, self.file(BASE + 'state-a.txt')))
         os_ldr = BASE + 'firmware/opxy-121/os.ldr'
         data = b''.join(dev.read_file(os_ldr, offset)[1] for offset in range(0, 8192, 1024))
@@ -877,6 +877,27 @@ class SimulatorTest(unittest.TestCase):
         self.sim.advance(400)
         dev = self.connect(hello=False)
         self.assertEqual(dev.call(P.HELLO, timeout=0.5)[0], 0)
+
+    @pytest.mark.sim
+    def test_replies_that_cannot_leave_are_shown_and_counted(self):
+        """Kept: #314: a USB link that stops answering while the menu runs is never silent. Replies that cannot be
+        written (an IN urb that never completes) put a line on the menu until one gets out; the next STATUS counts it."""
+        dev = self.connect()
+        line = 'menu: usb line: USB: replies are not getting out. Reconnect the cable.'
+
+        def log():
+            return (self.dir / 'log.txt').read_text(errors='replace')
+
+        self.sim.set('stall_replies', 1)
+        dev.t.write(P.encode(P.STATUS, 7, b''))  # its reply cannot leave
+        self.sim.until(lambda: line in log(), 'the stuck line', 5000)
+        self.sim.set('stall_replies', 0)
+        code, body = dev.call(P.STATUS)  # the first reply out: composed while the outage still ran
+        self.assertEqual((code, host.decode_status(body)['usb_service']['replies_lost']['outages']), (0, 1))
+        lost = host.decode_status(dev.call(P.STATUS)[1])['usb_service']['replies_lost']
+        self.assertEqual((lost['outages'], lost['out_since_ms']), (1, 0))
+        self.assertGreater(lost['longest_ms'], 500)
+        self.sim.until(lambda: log().rfind('menu: usb line: ') > log().rfind(line), 'the line gone', 2000)
 
     # -- the spec's stream vectors, cut frames, names ------------------------------------
     def frames(self, sock, parser, until, timeout):
