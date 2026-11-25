@@ -5,8 +5,8 @@ Part of [Operating the device](../OPERATING.md). The package: `xy-forever` on Py
 
 ## What goes in
 
-`pypi/pyproject.toml` lists the modules (`[tool.xyf] modules`); with `xy_forever/modkit_core.mjs`, `pypi/` and
-`LICENSE` they are the package's inputs. `scripts/xyf_dist.py build` copies them into a fresh folder and runs `uv
+`pypi/pyproject.toml` lists the modules (`[tool.xyf] modules`); with `pypi/` and `LICENSE` they are the package's
+inputs. `scripts/xyf_dist.py build` copies them into a fresh folder and runs `uv
 build` there: a pure Python wheel and an sdist, source only, no Teenage Engineering bytes. The listed modules run on
 Python 3.11, Open-XY's minimum: the root `pyproject.toml` lints them as 3.11 (`per-file-target-version`), and
 `tests/test_xyf_dist.py` keeps that list equal to the package's and every import they make at load time inside it.
@@ -15,9 +15,9 @@ A module the package needs joins the list.
 ## The check
 
 `.github/workflows/pypi.yml` runs on every pull request and push to `main` that touches `pypi/`, `xy_forever/`,
-`LICENSE`, the script or the workflow, and on every XY Forever release. On Linux it builds the package, then
-`xyf_dist.py check`: the wheel holds exactly the listed files and stays small, a new Python 3.11 environment
-installs it, `xyf --help`, `xyf --version` and every module import run there, and `xyf logs` against a stand-in
+`LICENSE`, the script or the workflow, and on every XY Forever release. It builds the package on Linux, then runs
+`xyf_dist.py check` on Linux and on Windows (uv only there, no repository environment): the wheel holds exactly the
+listed files and stays small, a new Python 3.11 environment installs it, `xyf --help`, `xyf --version` and every module import run there, and `xyf logs` against a stand-in
 OP-XY whose HELLO names protocol 1.21 stops with the mismatch line (exit 2). The simulator needs the private stock
 bootloader, which CI never has.
 

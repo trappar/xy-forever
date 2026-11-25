@@ -1,6 +1,6 @@
 # Try a mod you are writing: `mods dev`
 
-Part of [Writing mods for XY Forever](../MODS-DEV.md) (#204). The developer package's `xyf dev` (#284) runs this flow on an Open-XY kit.
+Part of [Writing mods for XY Forever](../MODS-DEV.md) (#204). A mod writer's `xyf dev` (#284) boots Open-XY's own build instead, with the same converge once.
 
 ```sh
 uv run xyf-host mods dev DIR/mods/opxy-1.2.1/<generation>/<mod>   # or the generation folder with --only ID
