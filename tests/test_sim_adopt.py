@@ -44,8 +44,9 @@ def expected_entry(image):
     return {'os.ldr': image, 'manifest.json': info, 'files.sha256': files}
 
 
-@unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
-class Adopt(unittest.TestCase):
+class AdoptBase(unittest.TestCase):
+    """A fresh simulator per test (a stock OP-XY just after Track 5) and the checks on it; no tests of its own."""
+
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-adopt-')
@@ -69,9 +70,12 @@ class Adopt(unittest.TestCase):
         shutil.rmtree(self.dir, ignore_errors=True)
 
     # -- helpers ---------------------------------------------------------------------------------
-    def start(self, stock='stock', play=True, slow_ms=0):
-        """slow_ms: A slowed from the first step on (the start's own job left to run while the test watches)."""
+    def start(self, stock='stock', play=True, slow_ms=0, seed=None):
+        """slow_ms: A slowed from the first step on (the start's own job left to run while the test watches). seed:
+        called with the fresh root before the start (more content)."""
         sim.seed_fresh(self.root, stock, self.image)
+        if seed:
+            seed(self.root)
         self.sim = sim.Simulator(
             self.root,
             self.dir / 'bootpart.bin',
@@ -170,7 +174,9 @@ class Adopt(unittest.TestCase):
         self.assertFalse((self.root / 'xy-forever/state-a.txt').exists())
         self.assertFalse(self.in_os())
 
-    # -- the tests ---------------------------------------------------------------------------------
+
+@unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
+class Adopt(AdoptBase):
     @pytest.mark.sim
     def test_first_plain_start_adopts_converges_and_boots_it(self):
         """Kept: The first start after install adopts the stock OS and boots it."""

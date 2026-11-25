@@ -30,12 +30,19 @@
 // anything is written). Then, after firmware.version, the official bytes replace it through an upload's name
 // (tmp/put-...), read back and renamed over the file: a cut leaves the old file or the new one, never neither, and the
 // next build reads the content again.
+// #334: those other files are removed too, after the catalog and before the list (cs_extras: regular files only, a
+// link stays), then each folder whose every entry went, deepest first (cs_folders: never content/ itself, nor a folder
+// that was empty). The light check (adopt_tidy, the first start's, after the adoption) does the same without reading
+// the content: in the official state, with every official path listed, it reads only op1_factory.json (cs_catalog),
+// and writes only when there is something to clean (the catalog to put back, or other files): then xy-forever/
+// cleanup.txt last (cs_note), what it did for the install page. Its detail is "tidy ID".
 namespace xa {
 const char source[] = "/yaffs2/upgrade/firmware/blackfin/bin/os.ldr";
 const char root[] = "/yaffs2/xy-forever", tmp[] = "/yaffs2/xy-forever/tmp", firmware[] = "/yaffs2/xy-forever/firmware";
 const char* const names[3] = {"os.ldr", "manifest.json", "files.sha256"};
 const char content[] = "/yaffs2/content", state_old[] = "/yaffs2/xy-forever/content-state.old";
 const char live_catalog[] = "/yaffs2/content/op1_factory.json";
+const char note[] = "/yaffs2/xy-forever/cleanup.txt"; // #334
 // The list's bounds (docs/storage/packages.md: files.sha256's 4096 entries of at most 160 path bytes).
 const U32 max_files = 4096, max_folders = 1024, max_rel = 160, pool_bytes = 0x40000u, text_bytes = 0x100000u;
 const U32 line_bytes = 64 + 2 + max_rel + 1;
@@ -64,6 +71,7 @@ enum AdoptStep : U32 {
     cs_list,
     cs_open,
     cs_read,
+    cs_catalog, // #334: the first start's light check reads only op1_factory.json
     cs_compare,
     cs_window,
     cs_version,
@@ -71,6 +79,9 @@ enum AdoptStep : U32 {
     cs_write,
     cs_back,
     cs_rename,
+    cs_extras,  // #334: another tool's files removed, then the folders they leave empty
+    cs_folders,
+    cs_note,    // #334: the first start's cleanup, for the install page
     ad_closing,
     ad_ended
 };
@@ -79,6 +90,7 @@ struct AdoptSlot {
     int in, out;
     U32 id, step, at, error, code, started_ms, ended_ms, hash, crc, bytes, copy, sub, text_n, debris, total, half,
         ahead;
+    U32 removed, restored; // #334: what the cleanup did (files removed; 1: op1_factory.json put back)
     xyf_core::hash::Sha256 sha;
     char target[32], detail[40], folder[96], path[128];
     char text[512];
@@ -93,9 +105,14 @@ struct ContentSetWork {
     // #331: op1_factory.json as read (catalog_n over catalog_max: too large to keep), then the official bytes put back
     // in its place (restored_n; 0: none); changed: it is not the official one and could not be put back.
     U32 catalog_n, restored_n, changed;
+    // #334: the files that are not official content (extras, removed), each with its folder's index; per folder: its
+    // parent's index, its entries and how many of them were removed (all: it goes too).
+    U32 extras, removed;
     uint8_t catalog[xyf::official::catalog_max];
     U32 file_ref[xa::max_files];      // pool offsets of the files' paths (relative to content/), sorted bytewise
     U32 folder_ref[xa::max_folders];  // the folders still to list, in the order found ("" the root)
+    U32 extra_ref[xa::max_files], extra_in[xa::max_files];
+    U32 folder_up[xa::max_folders], folder_n[xa::max_folders], folder_gone[xa::max_folders];
     xyf_core::hash::Sha256 list;      // over text, as it grows
     char pool[xa::pool_bytes];
     char text[xa::text_bytes];        // content.sha256
@@ -137,20 +154,36 @@ const char* sim_official() {
     return e && text_bytes(e) > 130 && e[129] == ' ' ? e + 130 : 0;
 }
 #endif
-bool official_path(const char* rel) {
+// The official paths' table (n: its length).
+const uint32_t* official_paths(U32& n) {
 #if defined(XYF_SIM)
     static uint32_t table[256];
     if (const char* p = sim_official()) {
         while (*p && *p != ' ') ++p;
-        U32 n = 0;
+        n = 0;
         for (; *p == ' ' && n != 256; p += 9, ++n) {
             table[n] = 0;
             for (U32 i = 1; i != 9; ++i) table[n] = table[n] << 4 | U32(p[i] <= '9' ? p[i] - '0' : p[i] - 'a' + 10);
         }
-        return xo::listed(rel, table, n);
+        return table;
     }
 #endif
-    return xo::listed(rel, xo::path_hashes, xo::path_count);
+    n = xo::path_count;
+    return xo::path_hashes;
+}
+bool official_path(const char* rel) {
+    U32 n = 0;
+    const uint32_t* table = official_paths(n);
+    return xo::listed(rel, table, n);
+}
+// #334: the light check cleans only content that holds every official path. In the simulator, only with its official
+// facts (XYF_SIM_OFFICIAL_CONTENT): without them its content is a stand-in, never cleaned.
+bool official_known() {
+#if defined(XYF_SIM)
+    return sim_official() != 0;
+#else
+    return true;
+#endif
 }
 const xo::List* official_lists() {
 #if defined(XYF_SIM)
@@ -193,6 +226,19 @@ const xyf::catalog::Item* official_121(const char* id, bool& found) {
     }
     return 0;
 }
+// The content's listing from the start: the root ("") its first folder.
+void cs_begin(AdoptSlot& a) {
+    ContentSetWork& w = cwork();
+    w.files = w.folders = w.pool_n = w.text_n = w.folder_at = w.skip = w.file_at = 0;
+    w.catalog_n = w.restored_n = w.changed = w.extras = w.removed = 0;
+    w.pool[0] = 0; // the root: ""
+    w.pool_n = 1;
+    w.folder_up[0] = w.folder_n[0] = w.folder_gone[0] = 0;
+    w.folder_ref[w.folders++] = 0;
+    w.list.reset();
+    a.bytes = a.total = 0;
+    a.step = cs_state;
+}
 U32 adopt_begin(const char* id, U32 mode) {
     stop_idle_gc();
     if (job_running() || closing XYF_OR_MTP_BUSY || uploading()) return P::s_busy;
@@ -208,11 +254,15 @@ U32 adopt_begin(const char* id, U32 mode) {
     join(a.folder, xa::tmp, "/adopt-", a.target);
     a.io.link = 0;
     a.in = a.out = -1;
-    a.at = a.error = a.code = a.bytes = a.crc = a.sub = a.debris = a.half = a.ahead = 0;
+    a.at = a.error = a.code = a.bytes = a.crc = a.sub = a.debris = a.half = a.ahead = a.removed = a.restored = 0;
     a.copy = mode;
     a.total = 0;
     a.step = mode == usb_service::adopt_copy ? ad_find : mode == usb_service::adopt_content ? cs_entry : ad_closing;
     if (mode == usb_service::adopt_content) join(a.detail, "content ", a.target);
+    if (mode == usb_service::adopt_tidy) {
+        join(a.detail, "tidy ", a.target);
+        cs_begin(a);
+    }
     a.hash = xyf::state_write::id_hash(a.target);
     a.id = ++job_counter;
     a.started_ms = a.ended_ms = now();
@@ -339,20 +389,27 @@ void content_list_page(AdoptSlot& a, ContentSetWork& w) {
         at += 6 + n;
         if (!n || (n == 1 && name[0] == '.') || (n == 2 && name[0] == '.' && name[1] == '.')) continue;
         if (!rel[0] && (same_folded(name, n, "dlc") || same_folded(name, n, "user"))) continue; // packs, the owner's
+        ++w.folder_n[w.folder_at];
         const U32 ref = pool_put(w, rel, name, n);
         if (ref == ~0u) return adopt_fail(a, xc::e_size, P::s_refused);
         if (kind != 1 && !official_path(w.pool + ref)) { // #331: another tool's file, left out of the set
-            w.pool_n = ref;
+            if (kind == 0) {                               // #334: and removed (a link or a device stays)
+                if (w.extras == xa::max_files) return adopt_fail(a, xc::e_size, P::s_refused);
+                w.extra_in[w.extras] = w.folder_at;
+                w.extra_ref[w.extras++] = ref;
+            } else w.pool_n = ref;
             continue;
         }
         if (kind > 1) return adopt_fail(a, xc::e_sha256, P::s_refused); // a link or a device: not the official set
         if (kind == 1) {
             if (w.folders == xa::max_folders) return adopt_fail(a, xc::e_size, P::s_refused);
+            w.folder_up[w.folders] = w.folder_at;
+            w.folder_n[w.folders] = w.folder_gone[w.folders] = 0;
             w.folder_ref[w.folders++] = ref;
             continue;
         }
         if (!file_insert(w, ref)) return adopt_fail(a, xc::e_size, P::s_refused);
-        a.total += size;
+        if (a.copy != usb_service::adopt_tidy) a.total += size; // the light check reads only the catalog
     }
     if (more) {
         w.skip += count;
@@ -563,16 +620,8 @@ void adopt_step(AdoptSlot& a) {
             a.step = ad_closing;
             return;
         }
-        ContentSetWork& w = cwork();
-        w.files = w.folders = w.pool_n = w.text_n = w.folder_at = w.skip = w.file_at = 0;
-        w.catalog_n = w.restored_n = w.changed = 0;
-        w.pool[0] = 0; // the root: ""
-        w.pool_n = 1;
-        w.folder_ref[w.folders++] = 0;
-        w.list.reset();
-        a.bytes = a.total = 0;
         save_lap(xl::p_cset_list);
-        a.step = cs_state;
+        cs_begin(a);
         return;
     }
     case cs_state: { // the official state: no record (or state=official), no record mid-replace
@@ -582,23 +631,65 @@ void adopt_step(AdoptSlot& a) {
             a.io.fail(r);
             return adopt_fail(a, xc::e_link, P::s_link);
         }
-        if (r.value == 0) return adopt_fail(a, xc::e_content, P::s_refused);
+        const bool tidy = a.copy == usb_service::adopt_tidy; // #334: mods' content (or none known): nothing to clean
+        if (r.value == 0) return tidy ? void(a.step = ad_closing) : adopt_fail(a, xc::e_content, P::s_refused);
         uint32_t got = 0;
         const U32 code =
             file_client::read_file(xyf::content::record_path, 0, true, a.piece, xyf::content::head_bytes, got, mounted);
         if (code == P::s_ok) {
             xyf::content::State st;
             xyf::content::parse(a.piece, got, st);
-            if (st.kind != xyf::content::official) return adopt_fail(a, xc::e_content, P::s_refused);
+            if (st.kind != xyf::content::official)
+                return tidy ? void(a.step = ad_closing) : adopt_fail(a, xc::e_content, P::s_refused);
         } else if (code != P::s_not_found) return adopt_fail(a, code == P::s_link ? xc::e_link : xc::e_read, code);
-        a.step = cs_list;
+        a.step = tidy && !official_known() ? ad_closing : cs_list;
         return;
     }
-    case cs_list: // one page of one folder
-        if (cwork().folder_at != cwork().folders) return content_list_page(a, cwork());
-        if (!cwork().files) return adopt_fail(a, xc::e_sha256, P::s_refused);
+    case cs_list: { // one page of one folder
+        ContentSetWork& w = cwork();
+        if (w.folder_at != w.folders) return content_list_page(a, w);
+        if (a.copy == usb_service::adopt_tidy) { // #334: every official path there, or nothing is cleaned
+            U32 n = 0;
+            official_paths(n);
+            if (w.files != n) {
+                a.step = ad_closing;
+                return;
+            }
+            a.in = a.io.open(xa::live_catalog, false);
+            if (a.in < 0) return adopt_fail(a, xc::e_read, P::s_storage);
+            a.step = cs_catalog;
+            return;
+        }
+        if (!w.files) return adopt_fail(a, xc::e_sha256, P::s_refused);
         a.step = cs_open;
         return;
+    }
+    case cs_catalog: { // #334: op1_factory.json, one piece: the official one, or put back, or nothing is written
+        ContentSetWork& w = cwork();
+        const file_client::Reply r = file_client::read(a.in, a.piece, file_client::piece_max);
+        if (r.outcome) {
+            a.io.fail(r);
+            return adopt_fail(a, xc::e_link, P::s_link);
+        }
+        if (r.value < 0 || U32(r.value) > file_client::piece_max) return adopt_fail(a, xc::e_read, P::s_storage);
+        const U32 n = U32(r.value);
+        if (n) {
+            if (w.catalog_n + n <= xo::catalog_max)
+                for (U32 i = 0; i != n; ++i) w.catalog[w.catalog_n++] = a.piece[i];
+            else w.catalog_n = xo::catalog_max + 1;
+            return;
+        }
+        const int fd = a.in;
+        a.in = -1;
+        if (a.io.close(fd) < 0) return adopt_fail(a, xc::e_read, P::s_storage);
+        xyf_core::hash::Sha256 h;
+        xyf_core::hash::Digest d;
+        const bool official = w.catalog_n <= xo::catalog_max && h.update(w.catalog, w.catalog_n) && h.finish(d) &&
+                              sha_equal(d.bytes, official_digest(true));
+        if (!official && !catalog_put_back(w)) return adopt_fail(a, xc::e_catalog, P::s_refused);
+        a.step = w.extras || w.restored_n ? cs_window : ad_closing; // the official content: nothing written
+        return;
+    }
     case cs_open: {
         save_lap(xl::p_cset_open);
         ContentSetWork& w = cwork();
@@ -676,7 +767,9 @@ void adopt_step(AdoptSlot& a) {
         code = file_client::change(0x26u, xa::tmp, error, mounted);
         if (code != P::s_ok && error != file_client::eexist)
             return adopt_fail(a, code == P::s_link ? xc::e_link : xc::e_write, code);
-        a.step = cs_version;
+        if (a.copy != usb_service::adopt_tidy) a.step = cs_version;
+        else if (cwork().restored_n) a.step = cs_sweep, a.sub = 0;
+        else a.step = cs_extras, a.at = 0;
         return;
     }
     case cs_version: { // firmware/ID/firmware.version: written, read back
@@ -693,8 +786,8 @@ void adopt_step(AdoptSlot& a) {
         bool same = code == P::s_ok && got == n;
         for (U32 i = 0; same && i != n; ++i) same = a.piece[i] == uint8_t(usb_service::official_version[i]);
         if (!same) return adopt_fail(a, xc::e_verify, P::s_storage);
-        a.sub = cwork().restored_n ? 0u : 1u;
-        a.step = cs_sweep;
+        if (cwork().restored_n) a.step = cs_sweep, a.sub = 0;
+        else a.step = cs_extras, a.at = 0;
         return;
     }
     case cs_sweep: { // the next output's temporary file (a cut run's replaced), opened
@@ -753,8 +846,9 @@ void adopt_step(AdoptSlot& a) {
             if (!xyf::content::allowed(xyf::content::Use::catalog, xa::live_catalog, true) ||
                 a.io.rename(a.folder, xa::live_catalog, true) < 0)
                 return adopt_fail(a, xc::e_rename, P::s_storage);
-            a.sub = 1;
-            a.step = cs_sweep;
+            a.restored = 1;
+            a.step = cs_extras;
+            a.at = 0;
             return;
         }
         join(a.path, xa::firmware, "/", a.target);
@@ -763,6 +857,57 @@ void adopt_step(AdoptSlot& a) {
         a.step = ad_closing;
         settle_begin(); // op 9: A rescans, B fetches the catalog
         return;
+    case cs_extras: { // #334: one file that is not official content removed (another tool's: Open-XY's)
+        ContentSetWork& w = cwork();
+        if (a.at == w.extras) {
+            a.at = w.folders;
+            a.step = cs_folders;
+            return;
+        }
+        if (!content_path(a.path, w.pool + w.extra_ref[a.at]) ||
+            !xyf::content::allowed(xyf::content::Use::remove_file, a.path, false))
+            return adopt_fail(a, xc::e_write, P::s_refused);
+        if (a.io.unlink(a.path) < 0) return adopt_fail(a, xc::e_write, P::s_storage);
+        ++w.folder_gone[w.extra_in[a.at]];
+        ++a.removed;
+        ++a.at;
+        return;
+    }
+    case cs_folders: { // #334: a folder all of whose entries went, deepest first (never the root, nor one found empty)
+        ContentSetWork& w = cwork();
+        if (a.at > 1) {
+            const U32 i = --a.at;
+            if (!w.folder_n[i] || w.folder_gone[i] != w.folder_n[i]) return;
+            if (!content_path(a.path, w.pool + w.folder_ref[i]) ||
+                !xyf::content::allowed(xyf::content::Use::remove_folder, a.path, false))
+                return adopt_fail(a, xc::e_write, P::s_refused);
+            const int r = a.io.rmdir(a.path);
+            if (r < 0) return adopt_fail(a, xc::e_write, P::s_storage);
+            if (r == 0) ++w.folder_gone[w.folder_up[i]];
+            return;
+        }
+        if (a.copy == usb_service::adopt_tidy) {
+            a.step = a.removed || a.restored ? cs_note : ad_closing;
+            if (a.step == ad_closing) settle_begin();
+            return;
+        }
+        a.sub = 1; // the list, last
+        a.step = cs_sweep;
+        return;
+    }
+    case cs_note: { // #334: what the first start's cleanup did, for the install page (xy-forever/cleanup.txt)
+        char text[48] = "files=";
+        U32 bytes = 6 + decimal_text(text + 6, a.removed);
+        const char* tail = a.restored ? "\ncatalog=1\n" : "\ncatalog=0\n";
+        for (U32 i = 0; tail[i]; ++i) text[bytes++] = tail[i];
+        const int fd = a.io.open(xa::note, true);
+        const bool put = fd >= 0 && a.io.write(fd, reinterpret_cast<const uint8_t*>(text), bytes) == int(bytes);
+        if (fd >= 0 && a.io.close(fd) < 0) return adopt_fail(a, xc::e_write, P::s_storage);
+        if (!put) return adopt_fail(a, xc::e_write, P::s_storage);
+        a.step = ad_closing;
+        settle_begin(); // op 9: A rescans, B fetches the catalog
+        return;
+    }
     default: return;
     }
 }
@@ -771,7 +916,7 @@ void adopt_pump() {
     const U32 start = now();
     while (a.step < ad_closing && now() - start < job_slice_ms) adopt_step(a);
     if (a.step != ad_closing || closing) return;
-    if (!a.error && a.copy != usb_service::adopt_content) { // the default, only after a success
+    if (!a.error && a.copy < usb_service::adopt_content) { // the adoption's default, only after a success
         const U32 code = default_commit(a.hash);
         if (code != P::s_ok) {
             a.error = code == P::s_link ? xc::e_link : xc::e_write;

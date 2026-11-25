@@ -9,6 +9,7 @@ reports and the saved configuration. These pages give each file's format and the
 - [State files](storage/state.md): the `key=value` text format, the A/B state slots, the saved configuration
 - [Content state](storage/content-state.md): `content-state.txt`, the content switch and its repair
 - [Content jobs](storage/jobs.md): durable intent, automatic menu/service replay, missing-source undo and inspection
+- [The content set](storage/content-set.md): a base's `content.sha256` from the live content; Open-XY's leftovers removed
 - [Package transactions](storage/package-transactions.md): atomic publication/removal, verified content blobs and collection
 - [Package files](storage/packages.md): `manifest.json` keys, `files.sha256`, recognising a dropped file or folder, stage 2 (`stage2/main.xys2`)
 - [Native JSON schemas](storage/native-json.md): independently versioned package/configuration records and bounded adapters (storage integration in #95)

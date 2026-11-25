@@ -60,8 +60,8 @@ What XY Forever's code guarantees; changing one is a design change.
   `reaches_protected` and `final_link_reaches_inbox` (writable opens)
   ([how](hardware/storage-server.md#protected-inbox-paths)), by the MTP responder (`xyf_core::mtp::writable`:
   ProtectionStatus 1, refusals) and early in the clients (`xyf_host.in_write_area`, `clients/ts inWriteArea`).
-  XY Forever's own jobs keep their narrower rules (the content job: `storage_server::own_area`, never
-  `user/`). Content sets put back only the official `op1_factory.json`, cut-safe.
+  Own jobs are narrower (content: `storage_server::own_area`, never `user/`). Content jobs put back
+  only the official `op1_factory.json`, cut-safe, and delete only non-official files.
 - **Depth** (#124): no file over 6 folders below `/yaffs2`; deeper hangs Track 5 after dev MTP.
   Deletes work at any depth ([details](storage/layout.md)).
 

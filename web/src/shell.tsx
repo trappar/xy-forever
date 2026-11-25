@@ -132,6 +132,7 @@ function StockRestoredNotice() {
 
 function InstalledNotice() {
   const installed = useConnection((s) => s.installed);
+  const cleaned = useConnection((s) => s.cleaned);
   if (!installed) return null;
   return (
     <div
@@ -141,6 +142,7 @@ function InstalledNotice() {
     >
       <span className="flex-1">
         XY Forever is installed, with your OP-XY's OS 1.2.1 as the firmware it starts. Add mods here.
+        {cleaned && <span data-testid="cleaned"> {cleaned}</span>}
       </span>
       <Button size="sm" onClick={() => useConnection.setState({ installed: false })}>
         Dismiss

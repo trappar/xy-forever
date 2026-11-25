@@ -18,13 +18,15 @@ enum SaveStage : uint32_t {
     sv_boot,
     sv_failed,
     sv_adopting,
-    sv_content_set
+    sv_content_set,
+    sv_tidying
 };
 // The sequence: why (converge_begin's: which inputs it set, for its texts only), the inputs (count, expanded, safe,
 // unverified, base, built), the plan (ops, target), the slot and stamp the record names (a build's new ones), the
 // record made for the record step (length bytes in io.buffer).
 struct Save {
     uint32_t stage, job, serial, why, ops, unverified, count, expanded, safe, length, adopted, looked, failed;
+    uint32_t tidied, restored; // #334: the first start's cleanup: files removed, op1_factory.json put back
     char target[32], base[32], built[100], slot[8], stamp[65], reason[80];
 };
 xg::Record rec XYF_DATA = {};
@@ -168,6 +170,7 @@ uint32_t start_build(uint8_t which) {
     return 1;
 }
 uint32_t adopt(const char* base);
+uint32_t tidy();
 // The inputs (the saved record, with safe= as asked), the actual state, the plan.
 uint32_t check() {
     usb_service::save_log_lap(xyf::save_log::p_check);
@@ -250,10 +253,9 @@ uint32_t adopting() {
         run.job_total = v.total;
         return moved(phase);
     }
-    if (v.id == sv.job && v.state == 2 && v.phase == 8) {           // the catalog fetched again: the check
+    if (v.id == sv.job && v.state == 2 && v.phase == 8) {           // the catalog fetched again: the light check
         if (usb_service::page_busy() || !xyf_boot::catalog()) return moved(false);
-        sv.stage = sv_check;
-        return 1;
+        return tidy();
     }
     if (v.error == 4) return fail("No official OS 1.2.1 found.", reinstall);
     if (v.error == 10) return fail("OS file is not official 1.2.1.", reinstall);
@@ -263,6 +265,39 @@ uint32_t adopting() {
     char d[12];
     m::decimal(d, v.error);
     return fail("Failed: OS 1.2.1 could not be added to the library (", d, ").");
+}
+// #334: after the adoption, the light check of the content (usb_service adopt_tidy): another tool's files (Open-XY's)
+// removed and the official op1_factory.json put back, without reading the content; then the check.
+uint32_t tidy() {
+    const char* base = config_base();
+    if (usb_service::adopt_start(base ? base : adopt_id, usb_service::adopt_tidy) != s_ok)
+        return fail(prefix(), "the content could not be checked.");
+    usb_service::JobView v;
+    usb_service::job_view(v);
+    sv.job = v.id;
+    sv.stage = sv_tidying;
+    run.title = "Checking OS 1.2.1 content";
+    run.job_done = run.job_total = 0;
+    return 1;
+}
+uint32_t tidying() {
+    usb_service::JobView v;
+    usb_service::job_view(v);
+    if (v.state == 1 && v.id == sv.job) {
+        const bool phase = v.phase != run.job_phase;
+        run.job_phase = v.phase;
+        return moved(phase);
+    }
+    if (v.id == sv.job && v.state == 2 && v.phase == 8) {
+        if (usb_service::page_busy()) return moved(false);
+        usb_service::adopt_tidied(sv.tidied, sv.restored);
+        sv.stage = sv_check;
+        return 1;
+    }
+    if (v.error == 22) return fail(prefix(), "op1_factory.json can't be repaired. Copy in OS 1.2.1's own.");
+    char d[12];
+    m::decimal(d, v.error);
+    return fail("Failed: the content could not be checked (", d, ").");
 }
 // #183: the build's base needs its content set (firmware/<base>/content.sha256, firmware.version): an OS 1.2.1 entry
 // the web install adopted has none, so the adoption job's content mode makes it from the live official content first
@@ -517,6 +552,7 @@ uint32_t converge_follow() {
     case sv_build: return building();
     case sv_adopting: return adopting();
     case sv_content_set: return content_setting();
+    case sv_tidying: return tidying();
     case sv_stamp:
         if (usb_service::page_busy()) return moved(false); // the commit's window closes
         usb_service::save_log_lap(xyf::save_log::p_stamp);

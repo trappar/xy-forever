@@ -21,7 +21,7 @@ it is changed, except the boot partition (`os.ldr`) and the components an offici
   tmp/job-<id>/             mods.apply's output until the commit; -old: the replaced entry; swept (below)
   tmp/pkg-v1-<token>/       host package transaction; -old: detached old package, both swept
   tmp/adopt-<id>/           the stock entry's adoption until its rename into firmware/ (#178; jobs.md); swept by the next one
-  tmp/cset-<id>             a base's content.sha256 until its rename into firmware/<id>/ (#183; jobs.md); replaced by the next
+  tmp/cset-<id>             a base's content.sha256 until its rename into firmware/<id>/ (#183; content-set.md); replaced by the next
   blobs/<sha256>            verified content referenced by firmware and imported sound packs (package-transactions.md)
   tmp/put-<size>-<tag>      an upload (file.write_*, MTP SendObject) until A renames it onto its name; swept (below)
   job.txt, job.old           version-1 content intent; menu/service replay or previous-entry undo (jobs.md)
@@ -29,6 +29,7 @@ it is changed, except the boot partition (`os.ldr`) and the components an offici
   content-official/         the official op1_factory.json and content.sha256, saved before the first content change
   config.json               the saved configuration: base, mods on, what Open-XY was built from (below)
   converged.txt             format=1, inputs=<SHA-256 of the saved configuration>, default=<id>: the last convergence (#197; state.md)
+  cleanup.txt               files=<n>, catalog=0|1: what the first start removed of Open-XY's content (#334; content-set.md)
   settings.txt              device settings (#21, the Settings page; target/xyf_settings.hpp), format=1: power_on=play|always, usb=mtp_serial|mtp_only|serial (#191: serial or MTP off, live; usb=mtp: mtp_serial), confirm=0|1 (Ask before USB control, #65: no USB command changes it; a file transfer can), saver=1|2|5|10|off (Screen saver, #315: minutes idle; default 1); absent, unreadable or a missing key: the defaults; a newer format: the defaults, never rewritten
 ```
 

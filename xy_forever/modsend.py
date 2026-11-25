@@ -357,6 +357,7 @@ ERRORS = (
     'cancelled',
     'image',
     'link',
+    'catalog',
 )
 MISSING = (
     'none',

@@ -469,7 +469,7 @@ bool menu_state(xyf::menu::State& a) {
 void converge_begin(uint32_t why) { // never the page: the list, its toggles and views stay as they are
     if (sv.stage != sv_idle) return;
     sv.why = why;
-    sv.ops = sv.length = sv.adopted = sv.failed = 0;
+    sv.ops = sv.length = sv.adopted = sv.failed = sv.tidied = sv.restored = 0;
     sv.looked = 1;
     ++sv.serial;
     sv.reason[0] = 0;
@@ -533,6 +533,20 @@ uint32_t converge_state() {
 
 const char* converge_reason() { // at sv_boot only why_adopt's line (converge_note): what it did
     if (sv.stage != sv_boot) return sv.reason;
+    if (sv.tidied || sv.restored) { // #334: the light check cleaned another tool's content (Open-XY's)
+        char n[12];
+        m::decimal(n, sv.tidied);
+        xg::Out o = {sv.reason, sv.reason + sizeof(sv.reason) - 1, true};
+        if (sv.tidied) {
+            xg::put(o, "Removed ");
+            xg::put(o, n);
+            xg::put(o, sv.tidied == 1 ? " file from Open-XY" : " files from Open-XY");
+            xg::put(o, sv.restored ? ", put back " : ".");
+        } else xg::put(o, "Put back ");
+        if (sv.restored) xg::put(o, "OS 1.2.1's op1_factory.json.");
+        *o.at = 0;
+        return sv.reason;
+    }
     return sv.adopted == 2 ? "OS 1.2.1 is in the library and is the default." :
            sv.adopted == 1 ? "OS 1.2.1 is the default." :
                              "";

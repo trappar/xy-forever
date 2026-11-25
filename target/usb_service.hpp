@@ -305,9 +305,17 @@ bool content_unfinished();
 // /yaffs2/content/, only when it is the official 1.2.1 set; the default unchanged. Errors (status s_refused): e_info
 // (9) id is not an official OS 1.2.1 entry, e_content (15) the content is not in the official state (mods' content
 // installed or a switch unfinished), e_sha256 (10) it is not the official 1.2.1 set, e_size (7) too many files or a
-// path too long for a list. Done at once when the entry has its content.sha256.
-enum AdoptMode : uint32_t { adopt_default = 0, adopt_copy = 1, adopt_content = 2 };
+// path too long for a list. Done at once when the entry has its content.sha256. It also removes the files that are not
+// official content (#334: another tool's, as Open-XY's), and the folders they leave empty, before the list.
+// #334, mode adopt_tidy: the first start's light check, after the adoption. In the official state, with every official
+// path there: lists /yaffs2/content/ (dlc/ and user/ aside), reads only op1_factory.json, and only when there is
+// something to clean, puts back the official catalog (cut-safe), removes the other files and the folders they leave
+// empty, and writes xy-forever/cleanup.txt (files=<n>, catalog=0|1). e_catalog (22): a catalog it cannot put back,
+// nothing written. Content that is not in the official state, or misses an official path: nothing done.
+enum AdoptMode : uint32_t { adopt_default = 0, adopt_copy = 1, adopt_content = 2, adopt_tidy = 3 };
 uint32_t adopt_start(const char* id, uint32_t mode);
+// #334: what the last adopt_tidy (or content set) cleaned: files removed, catalog 1 when it put back op1_factory.json.
+void adopt_tidied(uint32_t& files, uint32_t& catalog);
 // #183: can a mod build have base id's content set? s_ok: it has one, or the live content looks official (the official
 // state, the 1.2.1 catalog) so the build's adopt_content can make it; s_refused with why (a sentence); else the status
 // (busy, link, storage). Reads only.

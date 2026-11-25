@@ -8,6 +8,8 @@ interface Connection {
   client: Client | null;
   /** The install handed over: the "XY Forever is installed" notice shows until dismissed. */
   installed: boolean;
+  /** With it: what the first start removed of Open-XY's content, in words (#334), or null. */
+  cleaned: string | null;
   /** An uninstall runs: the app stays on the Device page. */
   uninstalling: boolean;
   /** An uninstall restored stock OS 1.2.1: the app says so until the next connection. */
@@ -20,6 +22,7 @@ const store = () =>
   create<Connection>(() => ({
     client: null,
     installed: false,
+    cleaned: null,
     uninstalling: false,
     stockRestored: false,
     held: false,

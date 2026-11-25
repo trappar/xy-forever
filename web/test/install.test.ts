@@ -19,7 +19,15 @@ import {
   spaceVerdict,
 } from '../src/install/checks.ts';
 import type { Verdict } from '../src/install/checks.ts';
-import { ADOPT_DETAIL, ENTRY, installState, otherImage } from '../src/install/finish.ts';
+import {
+  ADOPT_DETAIL,
+  CLEANUP_FILE,
+  ENTRY,
+  TIDY_DETAIL,
+  cleanupWords,
+  installState,
+  otherImage,
+} from '../src/install/finish.ts';
 import { InstallStop, TeBoot, copyOverMtp } from '../src/install/installer.ts';
 import { fetchCanary, fetchRelease, pinned, releaseUrl, validPin } from '../src/install/release.ts';
 import type { ReleasePin } from '../src/install/release.ts';
@@ -238,6 +246,8 @@ class FakeClient {
   /** Other library entries (id -> info.txt), as mods-a after a build. */
   others: Record<string, string> = {};
   defaultEntry: string | null = null;
+  /** xy-forever/cleanup.txt (#334), or null: none. */
+  cleanup: string | null = null;
   info = { image: 'abcd1234' };
   connected = true;
   log: string[] = [];
@@ -282,6 +292,13 @@ class FakeClient {
     this.busy();
     return { default: this.defaultEntry };
   }
+  async readFile(path: string): Promise<Uint8Array> {
+    this.log.push(`read ${path}`);
+    this.busy();
+    if (path !== CLEANUP_FILE || this.cleanup === null)
+      throw new XyfError('not_found', 'no such file', { command: 'file.read', status: 3 });
+    return new TextEncoder().encode(this.cleanup);
+  }
 }
 
 const INFO = `type=firmware\nname=OP-XY\nversion=1.2.1\nkind=official\nbytes=${STOCK_121.bytes}\ncrc32=${STOCK_121.crc32}\nsha256=${STOCK_121.sha256}\n`;
@@ -295,18 +312,18 @@ describe("XY Forever's own setup, read over Web Serial", () => {
     c.info_txt = INFO;
     c.defaultEntry = ENTRY;
     c.job = { phase: 8, error: 0, done: 0, total: 0, detail: 'config' };
-    expect(await state(c)).toEqual({ kind: 'installed' });
+    expect(await state(c)).toEqual({ kind: 'installed', cleaned: null });
     c.info = { image: 'ffffffff' };
     c.job = null;
-    expect(await state(c)).toEqual({ kind: 'installed' });
-    expect(c.log.every((l) => l === 'job.status' || l.startsWith('entry'))).toBe(true); // reads only
+    expect(await state(c)).toEqual({ kind: 'installed', cleaned: null });
+    expect(c.log.every((l) => l === 'job.status' || l.startsWith('entry') || l.startsWith('read'))).toBe(true); // reads only
   });
   it('installed when the owner runs mods: the stock entry there, the default another library entry (never a reflash)', async () => {
     const c = new FakeClient();
     c.info_txt = INFO;
     c.defaultEntry = 'mods-a';
     c.others = { 'mods-a': 'type=firmware\nname=Open-XY\n' };
-    expect(await state(c)).toEqual({ kind: 'installed' });
+    expect(await state(c)).toEqual({ kind: 'installed', cleaned: null });
     c.defaultEntry = 'mods-b'; // a default naming no entry: not set up
     expect(await state(c)).toEqual({ kind: 'waiting', other: false });
   });
@@ -316,6 +333,33 @@ describe("XY Forever's own setup, read over Web Serial", () => {
     expect(await state(c)).toEqual({ kind: 'adopting', done: 1_000_000, total: STOCK_121.bytes });
     c.job = { phase: 1, error: 0, done: 0, total: 0, detail: 'something else' }; // another job holds the storage
     expect(await state(c)).toEqual({ kind: 'adopting', done: 0, total: 0 });
+  });
+  it("#334: what the first start removed of Open-XY's content, in words, once installed", async () => {
+    const c = new FakeClient();
+    c.info_txt = INFO;
+    c.defaultEntry = ENTRY;
+    c.cleanup = 'files=82\ncatalog=1\n';
+    expect(await state(c)).toEqual({
+      kind: 'installed',
+      cleaned: "Removed 82 files from Open-XY, put back OS 1.2.1's op1_factory.json.",
+    });
+    expect(cleanupWords('files=1\ncatalog=0\n')).toBe('Removed 1 file from Open-XY.');
+    expect(cleanupWords('files=0\ncatalog=1\n')).toBe("Put back OS 1.2.1's op1_factory.json.");
+    expect(cleanupWords('files=0\ncatalog=0\n')).toBeNull();
+    expect(cleanupWords('files=x\n')).toBeNull();
+  });
+  it("#334: checking while the light check runs; its refusal in the device's own words", async () => {
+    const c = new FakeClient();
+    c.info_txt = INFO;
+    c.defaultEntry = ENTRY;
+    c.job = { phase: 1, error: 0, done: 0, total: 0, detail: TIDY_DETAIL };
+    expect(await state(c)).toEqual({ kind: 'checking' });
+    c.job = { phase: 9, error: 22, code: STATUS.refused, done: 0, total: 0, detail: TIDY_DETAIL };
+    const s = (await state(c)) as { kind: string; verdict: Verdict };
+    expect(s.kind).toBe('refused');
+    expect(s.verdict.detail).toContain('"Failed: op1_factory.json can\'t be repaired. Copy in OS 1.2.1\'s own."');
+    c.job = { phase: 9, error: 16, done: 0, total: 0, detail: TIDY_DETAIL };
+    expect(((await state(c)) as { verdict: Verdict }).verdict.title).toBe('The OS content could not be checked');
   });
   it("refused with the device's own words: missing, not 1.2.1, an incomplete entry, any other failure", async () => {
     const refused = async (error: number, code = 0): Promise<Verdict> => {

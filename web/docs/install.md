@@ -12,13 +12,16 @@ over WebUSB on a Mac (after checking that the stock `upgrade/firmware/blackfin/b
 the free storage; read back), or downloaded and dragged into Explorer on Windows (after the owner finds that stock
 file in Explorer, about 2,318 KB). Track 5 and a power-on are the
 owner's. The page never reads or moves the stock OS: at its first start XY Forever adopts that file on the device
-(hashed there, copied into library entry `opxy-121`, made the default, then booted; `docs/storage/jobs.md`). The
-page reads where that setup stands over Web Serial (`src/install/finish.ts`: `job.status`, the entry, the default):
-while it runs it shows it, a refusal shows the device's own words (removing the entry is advised only when the
-device says it is incomplete), and once the entry is there and the default names a library entry (it, or one with
-mods) the page hands
-the connection to the app and opens Manage's **Mods** with a dismissible "XY Forever is installed" notice (found
-at the first stage, XY Forever was already there: Manage's Device page, no notice). The last step tells
+(hashed there, copied into library entry `opxy-121`, made the default, then booted; `docs/storage/jobs.md`). Right
+after, on an OP-XY that had Open-XY, it removes Open-XY's files from the OS content and puts back the official
+`op1_factory.json` (#334, `docs/storage/content-set.md`); the page never touches the content itself (no rename over
+MTP, no file access on Windows). The page reads where that setup stands over Web Serial (`src/install/finish.ts`:
+`job.status`, the entry, the default, `xy-forever/cleanup.txt`): while it runs it shows it, a refusal shows the
+device's own words (removing the entry is advised only when the device says it is incomplete), and once the entry is
+there and the default names a library entry (it, or one with mods) the page hands the connection to the app and opens
+Manage's **Mods** with a dismissible "XY Forever is installed" notice, which adds what was removed ("Removed 82 files
+from Open-XY, put back OS 1.2.1's op1_factory.json.") (found at the first stage, XY Forever was already there:
+Manage's Device page, no notice). The last step tells
 the owner once that holding PLAY at power-on opens the XY Forever menu (the plain first start boots OS 1.2.1, so the
 page meets XY Forever there). The pure checks: `src/install/checks.ts`. The choices a stage needs (the computer, the
 file sent, a refusal) are kept in `sessionStorage` for a reload (going Back to the copy step sends the file again);

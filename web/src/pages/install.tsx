@@ -48,7 +48,7 @@ function appDeps(): InstallDeps {
       const found = await findDevice(RELEASE_FILTERS);
       return found && lease(found);
     },
-    handoff: (found, installed) => toManage(found.client, installed),
+    handoff: (found, installed, cleaned) => toManage(found.client, installed, cleaned),
     onPort: (listener) => nav.serial?.addEventListener?.('connect', listener),
   };
 }
