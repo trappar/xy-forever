@@ -2,7 +2,7 @@
   "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md. Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
   "protocol": {
     "name": "XY Forever serial protocol",
-    "version": "1.31",
+    "version": "1.32",
     "intro": [
       "XY Forever is a firmware and mod manager for the teenage engineering OP-XY. While its menu runs, the OP-XY's processor B answers this protocol over USB. Tools use it to list, read, write and delete files, take screenshots, stage and install builds, set the default firmware and restart the device.",
       "Transport: USB CDC serial, the raw frame stream (table below). The device answers only while the XY Forever menu runs: after an XY Forever restart, or when the OP-XY is powered on with PLAY held (release it at the logo).",
@@ -373,6 +373,20 @@
       ]},
       "errors": ["state", "crc", "sha", "link", "storage", "not_found"],
       "doc": "Closes the temporary file, checks the received bytes' CRC-32 and SHA-256 against `file.write_begin` (`crc`, `sha`), reads the file back and compares its CRC-32 (`crc`), then processor A checks its size against its name and renames it onto the target in one step (yaffs replaces an existing file atomically: after a power cut the target is the old file or the new one, never a partial one). A target that is a folder is `storage` (error 21). On any failure the temporary file is removed and the target is unchanged. `state` when not every announced byte arrived or no streamed write is in progress. The host waits 60 s plus 1 s per 20000 bytes."
+    },
+    {
+      "type": "0x1d", "name": "file.hash", "symbol": "hash_file", "class": "product", "since": "1.32", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "hash a stored file on the device: its size and SHA-256",
+      "timeout_ms": 120000, "destructive": false,
+      "request": {"size": [10, 240], "fields": [
+        {"name": "path", "type": "cstr", "encoding": "utf-8", "min_bytes": 10, "max_bytes": 240, "doc": "absolute path under `/yaffs2/`, NUL-terminated, as `file.read`'s"}
+      ]},
+      "reply": {"size": [36, 36], "extensible": true, "on_error": "status", "fields": [
+        {"name": "size", "type": "u32", "doc": "bytes read to the end of the file"},
+        {"name": "sha256", "type": "bytes[32]", "doc": "SHA-256 of those bytes"}
+      ]},
+      "errors": ["bad_request", "refused", "link", "storage", "not_found", "too_large"],
+      "doc": "Reads the file to its end on the device, over the same storage requests `file.read` uses (4 KiB pieces), and hashes it, so a tool can check a stored file without reading it back over USB (#327: a package's staged files before it is published). Paths and refusals as `file.read`'s; a file over 64 MiB is `too_large`. Changes nothing. The host waits 60 s plus 1 s per 20000 bytes it expects."
     },
     {
       "type": "0x20", "name": "boot.install", "symbol": "install", "class": "product", "since": "1.0", "switch": null,
@@ -1237,7 +1251,7 @@
     {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
-     "fields": {"info": "XYF1;service=usb;role=b;proto=1.31;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000fffb003700031fff00be;dev=1;confirm=1;trust=none;serial=on;stage2=0"}, "hex": "58468101e000000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e33313b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303066666662303033373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b73657269616c3d6f6e3b7374616765323d30415b4719"},
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.32;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000fffb003700033fff00be;dev=1;confirm=1;trust=none;serial=on;stage2=0"}, "hex": "58468101e000000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e33323b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303066666662303033373030303333666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b73657269616c3d6f6e3b7374616765323d30a4778cb9"},
     {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,

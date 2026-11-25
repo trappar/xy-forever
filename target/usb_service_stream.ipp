@@ -142,3 +142,62 @@ void write_end(uint8_t seq) {
     result.last_status = code;
     send(P::t_write_end, seq, p, 16);
 }
+
+// FILE_HASH (#327): path NUL. The file read to its end and hashed on B, so a host checks a stored file (a package's
+// staged files before publishing) without reading it back over USB. The requests are file.read's (file_client: the
+// same path policy, mount, open, read and close; no new stock call), in piece_max reads as the adoption's and MTP's.
+// Bounded: at most hash_max bytes (too_large past them), each request within its bound. A read ends at EOF, or with
+// finish_read's 1-byte probe before the close (Test 041), as file.read's. Reply: u32 status, u32 size, 32-byte SHA-256.
+static const U32 hash_max = 64u << 20;
+void hash_file(uint8_t seq, const uint8_t* payload, U32 length) {
+    namespace fc = file_client;
+    U32 n = 0;
+    while (n < length && payload[n]) ++n;
+    const char* path = reinterpret_cast<const char*>(payload);
+    xyf_core::hash::Sha256 hash;
+    xyf_core::hash::Digest digest;
+    U32 size = 0, code = P::s_ok;
+    auto failed = [](const fc::Reply& r) -> U32 {
+        if (r.outcome == fc::link) mounted = fc::mounted_stale;   // A may still answer it
+        return fc::status(r.outcome);
+    };
+    if (n + 1 != length || !storage_server::valid_path(path)) code = P::s_bad_request;
+    else if (file_engine::decide_engine(file_engine::op_read, path) != file_engine::allow) code = P::s_refused;
+    else if (!a_serving()) code = P::s_link;
+    else if ((code = fc::mount_ready(mounted)) == P::s_ok) {
+        const fc::Reply o = fc::open(path, 0);                                // op 0x29, O_RDONLY
+        if (o.outcome) code = failed(o);
+        else if (o.value < 0) code = o.error == fc::emfile ? P::s_storage : P::s_not_found;
+        else {
+            uint8_t* const piece = files + 64; // the reply buffer, free until the reply
+            for (U32 guard = 0; code == P::s_ok; ++guard) {
+                if (guard == hash_max / fc::piece_max + 1) {
+                    code = P::s_too_large;
+                    break;
+                }
+                const fc::Reply g = fc::read(o.value, piece, fc::piece_max); // op 0x2a
+                if (g.outcome) {
+                    code = failed(g);
+                    break;
+                }
+                if (g.value < 0 || U32(g.value) > fc::piece_max) code = P::s_storage;
+                else if (!g.value) break; // EOF
+                else {
+                    hash.update(piece, U32(g.value));
+                    size += U32(g.value);
+                }
+            }
+            if (mounted != fc::mounted_stale) fc::finish_read(fc::Open{o.value, code == P::s_too_large}, mounted);
+            if (code == P::s_ok && !hash.finish(digest)) code = P::s_storage;
+        }
+    }
+    result.last_status = code;
+    if (code != P::s_ok) {
+        status_only(P::t_hash_file, seq, code);
+        return;
+    }
+    P::put32(files, code);
+    P::put32(files + 4, size);
+    for (U32 i = 0; i != 32; ++i) files[8 + i] = digest.bytes[i];
+    send(P::t_hash_file, seq, files, 40);
+}

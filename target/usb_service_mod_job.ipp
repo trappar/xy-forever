@@ -112,15 +112,16 @@ bool job_blocks(U32 type) { // also while settle_begin's op 9 is out
         stop_idle_gc();
     if (package_active &&
         (type == P::t_package_list || type == P::t_state_get || type == P::t_storage_space || type == P::t_read_file ||
-         type == P::t_list_dir || type == P::t_delete_file || type == P::t_remove_dir || type == P::t_make_dir ||
-         type == P::t_rename_file || type == P::t_write_begin || type == P::t_write_data || type == P::t_write_end)) {
+         type == P::t_hash_file || type == P::t_list_dir || type == P::t_delete_file || type == P::t_remove_dir ||
+         type == P::t_make_dir || type == P::t_rename_file || type == P::t_write_begin || type == P::t_write_data ||
+         type == P::t_write_end)) {
         package_ms = now();
         package_file = 1;
         return false;
     }
     if (recovery_pending && !boot_probe_active() && !rehearsal_active() && !job_running() &&
         !closing XYF_AND_NOT_MTP_BUSY) {
-        if (type == P::t_read_file || type == P::t_list_dir) return false;
+        if (type == P::t_read_file || type == P::t_hash_file || type == P::t_list_dir) return false;
         // Only the readonly scan: preserve every write-window, held-request and original boot-path check.
         if (!writes_due && mounted != file_client::mounted_stale && !file_client::left_out() && menu_link::usb_idle() &&
             (type == P::t_reboot || type == P::t_continue || type == P::t_library_boot))
@@ -130,12 +131,12 @@ bool job_blocks(U32 type) { // also while settle_begin's op 9 is out
         !closing XYF_AND_NOT_MTP_BUSY)
         return false;
     return type == P::t_package_list || type == P::t_state_get || type == P::t_storage_space ||
-           type == P::t_read_file || type == P::t_put_begin || type == P::t_put_data || type == P::t_put_end ||
-           type == P::t_file_write || type == P::t_list_dir || type == P::t_delete_file || type == P::t_remove_dir ||
-           type == P::t_make_dir || type == P::t_rename_file || type == P::t_copy_file || type == P::t_install ||
-           type == P::t_write_begin || type == P::t_write_data || type == P::t_write_end || type == P::t_uninstall ||
-           type == P::t_reboot || type == P::t_continue || type == P::t_library_boot || type == P::t_mods_apply ||
-           type == P::t_mtp_test || type == P::t_set_default || type == P::t_tfw_check;
+           type == P::t_read_file || type == P::t_hash_file || type == P::t_put_begin || type == P::t_put_data ||
+           type == P::t_put_end || type == P::t_file_write || type == P::t_list_dir || type == P::t_delete_file ||
+           type == P::t_remove_dir || type == P::t_make_dir || type == P::t_rename_file || type == P::t_copy_file ||
+           type == P::t_install || type == P::t_write_begin || type == P::t_write_data || type == P::t_write_end ||
+           type == P::t_uninstall || type == P::t_reboot || type == P::t_continue || type == P::t_library_boot ||
+           type == P::t_mods_apply || type == P::t_mtp_test || type == P::t_set_default || type == P::t_tfw_check;
 }
 // String helpers (no library calls).
 U32 text_bytes(const char* s) {

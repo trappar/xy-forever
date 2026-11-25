@@ -16,7 +16,7 @@ def path_in(path, area):
 
 
 def device_guard(spec, kind, payload, test_area):
-    """None when a real device may get this request, else why not. Allowed: reads, the screenshot,
+    """None when a real device may get this request, else why not. Allowed: reads (file.hash among them), the screenshot,
     staging, storage.space version 1, file.write_staged, file.delete, file.rmdir, file.mkdir, file.rename, file.copy (its target) and
     file.write_begin (1.18; with file.write_data and file.write_end) in the test area (or with a token
     no staging or path matches), file.list, job.status, a mods.apply or job.cancel the device refuses, every
@@ -41,6 +41,7 @@ def device_guard(spec, kind, payload, test_area):
         'hello',
         'diag.status',
         'file.read',
+        'file.hash',
         'file.list',
         'screen.read',
         'stage.begin',
