@@ -42,11 +42,11 @@ Usage (macOS /dev/cu.usbmodem*):
   uv run xyf-host mods remove GENERATION --yes   DRY RUN without --yes
   uv run xyf-host mods set MACHINE ... [--ext ID ...]   the mods it runs (mods status: what is saved)
   uv run xyf-host mods apply --base ID --generation GEN MACHINE ... --wait   developers: build into mods-a|b
-  uv run xyf-host mods dev PKG_DIR [--with ID...] [--base ID] [--boot | --watch]
-                                               mod developers: push only changed files (SHA-256), build
-                                               the mod on the device, make it the default (content
-                                               installed), optionally boot; each phase timed
-  uv run xyf-host mods dev --restore           the default from before the first dev run, again
+  uv run xyf-host mods dev PKG_DIR [--only ID] [--base ID]
+                                               mod developers: wait for the OP-XY's menu, push the mod,
+                                               build it alone on the device and boot it once (each
+                                               phase timed); nothing saved changes, and the next
+                                               plain start goes back to the saved setup
   uv run xyf-host --sim 127.0.0.1:7341,7342 status   the device simulator instead of the USB port: its USB
                                                endpoint and control port, as it prints them
                                                (or XYF_SIM=127.0.0.1:7341,7342; same commands, same checks)
@@ -654,7 +654,7 @@ def run(argv):
         if args.mods_command == 'dev':
             from xy_forever import moddev
 
-            return moddev.command(args, connect, SLOTS, current_state)
+            return moddev.command(args, connect)
         return modsend.command(args, connect)
 
     if args.command == 'install':

@@ -9,7 +9,11 @@ file sits 4 folders below /yaffs2 whatever the package's own folders are (the de
 Two listed files with the same content share one stored file; two with different content and the same
 stored name are refused (a 48-bit prefix clash: rebuild or rename the package). No store.txt: an older
 layout (mods/<profile>/<generation>/ before protocol 1.16, or a mirrored package tree), listed so that it
-can be removed. clients/ts/src/modstore.ts is the same.
+can be removed. A development set (#204: xyf dev's, one mod and its base) sits in a folder of its own,
+mods/dev-<generation>/ (a generation of the developer's own kit can equal a published one: it never mixes with it), and
+says so on a later line of store.txt, "development=1": the device's Mods page and config.set never take it as the
+newest set, and xyf dev removes the older ones.
+clients/ts/src/modstore.ts is the same.
 """
 
 import hashlib
@@ -18,6 +22,8 @@ import re
 VERSION = 1
 FILE = 'store.txt'
 TEXT = b'version=%d\n' % VERSION
+DEVELOPMENT_TEXT = TEXT + b'development=1\n'
+DEVELOPMENT_PREFIX = 'dev-'  # a development set's folder: dev-<generation>
 EXTENSION = re.compile(r'\.[A-Za-z0-9]{1,7}')
 VERSION_LINE = re.compile(rb'version=([0-9]{1,9})(?=[\r\n]|\Z)')
 
@@ -41,6 +47,11 @@ def version_of(data):
     """store.txt's version (0 when its first line names none)."""
     m = VERSION_LINE.match(data or b'')
     return int(m.group(1)) if m else 0
+
+
+def development(data):
+    """store.txt marks a development set (a line "development=1", as target/xyf_mods_store.hpp reads it)."""
+    return b'development=1' in (data or b'').replace(b'\r', b'').split(b'\n')
 
 
 def stored_files(name, files):

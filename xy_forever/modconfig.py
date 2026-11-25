@@ -6,7 +6,7 @@ toggles were flipped there. Nothing is built then: the next boot of XY Forever c
 `mods set` with no mods saves none. Safe mode (Boot without mods) is a recovery action on the device only: config.set
 carries it, and a set here sends it back as saved, never changing it. The developer commands (`mods apply`,
 `mods dev`, `set-default`, `boot`) change what boots behind the saved inputs, once: the next plain power-on returns
-to them."""
+to them. `mods status` says when such a build is in use: `mods dev` booted it once with its own content (#204)."""
 
 import hashlib
 import struct
@@ -84,6 +84,26 @@ def describe(f):
     return lines
 
 
+CONTENT_STATE = '/yaffs2/xy-forever/content-state.txt'
+
+
+def booted_once(dev):
+    """#204: the library entry whose mod content is installed while another entry is the default (`mods dev` booted it
+    once; the next plain power-on converges back), or None."""
+    from .xyf_host import SLOTS, current_state  # the state slots' reader (imported here: xyf_host imports this module)
+
+    code, head = dev.read_file(CONTENT_STATE, 0, 256)
+    fields = dict(line.split('=', 1) for line in head.decode('ascii', 'replace').splitlines() if '=' in line)
+    if code or fields.get('state') != 'installed' or not fields.get('entry'):
+        return None
+    slots = {}
+    for path in SLOTS:
+        code, body = dev.read_file(path)
+        slots[path] = body if code == 0 else None
+    best = current_state(slots)
+    return fields['entry'] if best and best[2].get('default') != fields['entry'] else None
+
+
 def add_arguments(sub):
     sub.add_parser('status', help='the saved inputs: mods on, Mod memory (config.get)')
     s = sub.add_parser('set', help='save these mods on, as the Mods page does; built at the next boot (config.set)')
@@ -102,6 +122,9 @@ def command(dev, args, out=print):
         return code
     if args.mods_command == 'status':
         out('\n'.join(describe(f)))
+        once = booted_once(dev)
+        if once:
+            out('development build in use: %s (booted once; the next plain start goes back to the saved setup)' % once)
         return 0
     flags = f['flags'] & (EXPANDED | SAFE | UNVERIFIED)  # safe mode as saved: only the device changes it
     mods = list(args.mods) + ['ext-' + e for e in args.ext]

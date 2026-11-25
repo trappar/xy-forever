@@ -108,17 +108,23 @@ def delete(dev, path, folder=False):
     check(code, '%s %s (error %d)' % ('file.rmdir' if folder else 'file.delete', path, error))
 
 
-def push(dev, package_dir, only=(), verify=False, out=print):
+def push(dev, package_dir, only=(), verify=False, out=print, development=False):
     """Puts the package set on the device; returns the summary dict (sent: [(package, path)] too). Raises
     Refused (or the transport's error) on the first failure: what was written stays, and running it again
-    completes it. A stored name already holds its content, so only changed files are sent."""
+    completes it. A stored name already holds its content, so only changed files are sent. development (#204): into
+    the development set's own folder, dev-<generation> (summary 'folder'), its store.txt modstore.DEVELOPMENT_TEXT."""
     profile, generation, packages = local_set(package_dir, only)
-    gen_path = '%s/%s' % (ROOT, generation)
+    folder = modstore.DEVELOPMENT_PREFIX + generation if development else generation
+    if not TOKEN.match(folder):
+        raise Refused('%s: too long for a development set folder (31 bytes at most)' % folder)
+    gen_path = '%s/%s' % (ROOT, folder)
     start = time.monotonic()
-    total = dict(sent=0, skipped=0, files=0, bytes=0, paths=[], removed=0)
+    total = dict(sent=0, skipped=0, files=0, bytes=0, paths=[], removed=0, folder=folder)
     try:
         with package_store.Session(dev) as session:
             version = session.read(gen_path + '/' + modstore.FILE, optional=True)
+            if version is not None and modstore.development(version) != development:
+                raise Refused('%s: %s a development set; remove it first' % (folder, 'not' if development else 'is'))
             if version is not None and modstore.version_of(version) != modstore.VERSION:
                 raise Refused(
                     'store version %d, newer or unsupported: update the tools or remove the old generation first'
@@ -126,8 +132,10 @@ def push(dev, package_dir, only=(), verify=False, out=print):
                 )
             if version is None:
                 if session.entries(gen_path):
-                    raise Refused('older layout: mods remove %s --yes, then push again' % generation)
-                session.write(gen_path + '/' + modstore.FILE, modstore.TEXT)
+                    raise Refused('older layout: mods remove %s --yes, then push again' % folder)
+                session.write(
+                    gen_path + '/' + modstore.FILE, modstore.DEVELOPMENT_TEXT if development else modstore.TEXT
+                )
             for name, files in packages.items():
                 folder = gen_path + '/' + name
                 stored = modstore.stored_files(name, files)
@@ -168,13 +176,14 @@ def push(dev, package_dir, only=(), verify=False, out=print):
 
 
 OLDER, NEWER = 'older', 'newer'  # holdings: a generation folder this store version does not read
+DEVELOPMENT = 'development'  # holdings: a development set (#204), packages listed
 
 
 def holdings(dev):
     """[(profile, generation, [(package, info dict, files, bytes, complete)], layout)] on the device; profile
     from the base's info.txt. layout None for this store, OLDER for a folder without store.txt (an older
     mods/<profile>/ folder, or a package tree from before the flat store), NEWER for a newer store version;
-    neither lists packages."""
+    neither lists packages; DEVELOPMENT for xyf dev's development set (#204)."""
     out = []
     other = set()
     tree = remote_tree(dev, ROOT, other)
@@ -183,7 +192,7 @@ def holdings(dev):
     files, dirs = tree
     nonfiles = other | set(dirs)
     for gen in sorted(d for d in dirs if '/' not in d):
-        version = 0
+        version, data = 0, b''
         if '%s/%s' % (gen, modstore.FILE) in files:
             code, data = dev.read_all('%s/%s/%s' % (ROOT, gen, modstore.FILE), limit=1024)
             version = modstore.version_of(data) if not code else 0
@@ -210,7 +219,7 @@ def holdings(dev):
                     complete = False
             packages.append((name, info, len(mine), sum(mine.values()), complete))
         base = next((p[1] for p in packages if p[0] == 'base'), {})
-        out.append((base.get('profile', '?'), gen, packages, None))
+        out.append((base.get('profile', '?'), gen, packages, DEVELOPMENT if modstore.development(data) else None))
     return out
 
 
@@ -233,8 +242,15 @@ def show(dev, out=print):
             )
             continue
         out(
-            '%s/%s: %d packages, %d files, %d B'
-            % (profile, generation, len(packages), sum(p[2] for p in packages), sum(p[3] for p in packages))
+            '%s/%s: %d packages, %d files, %d B%s'
+            % (
+                profile,
+                generation,
+                len(packages),
+                sum(p[2] for p in packages),
+                sum(p[3] for p in packages),
+                ' (development set: xyf dev; the Mods page does not list it)' if layout == DEVELOPMENT else '',
+            )
         )
         for name, info, count, size, complete in packages:
             what = ' '.join(v for v in (info.get('type', '?'), info.get('machine', ''), info.get('version', '')) if v)
