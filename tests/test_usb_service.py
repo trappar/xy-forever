@@ -418,22 +418,23 @@ class HostToolTest(unittest.TestCase):
                 pass
 
         host = self.host
-        saved = host.find_port, host.SerialPort, host.log
+        client = host.device_client
+        saved = client.find_port, client.SerialPort, client.log
         try:
-            host.log = lambda message: None
-            host.find_port = lambda: '/dev/cu.usbmodemTEST1'
-            host.SerialPort = lambda path: Late()
+            client.log = lambda message: None
+            client.find_port = lambda: '/dev/cu.usbmodemTEST1'
+            client.SerialPort = lambda path: Late()
             dev, port, text = host.connect(5.0, hello_every=0.01, hello_window=2.0)
             self.assertEqual((port, Late.hellos), ('/dev/cu.usbmodemTEST1', 3))
             self.assertTrue(text.startswith('XYF1'))
-            host.SerialPort = lambda path: Deaf()
+            client.SerialPort = lambda path: Deaf()
             start = time.monotonic()
             with self.assertRaises(SystemExit):
                 host.connect(0.5, hello_every=0.01, hello_window=0.2)
             self.assertLess(time.monotonic() - start, 2.0)  # hard deadline
             self.assertGreaterEqual(Deaf.closed, 1)  # every silent port closed
         finally:
-            host.find_port, host.SerialPort, host.log = saved
+            client.find_port, client.SerialPort, client.log = saved
 
     def test_refuses_anything_not_verified(self):
         with tempfile.TemporaryDirectory() as tmp:

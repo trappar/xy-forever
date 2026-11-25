@@ -77,7 +77,7 @@ def main(argv=None):
     if not args.yes_write:
         print('DRY RUN: nothing sent. Re-run with --yes-write to execute this storage test.')
         return 0
-    host.SIM = args.sim
+    host.device_client.SIM = args.sim
     dev, _, _ = host.connect(30)
     try:
         ids = exercise(dev, args.base)

@@ -99,5 +99,5 @@ same. Safe mode (Boot without mods) is a recovery action on the device only: a s
 Developer path: `mods apply` and `scripts/test_entry.py --boot` (`set-default`, then `boot`) boot a firmware of your
 choosing once, behind the saved inputs, which they never change. The next plain power-on finds the default differs
 from its fingerprint and converges back to the saved setup (no `set-default` back needed). `mods dev` (#204,
-[MODS-DEV](../MODS-DEV.md)) builds one mod alone and boots it once with its content, the default unchanged
+[try.md](../mods-dev/try.md); `xyf dev` for mod writers) builds one mod alone and boots it once with its content, the default unchanged
 (`menu.converge` mode 2); the next plain power-on finds the default's content missing and converges back.

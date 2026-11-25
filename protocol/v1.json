@@ -2,7 +2,7 @@
   "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md. Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
   "protocol": {
     "name": "XY Forever serial protocol",
-    "version": "1.30",
+    "version": "1.31",
     "intro": [
       "XY Forever is a firmware and mod manager for the teenage engineering OP-XY. While its menu runs, the OP-XY's processor B answers this protocol over USB. Tools use it to list, read, write and delete files, take screenshots, stage and install builds, set the default firmware and restart the device.",
       "Transport: USB CDC serial, the raw frame stream (table below). The device answers only while the XY Forever menu runs: after an XY Forever restart, or when the OP-XY is powered on with PLAY held (release it at the logo).",
@@ -1141,7 +1141,7 @@
     },
     {
       "type": "0x35", "name": "menu.converge", "symbol": "menu_converge", "class": "product",
-      "since": "1.30", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "since": "1.31", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
       "summary": "converge, then boot: the saved inputs, or one library entry once; and the sequence's state",
       "timeout_ms": 30000, "destructive": true,
       "request": {
@@ -1165,7 +1165,7 @@
         "extensible": false
       },
       "errors": ["bad_request", "unsupported", "sha", "busy", "link", "not_found", "state"],
-      "doc": "Modes 1 and 2 answer at once with the state after the start (1); the menu then runs the sequence on its progress screen and USB stays up, so `job.status` follows each job (a build, a content switch, the record, the fingerprint) and mode 0 says how it stands. When it boots, the menu closes and USB goes away; when it ends without booting, the menu stays, shows why, and mode 0 answers state 2 with that reason. Mode 1 is the first row's Continue: the converge before every boot (docs/storage/state.md). Mode 2 boots a library entry once, as `library.boot`, but installs its content first (always: an entry rebuilt into the same slot keeps its id), and changes nothing saved: the next plain power-on finds the default's content missing and converges back to the saved inputs (xyf dev, #204). `busy` while a sequence or a job runs, and for mode 2 while a content journal is open (the menu replays it first); `not_found`, no such entry; `state`, it has no `os.ldr`; `link`, processor A does not serve."
+      "doc": "Modes 1 and 2 answer at once with the state after the start (1); the menu then runs the sequence on its progress screen and USB stays up, so `job.status` follows each job (a build, a content switch, the record, the fingerprint) and mode 0 says how it stands. When it boots, the menu closes and USB goes away; when it ends without booting, the menu stays, shows why, and mode 0 answers state 2 with that reason. Mode 1 is the first row's Continue: the converge before every boot (docs/storage/state.md). Mode 2 boots a library entry once, as `library.boot`, but installs its content first (always: an entry rebuilt into the same slot keeps its id; before it, when the stock base has no content set, as on an OP-XY that never saved mods, the content-set job makes it, #284), and changes nothing saved: the next plain power-on finds the default's content missing and converges back to the saved inputs (xyf dev, #204). `busy` while a sequence or a job runs, and for mode 2 while a content journal is open (the menu replays it first); `not_found`, no such entry; `state`, it has no `os.ldr`; `link`, processor A does not serve."
     },
     {
       "type": "0x4f", "name": "packs.manage", "symbol": "packs_manage", "class": "product",
@@ -1237,7 +1237,7 @@
     {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
-     "fields": {"info": "XYF1;service=usb;role=b;proto=1.30;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000fffb003700031fff00be;dev=1;confirm=1;trust=none;serial=on;stage2=0"}, "hex": "58468101e000000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e33303b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303066666662303033373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b73657269616c3d6f6e3b7374616765323d30f973e8ce"},
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.31;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000fffb003700031fff00be;dev=1;confirm=1;trust=none;serial=on;stage2=0"}, "hex": "58468101e000000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e33313b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303066666662303033373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b73657269616c3d6f6e3b7374616765323d30415b4719"},
     {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,

@@ -1,18 +1,23 @@
 """xyf_host.py's byte transports: the OP-XY's CDC tty (SerialPort) and the simulator's TCP port (TcpPort).
 
 Both are raw byte streams: write(data) sends all of data or raises TimeoutError; read(timeout) returns
-what arrived within timeout, or b'' (the caller's own deadline decides when to give up).
+what arrived within timeout, or b'' (the caller's own deadline decides when to give up). On Windows (the developer
+package's xyf, #284) SerialPort is WindowsSerialPort: pyserial's COM port, which Windows opens for one process only.
 """
 
-import fcntl
 import os
 import select
 import socket
 import subprocess
 import sys
-import termios
 import threading
 import time
+
+if sys.platform == 'win32':
+    fcntl = termios = None
+else:
+    import fcntl
+    import termios
 
 from serial.tools import list_ports
 
@@ -140,7 +145,7 @@ class SerialPort:
                 raise TimeoutError('write timeout')
             try:
                 n = os.write(self.fd, view)
-            except BlockingIOError, InterruptedError:
+            except (BlockingIOError, InterruptedError):
                 n = 0
             if n:
                 view = view[n:]
@@ -159,7 +164,7 @@ class SerialPort:
                 return b''
             try:
                 return os.read(self.fd, 65536)
-            except BlockingIOError, InterruptedError:
+            except (BlockingIOError, InterruptedError):
                 if left <= 0:
                     return b''
 
@@ -175,6 +180,44 @@ class SerialPort:
             os.close(done)
             os.close(fd)
             os.close(hold)
+
+
+class WindowsSerialPort:
+    """The OP-XY's COM port on Windows, through pyserial (no termios there). Windows opens a COM port for one process
+    only, so no TIOCEXCL is needed; the same write and read contract as SerialPort."""
+
+    def __init__(self, path, timeout=None, opener=None):
+        no_device.refuse(path)
+        if opener is None:
+            import serial
+
+            opener = serial.Serial
+        self.port = opener(path, baudrate=115200, timeout=0, write_timeout=WRITE_STALL)
+
+    def write(self, data):
+        import serial
+
+        try:
+            self.port.write(data)
+        except serial.SerialTimeoutException as error:
+            raise TimeoutError('write timeout') from error
+
+    def read(self, timeout):
+        self.port.timeout = timeout
+        first = self.port.read(1)  # waits up to timeout for the first byte
+        if not first:
+            return b''
+        self.port.timeout = 0
+        return first + self.port.read(65536)  # then what is there already
+
+    def close(self):
+        port, self.port = self.port, None
+        if port is not None:
+            port.close()
+
+
+if sys.platform == 'win32':
+    SerialPort = WindowsSerialPort
 
 
 def sim_address(address):

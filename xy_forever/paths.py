@@ -28,7 +28,7 @@ def main_checkout(repo=REPO):
         common = subprocess.run(
             ['git', 'rev-parse', '--git-common-dir'], cwd=str(repo), capture_output=True, text=True, check=True
         ).stdout.strip()
-    except OSError, subprocess.CalledProcessError:
+    except (OSError, subprocess.CalledProcessError):
         return repo
     common = (repo / common).resolve()
     return common.parent if common.name == '.git' and common.is_dir() else repo
@@ -128,7 +128,7 @@ def verified(folder):
     try:
         v = json.loads((folder / 'verification.json').read_text())
         m = json.loads((folder / 'manifest.json').read_text())
-    except OSError, ValueError:
+    except (OSError, ValueError):
         return None
     if not (
         v.get('passed') is True

@@ -39,7 +39,7 @@ from pathlib import Path
 import device_pass  # (NEED, session folders)
 from device_pass_keepalive import Keepalive
 
-from xy_forever import bounds, paths
+from xy_forever import bounds, paths, transport
 from xy_forever import conformance as C
 from xy_forever import xyf_host as host
 
@@ -58,7 +58,7 @@ class Target:
 
     def pause(self, seconds):
         """The host waits on the device: on the simulator its clock moves on instead (no host time)."""
-        host.transport.sim_pause(self.sim, seconds) if self.sim else time.sleep(seconds)
+        transport.sim_pause(self.sim, seconds) if self.sim else time.sleep(seconds)
 
     def open(self):
         self.port = 'sim:' + self.sim if self.sim else host.find_port()
@@ -171,7 +171,7 @@ def main(argv=None, sessions=None):
             )
         return EXIT_PASS
     real = not opts.sim
-    host.SIM = opts.sim
+    host.device_client.SIM = opts.sim
     keepalive = Keepalive()
     stopped = keepalive.stop_running() if real else []
     runner = C.Runner(

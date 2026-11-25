@@ -1,0 +1,115 @@
+# The developer package `xy-forever` on PyPI (#284; docs/operating/pypi.md). Every run builds it on Linux and checks
+# the same wheel on Linux and Windows (scripts/xyf_dist.py check: installed on Python 3.11, `xyf --help`, every module
+# imported, the protocol mismatch against a stand-in OP-XY). It publishes only when its inputs changed: a push to main
+# publishes a pre-release (NEXT.devN), an XY Forever release (a published non-prerelease, tag v*) the next normal
+# version, then tags it xyf-vX.Y.Z. A pull request never publishes.
+#
+# Publishing uses PyPI trusted publishing (OIDC): the PyPI publisher names this repository, this file and the `pypi`
+# environment, so no token is stored. The publish job gets id-token only, and contents: write only for the tag.
+#
+# Cost: Linux, plus one short Windows job (twice Linux's minutes: uv only, no mise, no repository environment), on
+# the paths below; the paths filter is broad (all of xy_forever/), the plan step decides from the package's exact
+# inputs. A newer push cancels a pull request's run.
+name: PyPI
+
+on:
+  pull_request:
+    paths: ['pypi/**', 'xy_forever/**', 'LICENSE', 'scripts/xyf_dist.py', '.github/workflows/pypi.yml']
+  push:
+    branches: [main]
+    paths: ['pypi/**', 'xy_forever/**', 'LICENSE', 'scripts/xyf_dist.py', '.github/workflows/pypi.yml']
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  package:
+    name: Build and check the package
+    if: github.event_name != 'release' || (!github.event.release.prerelease && startsWith(github.event.release.tag_name, 'v'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      publish: ${{ steps.plan.outputs.publish }}
+    env:
+      UV_NO_SYNC: "1"   # uv run keeps the sync below: no hosttest build
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0   # the commit count (dev versions), the xyf-v tags and the diff since them
+      - uses: ./.github/actions/mise
+      - run: uv sync --locked --no-group native
+      - id: plan
+        name: The version, and whether the package changed
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          uv run scripts/xyf_dist.py plan --event "$EVENT" --before "$BEFORE" | tee -a "$GITHUB_OUTPUT"
+      - name: Build
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: uv run scripts/xyf_dist.py build --version "$VERSION" --out dist
+      - name: Check (installed on Python 3.11, the oldest supported)
+        env:
+          UV_PYTHON_DOWNLOADS: automatic   # mise.toml says never; this one environment needs 3.11
+        run: uv run scripts/xyf_dist.py check dist --python 3.11
+      - uses: actions/upload-artifact@v7
+        with:
+          name: xyf-dist
+          path: dist/
+          if-no-files-found: error
+
+  windows:
+    name: Check the package on Windows
+    needs: package
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: xyf-dist
+          path: dist/
+      - name: Check (installed on Python 3.11)
+        run: uv run --no-project --python 3.13 scripts/xyf_dist.py check dist --python 3.11
+
+  publish:
+    name: Publish to PyPI
+    needs: [package, windows]
+    if: >-
+      needs.package.outputs.publish == 'true' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'release')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/xy-forever/${{ needs.package.outputs.version }}/
+    permissions:
+      id-token: write   # trusted publishing
+      contents: write   # the xyf-v tag of a normal version
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: xyf-dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true   # a re-run after a failed tag push
+      - name: Tag the normal version (xyf-vX.Y.Z)
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/xyf-v$VERSION" -f sha="$GITHUB_SHA"

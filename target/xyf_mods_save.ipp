@@ -298,12 +298,20 @@ uint32_t content_setting() {
         run.job_total = v.total;
         return moved(phase);
     }
-    if (v.id == sv.job && v.state == 2 && v.phase == 8) { // the window closed: the build
+    if (v.id == sv.job && v.state == 2 && v.phase == 8) { // the window closed: the build (a boot once: the switch)
         if (usb_service::page_busy()) return moved(false);
         reading_screen(false);
+        if (sv.why == why_once) {
+            sv.stage = sv_switch;
+            return 1;
+        }
         return start_build(m::flag_saved);
     }
     reading_screen(false);
+    if (sv.why == why_once && v.error == 15) { // mods' content installed: the switch uses the saved official list
+        sv.stage = sv_switch;
+        return 1;
+    }
     if (v.error == 9) return fail(prefix(), "the base is not official OS 1.2.1 (mods need its content).");
     if (v.error == 15) return fail(prefix(), "mods' content is installed; the base has no content set.");
     if (v.error == 10 || v.error == 7) return fail(prefix(), "the content is not official OS 1.2.1's.");

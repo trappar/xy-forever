@@ -75,6 +75,9 @@ and renames it in as `content.sha256`, last (phase 7). Errors (status `refused`)
 15 not the official state, 10 not the official set, 7 more than the list holds. `detail` is `content <id>`. Before
 that, `config.set` refuses a selection whose base has no content set when the job could not make one: not OS
 1.2.1, mods' content installed, or a catalog that is not the official one.
+A boot once (`menu.converge` mode 2, `xyf dev`, #284) runs the job first too, on the base `mods.apply` would take, since
+its content switch needs a stock entry's set; its error 15 there (mods' content installed) goes on to the switch, which
+uses the saved official list.
 
 ## Inspection
 

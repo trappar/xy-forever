@@ -82,7 +82,7 @@ Both show the progress screen (below) and never open the Mods page.
 ### Mods
 
 This page lists the open-xy mod packages on the device. It needs packages sent from a
-computer first (see `mods push` below, and [MODS-DEV.md](MODS-DEV.md)). It shows
+computer first (see `mods push` below, and [MODS-DEV.md](MODS-DEV.md): `xyf dev`). It shows
 "Reading mod packages..." while it reads them, and "No mod packages on this OP-XY."
 if there are none.
 

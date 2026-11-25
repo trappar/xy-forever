@@ -1,110 +1,76 @@
 # Writing mods for XY Forever
 
-For people who write open-xy mods (machines and extensions) and want to try them on
-an OP-XY that runs XY Forever. See the [serial protocol reference](PROTOCOL.md) and
-the [user guide](GUIDE.md) for the Mods page.
+For people who write Open-XY mods (machines and extensions) and want to try them on an OP-XY running XY Forever,
+with no XY Forever checkout: Open-XY builds the firmware, and `xyf` (the `xy-forever` package on PyPI) checks it, puts
+it on the OP-XY with its content and boots it once. Any other full firmware image works too. An agent can run every step but the power cycle. What each output
+line means and what to do on each failure: the package's page, [pypi/README.md](../pypi/README.md).
 
-## How it works
+## What you need
 
-Your computer never builds firmware for the device. It turns an open-xy kit into
-packages, one per machine or extension, and copies them to the OP-XY. The OP-XY
-links the chosen packages into the stock 1.2.1 firmware itself, installs the matching
-content, and boots the result.
+- An OP-XY running XY Forever, protocol 1.31 or later (update it in the web app: Manage → Device → Update).
+- macOS, Linux or Windows, and what Open-XY's
+  [build guide](https://github.com/etcetc000/open-xy/blob/staging/docs/build.md) asks for (its toolchain).
+- Python 3.11 or later in a virtual environment, for Open-XY's `sdk.py` and `xyf` alike. A stock Mac has only
+  `python3` 3.9 and no `python`: [uv](https://docs.astral.sh/uv/) makes the environment with a Python of its own.
 
-## 1. Make packages from a kit
-
-`xy_forever/modkit.py` reads a published open-xy kit (format `opxy-browser-kit/1`)
-and writes one package set:
-
-```sh
-uv run -m xy_forever.modkit split KIT.json --sdk OPEN_XY --out DIR \
-    [--sdk-commit C] [--sdk-source URL@COMMIT] [--extension-catalog extensions.json]
-```
-
-- `--sdk` is an open-xy tree at the kit's SDK commit. `split` runs open-xy's own
-  `builder/core.mjs` under Node to finish the content (display art, presets). It never
-  changes that tree. With `--sdk-commit`, it takes that commit from the checkout.
-- Objects are copied unchanged. No device and no network are used.
-- How to get a kit file from open-xy is not covered here (not verified).
-
-Other subcommands are for checking the device's assembly against open-xy:
-`rebuild` (packages back into a kit), `prove` and `prove-patch` (byte-for-byte
-comparisons with `core.mjs`), and `known-base` (the list of stock bases the device
-recognises). Run `uv run -m xy_forever.modkit --help` for their options.
-
-## What a package set looks like
-
-`split` writes `DIR/mods/<profile>/<generation>/`:
-
-```
-<generation>/                 for example 0.0.6-<12 hex>
-  base/                       the mod base: SDK objects, edits, tables, the memory limit
-  <machine id>/               one folder per machine
-  ext-<extension id>/         one folder per extension
-```
-
-- `<profile>` is the OS the set targets, today `opxy-1.2.1`.
-- `<generation>` is the kit version plus 12 hex digits of a hash over the whole set.
-  Packages from different generations never mix.
-- A new package holds `manifest.json` and `files.sha256`. The device checks
-  listed file hashes and also accepts legacy `info.txt` metadata.
-- A machine package holds its objects, `objects.txt`, `catalog.txt`, and its content
-  (`content/display/…`, `content/presets/<id>/…`).
-
-The full format is in [storage/mods.md](storage/mods.md), section "Mod packages".
-
-## 2. Send them to the device
+## Once
 
 ```sh
-uv run xyf-host mods push DIR/mods/opxy-1.2.1/<generation> [--only ID ...] [--verify]
+git clone https://github.com/etcetc000/open-xy && cd open-xy
+uv venv --python 3.12 .venv                       # or: python3.11 -m venv .venv (any Python 3.11 or later)
+source .venv/bin/activate                         # Windows: .venv\Scripts\activate; then python is 3.12
+uv pip install xy-forever                         # with python3.11 -m venv: pip install xy-forever
+python sdk.py toolchain fetch                     # on Linux: built with Docker (the build guide)
+python sdk.py new --repository --id mymachine --name "My Machine" --out ../mymachine
+xyf stock-os                                      # the stock OS 1.2.1, from your OP-XY's own library
 ```
 
-The set goes to `/yaffs2/xy-forever/mods/<generation>/`, stored flat (protocol 1.16 or later;
-[the store](storage/mods-store.md)). `mods list` names an older layout, too deep for the dev menu's MTP:
-`mods remove <folder> --yes`, then push again. The base is always sent. A file in a folder is stored under
-its SHA-256. A changed package is built and SHA-256 verified in `tmp/`, then renamed into its place;
-its old folder is detached first. A package with the same files and `files.sha256` is skipped.
-If a push stops part-way, run it again: an unpublished scratch
-folder is swept, and no half-sent package becomes visible. See [package transactions](storage/package-transactions.md).
+`xyf stock-os` copies the library entry whose SHA-256 is stock OS 1.2.1's, checks it and writes it where Open-XY's
+docs keep it, then prints that path: `xyf stock-os: STOCK (2373336 bytes, SHA-256 checked, from library entry
+opxy-121) in 24.00 s`. `STOCK` below is that path: on macOS `~/Library/Application Support/OPXY-SDK/private/stock-1.2.1/os.ldr`,
+on Linux the same under `~/.local/share/`, on Windows under `%LOCALAPPDATA%`. Quote it (it may hold spaces).
 
-`mods list` shows what is on the device; `mods remove GENERATION --yes` deletes a
-set (without `--yes` it is a dry run).
+## Each edit
 
-## 3. Build and boot today
+From the Open-XY checkout, in that environment:
 
-The library needs the stock 1.2.1 firmware as an entry, with its `content.sha256`.
-Without it booting from the first row stops with "Failed: no stock OP-XY firmware in the library."
-The first start adds it; the first build writes its content set from the live content.
-`uv run xyf-host library-add ... --content DIR` adds both (DIR: the official package's
-`firmware/blackfin/content`).
+```sh
+python sdk.py build --machine ../mymachine --stock-os "STOCK" --out ../builds/mine-001
+xyf dev ../builds/mine-001
+python sdk.py build --machine ../mymachine --stock-os "STOCK" --layout ../builds/mine-001/layout.json \
+    --out ../builds/mine-002                      # after an edit: the last build's machine numbers
+xyf dev ../builds/mine-002
+```
 
-**On the device (the normal way):** power on holding PLAY, open Mods, turn your
-machines on (saved at once), STOP, then PLAY on the first row. The OP-XY builds,
-installs content, sets the default and boots it.
+Each build needs a new `--out` folder (or `--overwrite`). `xyf dev` also takes any folder holding an `os.ldr` (and
+optionally `content/`), or an `os.ldr` itself. It checks what XY Forever checks before it boots a library image and
+says which it is (`Open-XY build on 1.2.1` or `custom image`). Then one timed line per step: the power line and
+`[wait]` only when the OP-XY is off or in its OS; `[content]` once on an OP-XY that never saved mods; `[push]`;
+`[boot]`; `total`. Exit code 0 only when it booted; a refusal says why (exit 2). What each line means:
+[pypi/README.md](../pypi/README.md).
 
-**From the computer:** `uv run xyf-host mods set MACHINE ... [--ext ID ...]` saves the same
-selection (checked, or refused with the reason; none: all off); it is built at the next start.
-
-## 4. Try a mod you are writing
-
-`uv run xyf-host mods dev DIR/mods/opxy-1.2.1/<generation>/<mod>` builds that mod alone on the OP-XY and boots it
-once; nothing saved changes. [How it works](mods-dev/try.md).
+Nothing saved changes: the next plain power-on goes back to your own setup. If an image does not start or crashes,
+power on holding PLAY: the XY Forever menu opens, ready for the next `xyf dev`; then `xyf logs` copies the OS's crash
+logs and XY Forever's reports that are new into `./xyf-logs`. `xyf dev --watch ../builds` repeats for each new build
+in that folder, until Ctrl-C. From outside the checkout, add `--sdk OPEN_XY`.
 
 ## Limits
 
-- **Memory:** the mods share one region of fixed size, given by the base package
-  (`module_bytes`). The Mods page shows an estimate from package sizes. Over the
-  limit, it refuses to build ("Too big for the mods memory").
-- **At most 64 machines and 8 extensions in one build.** At least one machine.
-- **At most 96 packages** in a set are read by the Mods page.
-- **The base must be a stock image XY Forever knows.** An unknown base is refused
-  unless the user allows it once (SHIFT + PLAY on the Mods page's first row) or you
-  pass `--unverified` to `mods apply`.
-- A mod may not replace official content files.
+- **Memory:** the mods share one region of fixed size (Open-XY's profile). `sdk.py build` refuses a build over it.
+- **Content:** a build may not replace official content files (the device refuses the switch); the catalog,
+  `op1_factory.json`, is the one it may replace.
+- **The push** sends the whole `os.ldr` (about 2.3 MB) each time a build changes it.
+- **The first `xyf dev`** on an OP-XY that never saved mods records its official content once (`[content]`, about
+  45 s); later runs skip it.
 
 ## Not yet
 
-- No measuring build: the memory figure is an estimate, not the size after linking.
-- No CPU or stability checks of a mod before it boots. A mod that crashes the OS needs
-  a power-on holding PLAY to get back to the menu (not verified for every crash).
+- No CPU or stability checks before a build boots. One that crashes the OS needs a power-on holding PLAY to get back
+  to the menu (not verified for every crash). B's own crash records do not survive a power cycle yet (#295).
 - Only the stock 1.2.1 base. Choosing another base firmware is planned.
+
+## For XY Forever contributors
+
+The mod package tools (`modkit split`, `xyf-host mods push`, the package format): [mods-dev/packages.md](mods-dev/packages.md).
+`xyf-host mods dev`, a mod built on the device from packages: [mods-dev/try.md](mods-dev/try.md). The package and its
+publishing: [operating/pypi.md](operating/pypi.md).

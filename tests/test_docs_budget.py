@@ -45,10 +45,10 @@ CAPS = {
 }
 
 # Files outside docs/ whose relative links must resolve.
-LINKED = ['AGENTS.md', 'ONBOARDING.md', 'README.md', 'web/README.md', 'clients/ts/README.md']
+LINKED = ['AGENTS.md', 'ONBOARDING.md', 'README.md', 'web/README.md', 'clients/ts/README.md', 'pypi/README.md']
 
 # The packages' READMEs: the leaf budget, as any other doc.
-PACKAGE_READMES = ['web/README.md', 'clients/ts/README.md']
+PACKAGE_READMES = ['web/README.md', 'clients/ts/README.md', 'pypi/README.md']
 
 LINK = re.compile(r'\]\(([^)\s]+)(?:\s+"[^"]*")?\)')
 HEADING = re.compile(r'^#{1,6}\s+(.*?)\s*#*\s*$')

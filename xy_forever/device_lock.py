@@ -8,11 +8,15 @@ unless a test supplies its own path.
 """
 
 import datetime
-import fcntl
 import os
 import sys
 import time
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # Windows (the developer package's xyf): no lock, as without a private folder
+    fcntl = None
 
 from xy_forever import no_device, paths
 
@@ -104,7 +108,7 @@ def lock(
     path = str(path)
     if path in _held:
         return path
-    if not os.path.isdir(str(root or paths.PRIVATE_ROOT)):
+    if fcntl is None or not os.path.isdir(str(root or paths.PRIVATE_ROOT)):
         return None
     os.makedirs(os.path.dirname(path), exist_ok=True)
     f = open(path, 'a+')

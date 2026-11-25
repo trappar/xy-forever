@@ -72,7 +72,8 @@ Linux, one job whose steps run by what changed: lint; the web and client suites;
 private files, its toolchain tests in the build image; `e2e.yml`: the browser tests when the web app changes) is
 the merge check; a merge to main runs the Python suite again. `firmware.yml` builds the product `os.ldr` in the
 build image, on Linux, only when the build's inputs change, without stock files, and keeps it with its SHA-256 as
-a workflow artifact: the same bytes as any contributor's build of that tree.
+a workflow artifact: the same bytes as any contributor's build of that tree. `pypi.yml` builds and checks the developer package (`xyf`)
+when its inputs may have changed, and publishes it ([pypi.md](pypi.md)).
 
 The tests that run the Blackfin toolchain (marker `toolchain`) do it in the build container
 ([Docker](dev-tools.md#docker)), batched into one run per test (`conftest.blackfin`); without Docker they skip,

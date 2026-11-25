@@ -234,9 +234,9 @@ class SilentDeviceTest(unittest.TestCase):
     def connect(self, timeout):
         start = time.monotonic()
         with (
-            mock.patch.object(xyf_host, 'SIM', None),
-            mock.patch.object(xyf_host, 'log'),
-            mock.patch.object(xyf_host, 'find_port', return_value=self.path),
+            mock.patch.object(xyf_host.device_client, 'SIM', None),
+            mock.patch.object(xyf_host.device_client, 'log'),
+            mock.patch.object(xyf_host.device_client, 'find_port', return_value=self.path),
             self.assertRaises(SystemExit),
         ):
             xyf_host.connect(timeout, hello_every=0.05)

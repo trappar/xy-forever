@@ -144,7 +144,7 @@ def main(argv=None):
         keep.stop_running()
         time.sleep(2)
     if args.sim:
-        host.SIM = args.sim
+        host.device_client.SIM = args.sim
     try:
         dev, _, _ = host.connect(5)
     except SystemExit:

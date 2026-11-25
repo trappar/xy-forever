@@ -171,7 +171,7 @@ def follow(dev, detail=print, poll=0.25, sleep=None):
                 if not code and j['phase'] != shown:
                     shown = j['phase']
                     detail('job %d (content): %s' % (f['job'], MS.describe(j)))
-        except OSError, TimeoutError:  # USB went away: the menu closed to start it
+        except (OSError, TimeoutError):  # USB went away: the menu closed to start it
             return True, ''
         sleep(poll)
 

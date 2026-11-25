@@ -14,6 +14,7 @@ import time
 
 from . import transport
 from . import usb_proto as P
+from .device_client import SLOTS, current_state
 
 COMMANDS = ('status', 'set')
 EXPANDED, SAFE, UNVERIFIED = 1, 2, 4  # config.get / config.set flags (SAFE: kept as saved)
@@ -90,8 +91,6 @@ CONTENT_STATE = '/yaffs2/xy-forever/content-state.txt'
 def booted_once(dev):
     """#204: the library entry whose mod content is installed while another entry is the default (`mods dev` booted it
     once; the next plain power-on converges back), or None."""
-    from .xyf_host import SLOTS, current_state  # the state slots' reader (imported here: xyf_host imports this module)
-
     code, head = dev.read_file(CONTENT_STATE, 0, 256)
     fields = dict(line.split('=', 1) for line in head.decode('ascii', 'replace').splitlines() if '=' in line)
     if code or fields.get('state') != 'installed' or not fields.get('entry'):

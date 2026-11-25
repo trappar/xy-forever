@@ -606,7 +606,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
             raise ValueError('no package for %s in %s' % (', '.join(unknown), o.packages))
         if o.sim:
             host.sim_address(o.sim)
-            host.SIM = o.sim
+            host.device_client.SIM = o.sim
     except ValueError as error:
         print('mod_boot: %s' % error, file=sys.stderr)
         return dp.EXIT_USAGE
