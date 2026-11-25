@@ -522,7 +522,8 @@ uint32_t converge_follow() {
         sv.stage = sv_switch;
         return 1;
     case sv_switch: { // the record made first: the switch's write window serves no reads
-        if (usb_service::page_busy()) return moved(false);
+        // (a boot once starts here: a reading of the package list, as check() waits for it, ends first)
+        if (usb_service::page_busy() || (sv.why == why_once && reading())) return moved(false);
         if (!sv.length && (sv.ops & xc::op_record)) {
             const uint32_t draw = compose();
             if (!sv.length) return draw;

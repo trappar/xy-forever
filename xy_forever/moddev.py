@@ -36,6 +36,7 @@ ENDED, BOOTING = 2, 3  # its states (0 idle, 1 running)
 NAME = '%s (development)'  # the build's library name (mods.apply's name: 47 bytes at most)
 WAIT_S = 600.0  # how long it waits for the OP-XY to be turned on (--wait)
 READY_S = 120.0  # then for its storage (the start's recovery scan; a full yaffs scan can take tens of seconds)
+BUSY_S = 60.0  # a request answered busy is sent again this long (A's write window closing after a push or a build)
 PLAIN = {  # the device's refusals, in plain words
     'busy': 'the OP-XY is busy (a build, a content change or a saved change runs, or its menu asks to repair content):'
     ' try again when its menu is idle',
@@ -125,6 +126,16 @@ def remove_older(dev, keep, out=print):
                 out('removed the older development set %s' % generation)
 
 
+def patient(dev, request, timeout=BUSY_S, clock=time.monotonic):
+    """request() -> (status, ...), sent again while the device answers busy (paused between), for timeout at most."""
+    start = clock()
+    while True:
+        answer = request()
+        if answer[0] != P.ids.S_BUSY or clock() - start > timeout:
+            return answer
+        transport.pause(dev.t, 0.25)
+
+
 def ready(dev, text, timeout=READY_S):
     """Waits until the menu's start-up storage work is done (storage.space answers ok, not busy)."""
 
@@ -185,7 +196,7 @@ def build(dev, args, gen, package, folder, out=print):
     """mods.apply of the mod alone from the development set's folder, followed to its end: the library entry, or None
     (said why)."""
     profile = MS.local_set(gen, [package])[0]
-    code, saved = modconfig.get(dev)  # the saved base and Mod memory (read only)
+    code, saved = patient(dev, lambda: modconfig.get(dev))  # the saved base and Mod memory (read only)
     if code:
         out('build: the saved setup could not be read (%s)' % plain(code))
     base = args.base or (saved or {}).get('base')
@@ -194,8 +205,9 @@ def build(dev, args, gen, package, folder, out=print):
         return None
     machines, extensions = ([], [package[4:]]) if package.startswith('ext-') else ([package], [])
     expanded = bool(saved and saved['flags'] & modconfig.EXPANDED)
-    code, job, missing = MS.start(
-        dev, base, profile, folder, machines, extensions, NAME % package, args.unverified, expanded
+    code, job, missing = patient(
+        dev,
+        lambda: MS.start(dev, base, profile, folder, machines, extensions, NAME % package, args.unverified, expanded),
     )
     if code:
         if missing and code == MS.NOT_FOUND:
@@ -226,10 +238,12 @@ def dev_once(dev, args, gen, package, out=print):
 
     def push():
         remove_older(dev, folder, out)
-        return MS.push(dev, gen, [package], out=out, development=True)
+        summary = MS.push(dev, gen, [package], out=out, development=True)
+        MS.served(dev, out)  # A's write window closed
+        return summary
 
     def boot():
-        code, _ = converge(dev, ONCE, entry)
+        code, _ = patient(dev, lambda: converge(dev, ONCE, entry))
         if code:
             out('boot: refused: %s' % plain(code))
             return False
