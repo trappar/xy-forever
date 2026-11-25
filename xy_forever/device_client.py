@@ -367,7 +367,10 @@ def connect(timeout, hello_every=0.5, hello_window=8.0, log=log, waiting=None):
         except OSError:
             pass
         pause(0.3)
-    raise SystemExit('XY Forever USB service not found (power on with USB attached, no keys held)')
+    raise SystemExit(
+        'XY Forever USB service not found within %g s (USB attached; to reach the menu, power on holding PLAY)'
+        % timeout
+    )
 
 
 def pause(seconds):

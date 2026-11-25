@@ -387,6 +387,25 @@ class LogsTest(unittest.TestCase):
                 ],
             )
 
+    def test_a_menu_that_never_answers(self):
+        """The OP-XY left in its OS past --wait: the power line once, then what to do."""
+        lines = []
+
+        def connect(timeout, log, waiting):
+            waiting()
+            raise SystemExit('XY Forever USB service not found within 5 s (...)')
+
+        args = SimpleNamespace(out=Path('unused'), wait=5.0, verbose=False)
+        self.assertEqual(xyf.logs(args, lines.append, connect), 1)
+        self.assertEqual(
+            lines,
+            [
+                moddev.POWER,
+                'xyf logs: the XY Forever menu did not answer within 5 s (--wait): power the OP-XY on holding PLAY, '
+                'then run it again',
+            ],
+        )
+
     def test_the_power_line_and_a_mismatch(self):
         lines = []
 

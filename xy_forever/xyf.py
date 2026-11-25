@@ -112,7 +112,13 @@ def session(name, args, work, out=print, connect=None):
         out('%s: %s' % (name, error))
         return 2
     except SystemExit as error:  # device_client.connect: no XY Forever menu within --wait
-        out('%s: %s' % (name, error.code))
+        if waited:
+            out(
+                '%s: the XY Forever menu did not answer within %g s (--wait): power the OP-XY on holding PLAY, then '
+                'run it again' % (name, args.wait)
+            )
+        else:
+            out('%s: %s' % (name, error.code))
         return 1
     except KeyboardInterrupt:
         out('%s: stopped' % name)
