@@ -78,6 +78,7 @@ extern "C" uint32_t xyf_stage2_main(const stage2::Abi* abi) {
             case menu::Action::restore:
             case menu::Action::undo:
             case menu::Action::apply: return stage2::exit_menu;   // stage 1's (never here: no record)
+            case menu::Action::uninstall:
             case menu::Action::change_setting:
             case menu::Action::pick_setting: break;   // stage 1's Settings (no record here)
             }

@@ -116,7 +116,7 @@ void tfw_check_role(uint8_t seq, const uint8_t* payload, U32 length) {
 // INSTALL / UNINSTALL: payload = 32-byte confirm token = SHA-256 of the
 // staged image. UNINSTALL differs only in the image acceptance (the exact
 // stock 1.2.1 os.ldr instead of an XY Forever build) and the reply type.
-void install(uint8_t seq, const uint8_t* payload, U32 length, bool uninstall) {
+U32 write_staged(const uint8_t* payload, U32 length, bool uninstall) {
     U32 code = P::s_ok;
     result.install_written = result.install_ms = 0;
     result.verify_partition = result.verify_sectors = result.verify_mismatch = 0;
@@ -138,7 +138,7 @@ void install(uint8_t seq, const uint8_t* payload, U32 length, bool uninstall) {
     if (code == P::s_ok) {
         const U32 start = now();
         lines(image, put_expected, false);          // the stock writer moves data by SPI DMA
-        say("Installing XY Forever...", "Do not unplug or power off.");
+        say(uninstall ? "Restoring stock OS 1.2.1..." : "Installing XY Forever...", "Do not unplug or power off.");
         beacon(step_writer, put_expected);
         hook_logs();
         result.install_written = write_boot(staged, put_expected);
@@ -162,6 +162,10 @@ void install(uint8_t seq, const uint8_t* payload, U32 length, bool uninstall) {
     // partition still selected keeps it). A lost link here is found by the next command anyway.
     if (a_install) menu_link::usb_command(storage_server::command_item);
     result.install_status = code;
+    return code;
+}
+void install(uint8_t seq, const uint8_t* payload, U32 length, bool uninstall) {
+    const U32 code = write_staged(payload, length, uninstall);
     uint8_t p[16];
     P::put32(p, code);
     P::put32(p + 4, result.install_written);

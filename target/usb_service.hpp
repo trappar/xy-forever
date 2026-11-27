@@ -362,6 +362,9 @@ uint32_t settings_store();
 // write keeps the rows marked; the next pick, or leaving the page, tries again. A power cut before the write loses
 // only that change. serial_off, mtp_off (#191): USB mode as picked (the composite always carries both): "MTP" turns
 // serial off (every request but hello answers serial_off; hello serial=off), "Serial" turns MTP off.
+const char* menu_uninstall();
+bool uninstall_key(uint32_t key, bool pressed);
+const char* uninstall_message();
 const char* settings_open(xyf::menu::State& state, uint32_t row);
 void settings_pick(const xyf::menu::State& state);
 bool settings_view(xyf::menu::State& state, const char*& line);

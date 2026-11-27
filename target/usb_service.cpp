@@ -137,6 +137,10 @@ namespace xy_forever { namespace usb_service { // the Mods page's hooks (usb_ser
 #include "usb_service_settings.ipp" // settings.txt, the Settings page's rows (#21)
 }}
 namespace {
+#if defined(XYF_CONTENT_SWITCH)
+void uninstall_status(uint8_t seq, U32 want);
+bool uninstall_owned();
+#endif
 #include "usb_service_reports.ipp"
 #include "usb_service_package_session.ipp"
 #include "usb_service_job_status.ipp" // JOB_STATUS, JOB_CANCEL
@@ -147,6 +151,9 @@ bool boot_probe_active() { return false; }
 
 #include "usb_service_a_stage.ipp" // product RAM-only A admission rehearsal
 #include "usb_service_install.ipp" // TFW_CHECK, INSTALL
+#if defined(XYF_CONTENT_SWITCH)
+#include "usb_service_uninstall.ipp"
+#endif
 }
 
 namespace xy_forever { namespace usb_service {

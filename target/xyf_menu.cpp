@@ -70,7 +70,7 @@ Action key(State& s, uint32_t k, bool pressed) {
         const Screen back = s.screen == Screen::info ? s.info_return :
                             s.screen == Screen::home_empty ? Screen::home_empty :
 #if defined(XYF_SETTING_OPTIONS)
-                            (s.screen == Screen::options || s.screen == Screen::packs) ? Screen::settings :   // #21: nothing picked
+                            (s.screen == Screen::options || s.screen == Screen::packs || s.screen == Screen::uninstall) ? Screen::settings :   // #21: nothing picked
 #endif
                             Screen::main;
         if (back == s.screen) return Action::none;
@@ -121,7 +121,7 @@ Action key(State& s, uint32_t k, bool pressed) {
     case Screen::settings: {                      // the extra row opens the installed-pack list on the product
         uint32_t count = settings::rows;
 #if defined(XYF_SETTING_OPTIONS)
-        if (s.pack_names) ++count;
+        if (s.pack_names) count += 2;
 #endif
         if (minus || plus) {
             s.settings_selected = step(s.settings_selected, count, plus);
@@ -129,6 +129,13 @@ Action key(State& s, uint32_t k, bool pressed) {
             return Action::redraw;
         }
         if (!play) return Action::none;
+#if defined(XYF_SETTING_OPTIONS)
+        if (s.settings_selected == settings::row_uninstall) {
+            s.screen = Screen::uninstall;
+            s.confirm_accept = false;
+            return Action::redraw;
+        }
+#endif
         if (s.settings_selected != settings::row_about) {
             s.entry = s.settings_selected;
             return Action::change_setting;
@@ -138,6 +145,13 @@ Action key(State& s, uint32_t k, bool pressed) {
         return Action::redraw;
     }
 #if defined(XYF_SETTING_OPTIONS)
+    case Screen::uninstall:
+        if (minus || plus) s.confirm_accept = !s.confirm_accept;
+        else if (play) {
+            s.screen = Screen::settings;
+            if (s.confirm_accept) return Action::uninstall;
+        } else return Action::none;
+        return Action::redraw;
     case Screen::packs:
         if (s.pack_busy || s.pack_execute) return Action::none;
         if (s.pack_confirm) {
@@ -174,6 +188,7 @@ Action key(State& s, uint32_t k, bool pressed) {
         s.screen = Screen::settings;
         return Action::pick_setting;
 #else
+    case Screen::uninstall:
     case Screen::packs:
     case Screen::options: break;                  // never opened here
 #endif

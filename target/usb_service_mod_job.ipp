@@ -26,6 +26,7 @@ const U32 job_work_end = XYF_JOB_REGION_END;
 const U32 max_job_machines = 64, max_job_extensions = 8, job_link_error = 21;
 const char job_firmware[] = "/yaffs2/xy-forever/firmware/", job_mods[] = "/yaffs2/xy-forever/mods/";
 const char job_tmp[] = "/yaffs2/xy-forever/tmp", job_catalog[] = "/yaffs2/content/op1_factory.json";
+const U32 uninstall_kind = 5;
 enum JobState : U32 { job_none = 0, job_busy, job_ended };
 // Removing one folder tree under tmp/ in bounded steps (tree_step), and the sweep of leftovers.
 struct Tree {
@@ -338,7 +339,7 @@ U32 tree_change(U32 op, const char* path) {
     writes_ms = now();
     return code;
 }
-U32 tree_step(Tree& t, uint8_t* page) {
+U32 tree_step(Tree& t, uint8_t* page, bool uninstall = false) {
     uint32_t count = 0, more = 0, bytes = 0;
     if (file_client::list(t.path, 0, page, one_entry, count, more, bytes, mounted) != P::s_ok) return tree_failed;
     U32 n = text_bytes(t.path);
@@ -354,7 +355,9 @@ U32 tree_step(Tree& t, uint8_t* page) {
     t.path[n] = '/';
     for (U32 i = 0; i != name; ++i) t.path[n + 1 + i] = char(page[6 + i]);
     t.path[n + 1 + name] = 0;
-    if (!tmp_ok(t.path)) return tree_failed;
+    if (uninstall) {
+        if (!inside(t.path, "/yaffs2/xy-forever") || !storage_server::valid_write_path(t.path)) return tree_failed;
+    } else if (!tmp_ok(t.path)) return tree_failed;
     if (page[0] == 1) return tree_more; // a folder: into it
     const U32 code = tree_change(0x25u, t.path); // unlink
     t.path[n] = 0;

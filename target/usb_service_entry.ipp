@@ -1,4 +1,22 @@
 // Part of usb_service.cpp, included there at this point: not compiled alone.
+#if defined(XYF_CONTENT_SWITCH)
+const char* menu_uninstall() {
+    const U32 code = uninstall_begin();
+    return code == P::s_ok   ? "Checking official OS 1.2.1..." :
+           code == P::s_busy ? "Busy. Try Uninstall again." :
+                               "Cannot start uninstall. Check storage.";
+}
+bool uninstall_key(uint32_t key, bool pressed) {
+    if (uninstall_active()) return true;
+    if (!uninstall_owned() || uninstall_job.dismissed) return false;
+    if (pressed && (key == xyf::menu::key_stop || xyf::menu::as_play(key) == xyf::menu::key_play))
+        uninstall_job.dismissed = true;
+    return true;
+}
+const char* uninstall_message() {
+    return uninstall_owned() && !uninstall_job.dismissed ? uninstall_job.detail : nullptr;
+}
+#endif
 uint32_t presence() {
     // 1: the stock bootloader started USB (MSC). It does so only on its "wait
     // for battery" path (88a1dbae: 88a1c8fc -> 88a35044(0x40)), i.e. powered on

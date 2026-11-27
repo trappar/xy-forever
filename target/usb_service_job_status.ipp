@@ -8,6 +8,7 @@ void job_status(uint8_t seq, const uint8_t* payload, U32 length) {
     JobSlot& s = slot();
     const U32 want = length == 4 ? P::get32(payload) : 0;
 #if defined(XYF_CONTENT_SWITCH)
+    if (length == 4 && uninstall_owned()) return uninstall_status(seq, want);
     if (length == 4 && job_kind == 2) return config_status(seq, want);
     if (length == 4 && job_kind == 3) return adopt_status(seq, want);
     if (length == 4 && job_kind) return content_status(seq, want);

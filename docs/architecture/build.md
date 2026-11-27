@@ -10,8 +10,10 @@ window, first-HELLO load and services are described in [package files](../storag
 The legacy narrow-layout modes retain ABI 1 (hello) and ABI 2 (menu) demonstrations.
 No trial counter or rollback flow is implemented in the shipping product.
 
-**Uninstall** (USB command `UNINSTALL`, proven on the device) rewrites the boot partition
-with the exact stock 1.2.1 `os.ldr` (size + SHA checked). It deletes nothing.
+**Uninstall** in Settings and USB `boot.uninstall_start` run the same device job. B stages the protected
+OS 1.2.1 image locally, checks its size and SHA-256, restores official content and publishes the verified
+root `os.ldr`. The shipping B writer commits and reads back the boot partition. Only then does the job remove
+the manager directory, close storage and restart. The low-level `boot.uninstall` remains available to host tools.
 
 Stock MTP runs storage requests inside B's USB ISR with no bounded wait on A. It is
 abandoned; our MTP responder uses the file engine from the main loop.

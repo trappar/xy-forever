@@ -29,7 +29,7 @@ static const uint32_t key_turn = 0x100u;
 #if !defined(XYF_SMALL_CRC)
 #define XYF_SETTING_OPTIONS 1
 #endif
-enum class Screen : uint32_t { main, info, home_empty, settings, options, packs };
+enum class Screen : uint32_t { main, info, home_empty, settings, options, packs, uninstall };
 enum class Action : uint32_t {
     none,
     redraw,          // state changed: draw again
@@ -39,12 +39,12 @@ enum class Action : uint32_t {
     open_mods,       // open the Mods page (xyf_mods; stage 1 runs it)
     change_setting, // the Settings page's PLAY on setting `entry` (xyf_settings.hpp Row): the caller opens its options
     pick_setting, // #21: the option list's PLAY: setting `entry` takes option_selected (back on the Settings page)
+    uninstall,
     undo, // the first row while a content change's source is missing (State::undo_offer): undo it
     apply // the first row while the saved setup is not applied (pending): converge to it, then boot
 };
 // Main menu rows, in order. 188: no MTP mode row (MTP is always on with the composite USB device). #21: no Info
-// row (Settings' About). The safe-mode row (State::safe_label) sits where the Firmware library row was. #197: no
-// Uninstall row (uninstalling is the web app's, #179: the USB boot.uninstall command).
+// row (Settings' About). The safe-mode row (State::safe_label) sits where the Firmware library row was. Uninstall is in Settings.
 enum MainItem : uint32_t { item_continue = 0, item_safe = 1, item_mods = 2, item_settings = 3, main_items = 4 };
 // 193: what B knows about A's storage, set by the caller every pass (product: xyf_boot::storage_view).
 // unknown: not reported (the offline modes, whose stock OS is embedded: "Continue (built-in OP-XY)");
@@ -117,7 +117,7 @@ struct State {
 // Holding + or - moves through lists. Confirm dialogs take one press per choice.
 inline bool repeat_keys(const State& s) {
 #if defined(XYF_SETTING_OPTIONS)
-    return !(s.screen == Screen::packs && s.pack_confirm);
+    return s.screen != Screen::uninstall && !(s.screen == Screen::packs && s.pack_confirm);
 #else
     (void)s;
     return true;
