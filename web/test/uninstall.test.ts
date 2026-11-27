@@ -54,6 +54,13 @@ it('surfaces a refusal or job failure without retrying the uninstall', async () 
   await expect(run()).rejects.toThrow('Invalid stock image');
 });
 
+it('sends no second start when the acknowledgement is lost', async () => {
+  const { call, run } = fixture();
+  call.mockRejectedValueOnce(new XyfError('timeout', 'reply lost'));
+  await expect(run()).rejects.toThrow('before your OP-XY acknowledged');
+  expect(call).toHaveBeenCalledTimes(1);
+});
+
 it('does not treat losing USB while the job runs as a successful uninstall', async () => {
   const { call, run } = fixture();
   call.mockResolvedValueOnce(receipt).mockRejectedValueOnce(new XyfError('disconnected', 'gone'));

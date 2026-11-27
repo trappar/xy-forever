@@ -4,7 +4,12 @@ import type { Client, DeviceInfo } from 'xy-forever-client';
 export const UNINSTALL_PROTOCOL = '1.34';
 
 export function uninstallAvailable(info: DeviceInfo): boolean {
-  return info.serial && info.hello.answers(TYPE['boot.uninstall_start']) && info.hello.answers(TYPE['job.status']);
+  return (
+    info.serial &&
+    !info.hello.preV1 &&
+    info.hello.answers(TYPE['boot.uninstall_start']) &&
+    info.hello.answers(TYPE['job.status'])
+  );
 }
 
 interface UsbDevice {
@@ -28,7 +33,14 @@ export async function stockVisible(serial: string, usb: Usb | undefined): Promis
 export async function uninstallXyf(client: Client, step: (message: string) => void): Promise<string> {
   if (!uninstallAvailable(client.info)) throw new Error('Update XY Forever to use on-device uninstall.');
   step('Starting uninstall on your OP-XY…');
-  const { job, serial } = await client.call('boot.uninstall_start', { confirm: 1 });
+  const { job, serial } = await client.call('boot.uninstall_start', { confirm: 1 }).catch((error: unknown) => {
+    if (isXyfError(error, 'disconnected', 'timeout'))
+      throw new Error(
+        'The browser lost contact before your OP-XY acknowledged the uninstall. Check its screen to see whether it started.',
+        { cause: error },
+      );
+    throw error;
+  });
   if (!job) throw new Error('The OP-XY did not return an uninstall job.');
   for (;;) {
     // The stock boot writer can occupy the menu processor before it can answer a progress poll.

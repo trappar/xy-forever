@@ -229,7 +229,9 @@ function UninstallCard({ info }: { info: DeviceInfo }) {
               Uninstall XY Forever
             </Button>
           </div>
-          <p role="status">{progress}</p>
+          <p role="status" data-testid="uninstall-progress">
+            {progress}
+          </p>
         </>
       ) : (
         <p>

@@ -253,7 +253,20 @@ async function installedWithMods(build: string, interrupted: boolean) {
   const candidate = readFileSync(build);
   const stock = readFileSync(found.fixtures['stock_os_ldr']!);
   image = digestOf(candidate).slice(0, 8);
-  const sim = await powerOn('stock', false);
+  // The stock manifest that belongs to this simulator fixture. It accepts only the original catalog.
+  const path = 'op1_factory.json';
+  const catalogHash = digestOf(Buffer.from('{"xyf_sim": "stand-in op1_factory.json"}\n'));
+  const listHash = digestOf(Buffer.from(`${catalogHash}  ${path}\n`));
+  const previous = process.env['XYF_SIM_OFFICIAL_CONTENT'];
+  process.env['XYF_SIM_OFFICIAL_CONTENT'] =
+    `${listHash} ${catalogHash} 0,0,0 ${digestOf(Buffer.from(path)).slice(0, 8)}`;
+  let sim: SimInfo;
+  try {
+    sim = await powerOn('stock', false);
+  } finally {
+    if (previous === undefined) delete process.env['XYF_SIM_OFFICIAL_CONTENT'];
+    else process.env['XYF_SIM_OFFICIAL_CONTENT'] = previous;
+  }
   await until('the first adoption', async () => existsSync(join(sim.root, 'xy-forever/state-a.txt')));
   await simulatedTrack5(sim, candidate);
   const file = (rel: string): string => join(sim.root, rel);
@@ -421,7 +434,7 @@ test("an uninstall cancelled, then stopped at the boot write, keeps XY Forever, 
 
     await press(page, 'Uninstall XY Forever');
     await press(page, 'Uninstall');
-    await expect(page.getByTestId('notice')).toHaveText(/uninstall failed/i, { timeout: 0 });
+    await expect(page.getByTestId('notice')).toHaveText(/stock boot verification failed/i, { timeout: 0 });
     expect(starts()).toBe(1);
     expectActive(sim, candidate);
     expect(existsSync(file('xy-forever/firmware'))).toBe(true);
