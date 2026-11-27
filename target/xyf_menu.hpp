@@ -39,9 +39,9 @@ enum class Action : uint32_t {
     open_mods,       // open the Mods page (xyf_mods; stage 1 runs it)
     change_setting, // the Settings page's PLAY on setting `entry` (xyf_settings.hpp Row): the caller opens its options
     pick_setting, // #21: the option list's PLAY: setting `entry` takes option_selected (back on the Settings page)
-    uninstall,
     undo, // the first row while a content change's source is missing (State::undo_offer): undo it
-    apply // the first row while the saved setup is not applied (pending): converge to it, then boot
+    apply, // the first row while the saved setup is not applied (pending): converge to it, then boot
+    uninstall
 };
 // Main menu rows, in order. 188: no MTP mode row (MTP is always on with the composite USB device). #21: no Info
 // row (Settings' About). The safe-mode row (State::safe_label) sits where the Firmware library row was. Uninstall is in Settings.

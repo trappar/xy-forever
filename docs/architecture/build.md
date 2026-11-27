@@ -13,7 +13,10 @@ No trial counter or rollback flow is implemented in the shipping product.
 **Uninstall** in Settings and USB `boot.uninstall_start` run the same device job. B stages the protected
 OS 1.2.1 image locally, checks its size and SHA-256, restores official content and publishes the verified
 root `os.ldr`. The shipping B writer commits and reads back the boot partition. Only then does the job remove
-the manager directory, close storage and restart. The low-level `boot.uninstall` remains available to host tools.
+the manager directory, close storage and restart. A cut before boot commit leaves XY Forever bootable.
+A cut during final cleanup can leave manager files alongside the bootable stock OS.
+The stock writer’s independent media verification failure is described in [device safety](../SAFETY.md).
+The low-level `boot.uninstall` remains available to host tools.
 
 Stock MTP runs storage requests inside B's USB ISR with no bounded wait on A. It is
 abandoned; our MTP responder uses the file engine from the main loop.

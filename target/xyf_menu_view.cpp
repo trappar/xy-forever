@@ -70,13 +70,16 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
     case Screen::uninstall:
 #if defined(XYF_SETTING_OPTIONS)
     {
-        const ui::Confirm dialog = {"Uninstall XY Forever?",
-                                    {"Restore OS 1.2.1 and remove XY Forever.", "Your projects and sound packs stay."},
-                                    2,
-                                    "Cancel",
-                                    "Uninstall",
-                                    s.confirm_accept,
-                                    chrome};
+        ui::Confirm dialog;
+        dialog.heading = "Uninstall XY Forever?";
+        dialog.lines[0] = "Restore OS 1.2.1 and remove XY Forever.";
+        dialog.lines[1] = "Your projects and sound packs stay.";
+        dialog.lines[2] = dialog.lines[3] = "";
+        dialog.count = 2;
+        dialog.cancel = "Cancel";
+        dialog.accept = "Uninstall";
+        dialog.accept_selected = s.confirm_accept;
+        dialog.chrome = chrome;
         ui::draw_confirm(fb, dialog);
     }
 #endif
