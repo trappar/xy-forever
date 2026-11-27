@@ -1,7 +1,7 @@
 {
   "$comment": "Conformance suite of the XY Forever serial protocol v1 (spec: protocol/v1.json, protocol/v1.json). The behaviour a v1 device must show, as data: each case is a named exchange that every client runs the same way (Python: scripts/conformance.py; TypeScript: clients/ts/test/conformance.ts) against the simulator or a device. scripts/protogen.py validates this file against the spec (xy_forever/conformance.py) and the coverage rules; `syntax` documents every keyword. Frame-level vectors stay in v1.json (`streams`) and are referenced by name, not copied.",
   "format": "xyf-conformance/1",
-  "protocol": "1.33",
+  "protocol": "1.34",
   "doc": [
     "`protocol/v1.conformance.json` holds the conformance suite: the behaviour a v1 device must show, as data that any client can run. Each case is a named exchange: preconditions (`given`: a fresh boot before `hello`, files in the test area, simulator faults), requests by command name and field values (or raw bytes for malformed input and frame-level tests), and what must come back (status, field values, limits such as the device's `read=`), including reads that show what did not change. Every case says what it does (`effects`: none means read-only; `staging`, `writes_test_area`, `restarts`, `writes_device`, `boots_os`), what it needs (`needs`: simulator control, fixtures) and whether it is safe on a real device (`real_device`, else `why_not`). The keywords are documented in the file's `syntax` object.",
     "A third-party client conforms when it runs every case with its own codec and transport: send the requests in order, one at a time, and check each expectation. Two runners exist: `uv run scripts/conformance.py --sim 127.0.0.1:7341,7342` (or without `--sim` for the OP-XY, where only cases marked safe run and a guard refuses any request that could change more than the test area `/yaffs2/xy-forever/log/conformance/`), and `node clients/ts/test/conformance.ts --sim 127.0.0.1:7341,7342` for the TypeScript module. Both read the same file; `--check` only interprets every case."
@@ -90,6 +90,11 @@
     {"command": "boot.install", "status": "link", "why": "processor A must refuse install mode; no fault hook makes it"},
     {"command": "boot.install", "status": "too_large", "why": "needs a valid build larger than the boot partition"},
     {"command": "boot.install", "status": "install", "why": "the boot-partition write or read-back must fail; no fault hook makes it"},
+    {"command": "boot.uninstall_start", "status": "ok", "why": "the browser simulator suite follows the job across a stock boot"},
+    {"command": "boot.uninstall_start", "status": "link", "why": "requires processor A to be unavailable"},
+    {"command": "boot.uninstall_start", "status": "busy", "why": "requires a competing job or exclusive file session"},
+    {"command": "boot.uninstall_start", "status": "refused", "why": "requires processor A to refuse mounting user storage"},
+    {"command": "boot.uninstall_start", "status": "storage", "why": "requires the storage mount to fail"},
     {"command": "boot.uninstall", "status": "link", "why": "as boot.install"},
     {"command": "boot.uninstall", "status": "too_large", "why": "the stock image always fits the boot partition"},
     {"command": "boot.uninstall", "status": "install", "why": "as boot.install"},
@@ -233,7 +238,7 @@
         "hello": {"prefix": "XYF1", "keys": {"service": "usb", "role": "b", "proto": {"matches": "^1\\.[0-9]+$"}, "install": "stock-88a06a7e",
           "version": {"matches": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}, "image": {"matches": "^([0-9a-f]{8}|unknown)$"}, "mode": {"matches": "^[a-z0-9-]{1,16}$"}, "payload": {"const": "max_payload"}, "read": {"const": "max_read"},
           "stage": {"const": "max_stage"}, "cmds": {"matches": "^[0-9a-f]{32}$"}},
-          "answers": ["hello", "diag.status", "file.read", "screen.read", "stage.begin", "stage.data", "stage.end", "file.write_staged", "file.list", "file.delete", "file.rmdir", "file.mkdir", "file.rename", "file.copy", "file.write_begin", "file.write_data", "file.write_end", "file.hash", "file.read_stream", "boot.install", "boot.uninstall", "device.reboot", "menu.continue", "service.hold", "library.set_default", "library.boot", "mods.apply", "job.status", "job.cancel", "package.session", "package.list", "state.get", "storage.space", "config.get", "config.set", "menu.converge"]}}}
+          "answers": ["hello", "diag.status", "file.read", "screen.read", "stage.begin", "stage.data", "stage.end", "file.write_staged", "file.list", "file.delete", "file.rmdir", "file.mkdir", "file.rename", "file.copy", "file.write_begin", "file.write_data", "file.write_end", "file.hash", "file.read_stream", "boot.install", "boot.uninstall", "boot.uninstall_start", "device.reboot", "menu.continue", "service.hold", "library.set_default", "library.boot", "mods.apply", "job.status", "job.cancel", "package.session", "package.list", "state.get", "storage.space", "config.get", "config.set", "menu.converge"]}}}
      ]},
     {"name": "hello/repeat", "effects": [], "real_device": true,
      "doc": "A build's hello text never changes while it runs, and the device ignores a hello payload.",
@@ -797,6 +802,13 @@
        {"send": "boot.install", "payload": {"fill": 0, "count": 31}, "expect": {"status": "state", "fields": {"written": 0}}},
        {"send": "boot.install", "fields": {"sha256": {"sha256": "tiny"}}, "expect": {"status": "image", "fields": {"written": 0}}},
        {"send": "boot.install", "fields": {"sha256": {"sha256": "tiny"}}, "expect": {"status": "image", "fields": {"written": 0}}}
+     ]},
+    {"name": "boot.uninstall_start/confirmation", "effects": [], "real_device": false,
+     "why_not": "the command restores stock firmware; exercise refusals on the simulator",
+     "doc": "Starting an uninstall needs the owner's explicit confirmation.",
+     "steps": [
+       {"send": "boot.uninstall_start", "fields": {"confirm": 0}, "expect": {"status": "bad_request"}},
+       {"send": "boot.uninstall_start", "payload": {"fill": 0, "count": 0}, "expect": {"status": "bad_request"}}
      ]},
     {"name": "boot.uninstall/refusals", "effects": ["staging"], "real_device": false,
      "why_not": "boot.uninstall writes the boot partition; it is never sent to a device by these runners",

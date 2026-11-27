@@ -125,7 +125,7 @@ function StockRestoredNotice() {
   if (!restored) return null;
   return (
     <p data-testid="stock-restored" role="status" className="mb-4 rounded-lg border bg-card px-3.5 py-2.5">
-      Stock OS 1.2.1 was restored and your OP-XY was asked to restart.
+      Your OP-XY is running stock OS 1.2.1.
     </p>
   );
 }

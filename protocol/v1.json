@@ -2,7 +2,7 @@
   "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md. Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
   "protocol": {
     "name": "XY Forever serial protocol",
-    "version": "1.33",
+    "version": "1.34",
     "intro": [
       "XY Forever is a firmware and mod manager for the teenage engineering OP-XY. While its menu runs, the OP-XY's processor B answers this protocol over USB. Tools use it to list, read, write and delete files, take screenshots, stage and install builds, set the default firmware and restart the device.",
       "Transport: USB CDC serial, the raw frame stream (table below). The device answers only while the XY Forever menu runs: after an XY Forever restart, or when the OP-XY is powered on with PLAY held (release it at the logo).",
@@ -433,6 +433,20 @@
       ]},
       "errors": ["state", "sha", "image", "link", "too_large", "install"],
       "doc": "As `boot.install`, but accepts only the exact stock OP-XY 1.2.1 `os.ldr` (2373336 bytes, SHA-256 `60358afdaa9b58ed40411602f6d5d4e1e3e02553ff2da7e25038e71dd002b52f`). From 1.26, both boot writers return to the ordinary file service after selecting user storage, allowing the host to restore the root OS file and clean up while XY Forever still runs. `boot.uninstall` itself leaves the files under `/yaffs2/xy-forever/` in place. The next restart boots stock 1.2.1."
+    },
+    {
+      "type": "0x22", "name": "boot.uninstall_start", "symbol": "uninstall_start", "class": "product", "since": "1.34", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "start the device's stock restoration and restart",
+      "timeout_ms": 5000, "destructive": true,
+      "request": {"size": [4, 4], "fields": [
+        {"name": "confirm", "type": "u32", "doc": "1 after the owner confirms uninstall"}
+      ]},
+      "reply": {"size": [20, 20], "extensible": true, "on_error": "status", "fields": [
+        {"name": "job", "type": "u32", "doc": "job id to pass to job.status"},
+        {"name": "serial", "type": "bytes[16]", "doc": "unit USB serial, zero padded when unavailable; match it to the stock USB device after restart"}
+      ]},
+      "errors": ["bad_request", "busy", "link", "storage", "refused"],
+      "doc": "Starts the same uninstall as Settings. The device restores official 1.2.1 content and firmware, removes XY Forever's files, verifies the stock boot write and restarts. Poll `job.status` for the phase, detail and progress. A USB disconnect does not cancel the job. Confirm the return of the stock OS before reporting success."
     },
     {
       "type": "0x30", "name": "device.reboot", "symbol": "reboot", "class": "product", "since": "1.0", "switch": null,
@@ -1268,7 +1282,7 @@
     {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
-     "fields": {"info": "XYF1;service=usb;role=b;proto=1.33;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000fffb003700037fff00be;dev=1;confirm=1;trust=none;serial=on;pipe=4;stage2=0"}, "hex": "58468101e700000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e33333b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303066666662303033373030303337666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b73657269616c3d6f6e3b706970653d343b7374616765323d30b9079ac7"},
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.34;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000fffb003700077fff00be;dev=1;confirm=1;trust=none;serial=on;pipe=4;stage2=0"}, "hex": "58468101e700000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e33343b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303066666662303033373030303737666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b73657269616c3d6f6e3b706970653d343b7374616765323d30d9af73d0"},
     {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,

@@ -74,12 +74,12 @@ this information in memory for the current tab, so the preview is available even
 
 ## Uninstall
 
-Connect in the web app and choose **Uninstall XY Forever** on the **Device** page (device protocol 1.26 or later).
-This restores official content, writes the exact official OS 1.2.1 image from the protected `upgrade/` folder to the
-boot partition and checks its read-back. It then restores the root `os.ldr`, removes the `xy-forever/` folder with
-the library, mods and settings, and requests a restart. Keep the OP-XY powered and connected until it restarts.
-If cleanup stops after the verified write, retry while the XY Forever menu still runs. A power cycle at that point
-starts stock OS 1.2.1.
+Choose **Uninstall XY Forever** in Settings on the OP-XY, or on the web app’s **Device** page
+(device protocol 1.34 or later). After confirmation the OP-XY restores official OS 1.2.1 and its
+content, removes its XY Forever library, mods and settings, and restarts. Progress appears on the
+device and in the connected browser. The device continues if USB disconnects. The browser confirms
+the same unit returned to stock when its stock USB identity is visible. Otherwise it asks you to
+confirm when the usual instrument screen appears.
 
 ## Test
 

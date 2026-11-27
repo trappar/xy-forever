@@ -579,13 +579,13 @@ def derived(spec, case, test_area=None):
             wrote(step)
         if name == 'file.copy' and status in ('ok', 'storage', 'crc', 'not_found', 'too_large'):
             effects.add('staging')  # 1.9: the copy takes the staging buffer
-        if name in ('boot.install', 'boot.uninstall', 'library.set_default') and status == 'ok':
+        if name in ('boot.install', 'boot.uninstall', 'boot.uninstall_start', 'library.set_default') and status == 'ok':
             effects.add('writes_device')
         fields = step.get('fields', {})
         if status == 'ok' and (
             (name == 'menu.continue' and fields.get('mode', 0) == 0 and 'payload' not in step)
             or (name == 'device.reboot' and fields.get('target') == 1)
-            or name == 'library.boot'
+            or name in ('library.boot', 'boot.uninstall_start')
         ):
             effects.add('boots_os')
         if action == 'sim':
