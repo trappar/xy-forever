@@ -15,6 +15,8 @@
 // A's engine never renames onto an existing file, so the record is replaced in steps: record -> .old,
 // .part -> record, .old removed. Only a .old (a cut between) reads as switching, never as official.
 namespace xyf { namespace content {
+static const char cleanup_note[] =
+    "/yaffs2/xy-forever/cleanup.txt"; // completed Open-XY cleanup, including a clean scan
 static const char record_path[] = "/yaffs2/xy-forever/content-state.txt";
 static const char record_old[] = "/yaffs2/xy-forever/content-state.old";     // the record while it is replaced
 static const char saved_folder[] = "/yaffs2/xy-forever/content-official";

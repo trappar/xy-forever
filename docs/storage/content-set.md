@@ -26,19 +26,23 @@ uses the saved official list.
 
 ## Open-XY's leftovers (#334)
 
-Open-XY leaves its machines' presets, screens and aux presets in `/yaffs2/content/` and appends its machines' entries
-to `op1_factory.json`. Both modes remove them, only in the official state (no mods' content installed):
+Open-XY leaves its machines' presets, screens and aux presets in `/yaffs2/content/` and appends entries to
+`op1_factory.json`. Cleanup runs when the live content is in the official state.
 
-- **The light check** (`adopt_tidy`; the converge sequence's `tidy`, right after an adoption, before the stock OS
-  first boots). It lists the content (`dlc/` and `user/` aside) and reads only `op1_factory.json`. Content missing an
-  official path, or not in the official state, is left as it is. A catalog that is not the official one is put back
-  (#331's rule) or refused with error 22 before anything is written: the menu says "Failed: op1_factory.json can't be
-  repaired. Copy in OS 1.2.1's own." When there is nothing to clean (a stock OP-XY), it writes nothing. Otherwise, in
-  A's write window: the catalog through an upload's name, read back and renamed over the file; the other files; the
-  folders they leave empty; then `xy-forever/cleanup.txt` (`files=<n>`, `catalog=0|1`), which the install page reads.
-  After PLAY the menu says "Removed 82 files from Open-XY, put back OS 1.2.1's op1_factory.json." `detail` is
-  `tidy <id>`; phase 1 listing, 7 writing.
-- **The content set** at the first mod build does the same for an OP-XY that had XY Forever before #334.
+- **First start and upgrade.** The light check (`adopt_tidy`) runs after adoption. An older install that lacks
+  `xy-forever/cleanup.txt` gets the same check at its next plain or PLAY power-on with official content installed.
+  It checks the root directory entry for a real `content/` folder before listing it. It skips `dlc/` and `user/`, and reads only the catalog. A missing official path leaves the
+  content alone. If the catalog differs, removing the Open-XY entries must produce the official SHA-256. Otherwise
+  the job stops before writing and reports error 22, "Failed: op1_factory.json can't be repaired. Copy in OS 1.2.1's own."
+- **Uninstall.** After the switch back to official content, `adopt_uninstall_tidy` checks again even if a completion
+  record exists. It refuses an unfinished switch, installed mod content, or a missing official path.
+- **First mod build.** The content-set job applies the same file rules before saving the verified official list.
 
-Only regular files whose paths are not official are removed (a link stays). A folder goes only when every entry it
-had was removed, deepest first: never `content/` itself, nor a folder that was empty before.
+In A's write window, the job restores a changed catalog through a temporary file, reads it back and renames it
+over the live catalog. Then it removes non-official regular files. Links stay. A folder goes only when every
+entry it had was removed, deepest first. The content root and previously empty folders stay.
+
+First-start and upgrade checks publish `xy-forever/cleanup.txt` last by rename. It records `files=<n>` and
+`catalog=0|1` for the install page, including zero counts when there was nothing to remove. An interrupted
+check retries at next start. After PLAY, the menu reports changes such as "Removed 82 files from Open-XY,
+put back OS 1.2.1's op1_factory.json." The job detail is `tidy <id>`, with phase 1 for listing and 7 for writing.

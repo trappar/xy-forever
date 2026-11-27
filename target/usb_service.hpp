@@ -318,8 +318,15 @@ bool content_unfinished();
 // path there: lists /yaffs2/content/ (dlc/ and user/ aside), reads only op1_factory.json, and only when there is
 // something to clean, puts back the official catalog (cut-safe), removes the other files and the folders they leave
 // empty, and writes xy-forever/cleanup.txt (files=<n>, catalog=0|1). e_catalog (22): a catalog it cannot put back,
-// nothing written. Content that is not in the official state, or misses an official path: nothing done.
-enum AdoptMode : uint32_t { adopt_default = 0, adopt_copy = 1, adopt_content = 2, adopt_tidy = 3 };
+// nothing written. On install/upgrade a clean scan records zero counts, and a missing official path skips cleanup.
+// adopt_uninstall_tidy: always recheck, refuse incomplete/managed content before allowing uninstall; write no note.
+enum AdoptMode : uint32_t {
+    adopt_default = 0,
+    adopt_copy = 1,
+    adopt_content = 2,
+    adopt_tidy = 3,
+    adopt_uninstall_tidy = 4
+};
 uint32_t adopt_start(const char* id, uint32_t mode);
 // #334: what the last adopt_tidy (or content set) cleaned: files removed, catalog 1 when it put back op1_factory.json.
 void adopt_tidied(uint32_t& files, uint32_t& catalog);

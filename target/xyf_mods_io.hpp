@@ -60,7 +60,7 @@ uint32_t longest_ms();
 // the fingerprint unchanged: its content switch (a job; its journal ends when it succeeds), then converge_boot with
 // converge_entry() its catalog index (~0u for every other why: the default). The next plain power-on finds the default's
 // content missing and converges back (xyf_converge.hpp doubt_content). s_not_found: no such entry; s_state: no os.ldr.
-enum Why : uint32_t { why_apply = 0, why_safe, why_restore, why_power_on, why_adopt, why_once };
+enum Why : uint32_t { why_apply = 0, why_safe, why_restore, why_power_on, why_adopt, why_once, why_tidy };
 enum ConvergeState : uint32_t { converge_idle = 0, converge_running, converge_boot, converge_failed, converge_note };
 bool menu_state(xyf::menu::State& app);
 void converge_begin(uint32_t why);

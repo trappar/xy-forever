@@ -93,7 +93,7 @@ struct ContentIo {
     }
 #endif
     int list_one(const char* folder, U32 skip, char* name, uint32_t& kind) {
-        if (link || !storage_server::valid_path(folder)) return -1;
+        if (link || file_engine::decide_engine(file_engine::op_list, folder) != file_engine::allow) return -1;
         uint8_t page[6 + file_client::max_name];
         uint32_t count = 0, more = 0, bytes = 0;
         const U32 code = file_client::list(folder, skip, page, sizeof(page), count, more, bytes, mounted);

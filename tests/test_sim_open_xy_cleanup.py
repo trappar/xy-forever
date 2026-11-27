@@ -14,10 +14,12 @@ import pytest
 import test_sim_content_switch as CS
 from test_modpatch import CATALOG
 from test_sim_adopt import AdoptBase
+from test_sim_config import mark_text
 from test_sim_content_set import ENV, official_env, open_xy
 from test_sim_mod_job import UNAVAILABLE
 
 from xy_forever import modsend as MS
+from xy_forever import sim
 
 OFFICIAL = {
     'op1_factory.json': CATALOG,
@@ -41,7 +43,7 @@ def seeder(extras, catalog=CATALOG):
         for path, data in {**OFFICIAL, **KEPT, **extras, 'op1_factory.json': catalog}.items():
             (root / 'content' / path).parent.mkdir(parents=True, exist_ok=True)
             (root / 'content' / path).write_bytes(data)
-        (root / 'content' / EMPTY).mkdir(parents=True)
+        (root / 'content' / EMPTY).mkdir(parents=True, exist_ok=True)
 
     return seed
 
@@ -77,12 +79,68 @@ class FirstStartCleanup(AdoptBase):
 
     @pytest.mark.gate  # the official content: the simulator core keeps the adoption
     def test_official_content_is_left_as_it_is(self):
-        """A stock OP-XY: nothing removed, nothing written, the usual line."""
+        """A stock OP-XY records a clean scan and leaves content alone."""
         self.start(seed=seeder({}))
         self.wait(lambda: self.lines('menu: line: '), 'the first start')
         self.assertEqual(self.lines('menu: line: '), ['OS 1.2.1 is in the library and is the default.'])
         self.assertEqual(CS.content(self.root), self.official())
+        self.assertEqual(self.note(), b'files=0\ncatalog=0\n')
+
+    def old_install(self, root):
+        sim.seed(root, self.image)
+        (root / 'xy-forever/cleanup.txt').unlink()
+        (root / 'xy-forever/converged.txt').write_text(mark_text(root, 'opxy-121'))
+        seeder(OPEN_XY, open_xy())(root)
+
+    @pytest.mark.sim
+    def test_upgrade_cleans_once_before_the_normal_boot(self):
+        """An old default and matching fingerprint must still go through the cleanup on upgrade."""
+        self.start(play=False, seed=self.old_install)
+        self.wait(self.in_os, 'first boot after upgrading')
+        self.assertEqual(CS.content(self.root), self.official())
+        self.assertEqual(self.note(), b'files=5\ncatalog=1\n')
+        self.assertFalse((self.root / 'xy-forever/firmware/opxy-121/content.sha256').exists())
+        # A later file is left alone: the upgrade check has finished.
+        extra = self.root / 'content/display/later.svg'
+        extra.write_bytes(b'later')
+        power_ons = self.sim.status()['power_ons']
+        self.sim.control('power plain')
+        self.wait(lambda: self.sim.status()['power_ons'] > power_ons and self.in_os(), 'next normal boot')
+        self.assertEqual(extra.read_bytes(), b'later')
+
+    @pytest.mark.gate
+    def test_upgrade_refuses_a_link_in_place_of_the_content_folder(self):
+        def linked(root):
+            self.old_install(root)
+            user = root / 'user'
+            user.mkdir()
+            (root / 'content').rename(user / 'backup')
+            (root / 'content').symlink_to(user / 'backup', target_is_directory=True)
+            (user / 'backup/my-project').write_bytes(b'keep my project')
+
+        self.start(seed=linked)
+        self.wait(lambda: self.lines('menu: save failed: '), 'refusal of linked content')
+        self.assertEqual(self.lines('menu: save failed: '), ['Failed: content is not a folder.'])
+        self.assertEqual((self.root / 'user/backup/my-project').read_bytes(), b'keep my project')
+        self.assertEqual((self.root / 'user/backup/op1_factory.json').read_bytes(), open_xy())
         self.assertIsNone(self.note())
+
+    @pytest.mark.gate
+    def test_cut_after_the_catalog_rename_retries_cleanup_on_play(self):
+        """The migration record comes after the cleanup, so a cut leaves work for the next start."""
+        self.start(seed=seeder({}))
+        self.wait(lambda: self.note() is not None, 'first-start cleanup')
+        self.quiet()
+        self.old_install(self.root)
+        self.sim.set('rename_fault_kind', 2)
+        self.sim.set('rename_fault', 1)
+        self.sim.control('power play')
+        self.wait(lambda: self.sim.status()['cuts'] == 1, 'cut after restoring the catalog')
+        self.wait(lambda: self.note() is not None, 'resumed cleanup')
+        self.assertEqual(CS.content(self.root), self.official())
+        self.assertEqual(self.note(), b'files=5\ncatalog=0\n')
+        self.wait(lambda: self.lines('menu: line: Removed 5 files'), 'back in the menu')
+        self.connect()
 
     @pytest.mark.gate  # a refusal: the simulator core keeps the cleanup
     def test_a_catalog_that_cannot_be_put_back_writes_nothing(self):
