@@ -10,6 +10,7 @@
 #include "../native/hash.hpp"
 #include "xyf_config_io.hpp"
 #include "xyf_converge.hpp"
+#include "xyf_content.hpp"
 #include "xyf_crc32.hpp"
 #include "xyf_save_log.hpp"
 #include "xyf_mods_store.hpp"
@@ -306,13 +307,18 @@ uint32_t pump(bool shown) {
     uint32_t redraw = converge_follow();
     // #178: once A serves the library and the record is read: check()'s own condition (no stock entry, or no record and
     // no default: PLAY at the first start after Track 5, or after a cut adoption) converges as a plain power-on would,
-    // adopting the stock entry, and the menu stays. Anything else: a PLAY start writes nothing.
+    // adopting the stock entry, and the menu stays. On an older install PLAY can run the content cleanup alone.
     if (!sv.looked && sv.stage == sv_idle && !reading() && xyf_boot::catalog() && !usb_service::page_busy() &&
         usb_service::page_serving() == s_ok && (rec.state == xg::none || rec.state == xg::present)) {
         sv.looked = 1;
         const xyf::catalog::Catalog* c = xyf_boot::catalog();
-        if (!config_base() || (rec.state == xg::none && c->default_index >= c->count)) {
+        const char* base = config_base();
+        if (!base || (rec.state == xg::none && c->default_index >= c->count)) {
             converge_begin(why_adopt);
+            redraw = 1;
+        } else if (tidy_due(base)) {
+            converge_begin(why_tidy); // PLAY on an old install: migrate without applying settings or booting
+            tidy();
             redraw = 1;
         }
     }
@@ -469,7 +475,7 @@ bool menu_state(xyf::menu::State& a) {
 void converge_begin(uint32_t why) { // never the page: the list, its toggles and views stay as they are
     if (sv.stage != sv_idle) return;
     sv.why = why;
-    sv.ops = sv.length = sv.adopted = sv.failed = sv.tidied = sv.restored = 0;
+    sv.ops = sv.length = sv.adopted = sv.failed = sv.checked = sv.tidied = sv.restored = 0;
     sv.looked = 1;
     ++sv.serial;
     sv.reason[0] = 0;
@@ -524,7 +530,8 @@ const m::Progress& progress() { return run; }
 m::Effect progress_key(uint32_t k, bool pressed) { return m::progress_key(run, k, pressed); }
 
 uint32_t converge_state() {
-    if (sv.stage == sv_boot && sv.why == why_adopt) return converge_note; // #178: added; the menu stays
+    if (sv.stage == sv_boot && (sv.why == why_adopt || sv.why == why_tidy))
+        return converge_note; // #178: added; the menu stays
     return sv.stage == sv_idle   ? uint32_t(converge_idle) :
            sv.stage == sv_boot   ? uint32_t(converge_boot) :
            sv.stage == sv_failed ? uint32_t(converge_failed) :
@@ -570,7 +577,10 @@ uint32_t converge_request(uint32_t mode, const char* id) {
 void converge_report(ConvergeView& v) {
     usb_service::JobView j;
     usb_service::job_view(j);
-    v.state = sv.stage == sv_boot && sv.why != why_adopt ? 3u : converging() ? 1u : sv.failed ? 2u : 0u;
+    v.state = sv.stage == sv_boot && sv.why != why_adopt && sv.why != why_tidy ? 3u :
+              converging()                                                     ? 1u :
+              sv.failed                                                        ? 2u :
+                                                                                 0u;
     v.job = j.state ? j.id : 0u;
     v.reason = v.state == 2 ? sv.reason : "";
 }

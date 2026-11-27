@@ -375,6 +375,8 @@ U32 a_converge(cold_storage::Stock121ReadOnlySession& storage, bool mounted, con
     U32 doubt = 0;
     if (a_present(storage, xyf::journal::path) || a_present(storage, xyf::journal::old)) doubt |= xc::doubt_job;
     if (lib.content.kind == xyf::content::switching) doubt |= xc::doubt_switching;
+    if (lib.content.kind == xyf::content::official && !a_present(storage, xyf::content::cleanup_note))
+        doubt |= xc::doubt_cleanup; // an older install: let B check for Open-XY files before the OS boots
     const int32_t def = xyf::library::find(lib, lib.state.default_id);
     if (def < 0) doubt |= xc::doubt_default;
     else if (lib.entries[def].content_missing) doubt |= xc::doubt_content; // #204: another entry's content, booted once

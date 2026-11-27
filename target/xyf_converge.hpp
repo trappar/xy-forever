@@ -75,7 +75,14 @@ static const char mark_path[] = "/yaffs2/xy-forever/converged.txt";
 static const char mark_old[] = "/yaffs2/xy-forever/converged.old";
 static const char mark_part[] = "/yaffs2/xy-forever/converged.txt.part";
 static const uint32_t mark_max = 160;
-enum Doubt : uint32_t { doubt_mark = 1, doubt_job = 2, doubt_switching = 4, doubt_default = 8, doubt_content = 16 };
+enum Doubt : uint32_t {
+    doubt_mark = 1,
+    doubt_job = 2,
+    doubt_switching = 4,
+    doubt_default = 8,
+    doubt_content = 16,
+    doubt_cleanup = 32
+};
 // "format=1\ninputs=<64 hex>\ndefault=<id>\n" into out: bytes, 0 when it does not fit.
 static inline uint32_t mark_text(char* out, uint32_t capacity, const uint8_t* digest, const char* target) {
     static const char hex[] = "0123456789abcdef";

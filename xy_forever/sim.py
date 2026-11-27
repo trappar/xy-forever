@@ -287,6 +287,7 @@ def seed(root, image=None):
         (folder / 'os.ldr').write_bytes(image)
         (folder / 'info.txt').write_bytes(info_text(image, name, '1.2.1'))
     (base / 'log').mkdir(exist_ok=True)
+    (base / 'cleanup.txt').write_bytes(b'files=0\ncatalog=0\n')  # a library whose first-start cleanup ran
     (base / 'state-a.txt').write_bytes(slot_text('opxy-121', 1))
     (base / 'settings.txt').write_bytes(b'format=1\nconfirm=0\n')  # the Settings file: tests run unattended
     (root / 'firmware.version').write_text('1.2.1\n')

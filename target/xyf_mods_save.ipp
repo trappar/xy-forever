@@ -26,7 +26,7 @@ enum SaveStage : uint32_t {
 // record made for the record step (length bytes in io.buffer).
 struct Save {
     uint32_t stage, job, serial, why, ops, unverified, count, expanded, safe, length, adopted, looked, failed;
-    uint32_t tidied, restored; // #334: the first start's cleanup: files removed, op1_factory.json put back
+    uint32_t checked, tidied, restored; // #334: the first start's cleanup: files removed, op1_factory.json put back
     char target[32], base[32], built[100], slot[8], stamp[65], reason[80];
 };
 xg::Record rec XYF_DATA = {};
@@ -171,6 +171,12 @@ uint32_t start_build(uint8_t which) {
 }
 uint32_t adopt(const char* base);
 uint32_t tidy();
+bool tidy_due(const char* base) {
+    if (sv.checked || !installed(index_of(base)) || usb_service::content_unfinished()) return false;
+    uint8_t record[fc::record_bytes];
+    const fc::Reply r = fc::stat(xyf::content::cleanup_note, record);
+    return !r.outcome && r.value < 0 && r.error == fc::enoent;
+}
 // The inputs (the saved record, with safe= as asked), the actual state, the plan.
 uint32_t check() {
     usb_service::save_log_lap(xyf::save_log::p_check);
@@ -189,6 +195,7 @@ uint32_t check() {
     const char* base = config_base();
     const xyf::catalog::Catalog* c = xyf_boot::catalog();
     if (!base || (!have && !(c && c->default_index < c->count))) return adopt(base);   // #178: nothing to boot yet
+    if (tidy_due(base)) return tidy();
     saved_inputs(base);
     copy(sv.base, base, sizeof(sv.base));
     // The actual state: the slot's stamp read now (the record's slot), the default, the installed content.
@@ -291,7 +298,8 @@ uint32_t tidying() {
     if (v.id == sv.job && v.state == 2 && v.phase == 8) {
         if (usb_service::page_busy()) return moved(false);
         usb_service::adopt_tidied(sv.tidied, sv.restored);
-        sv.stage = sv_check;
+        sv.checked = 1;
+        sv.stage = sv.why == why_tidy ? sv_boot : sv_check;
         return 1;
     }
     if (v.error == 22) return fail(prefix(), "op1_factory.json can't be repaired. Copy in OS 1.2.1's own.");
