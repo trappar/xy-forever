@@ -27,6 +27,9 @@ const U32 max_job_machines = 64, max_job_extensions = 8, job_link_error = 21;
 const char job_firmware[] = "/yaffs2/xy-forever/firmware/", job_mods[] = "/yaffs2/xy-forever/mods/";
 const char job_tmp[] = "/yaffs2/xy-forever/tmp", job_catalog[] = "/yaffs2/content/op1_factory.json";
 const U32 uninstall_kind = 5;
+#if defined(XYF_CONTENT_SWITCH)
+void uninstall_view(JobView& view);
+#endif
 enum JobState : U32 { job_none = 0, job_busy, job_ended };
 // Removing one folder tree under tmp/ in bounded steps (tree_step), and the sweep of leftovers.
 struct Tree {

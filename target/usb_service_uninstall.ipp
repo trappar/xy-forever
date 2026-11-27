@@ -18,6 +18,7 @@ enum UninstallStep : U32 {
     un_back,
     un_publish,
     un_close,
+    un_hash_stage,
     un_flash,
     un_remove,
     un_sync,
@@ -28,7 +29,7 @@ struct UninstallJob {
     UninstallStep step;
     U32 id, started, ended, at, crc, code, skip;
     int fd;
-    bool manager, root_image, dismissed;
+    bool manager, root_image, content, dismissed;
     const char* detail;
     char upload[file_engine::upload_bytes];
     Tree tree;
@@ -56,6 +57,7 @@ void uninstall_fail(U32 code, const char* detail) {
     uninstall_stage(un_failed, detail);
 }
 U32 uninstall_begin() {
+    if (!menu_usb) return P::s_refused; // the stock service identity gate did not open
     stop_idle_gc();
     if (uninstall_active() || boot_probe_active() || rehearsal_active() || recovery_pending || job_running() ||
         closing || uploading() || file_client::left_out() XYF_OR_MTP_BUSY || xy_forever::mods_io::converging())
@@ -67,7 +69,8 @@ U32 uninstall_begin() {
     u.id = ++job_counter;
     u.started = now();
     u.ended = u.code = u.crc = u.skip = u.io.link = 0;
-    u.manager = u.root_image = u.dismissed = false;
+    u.manager = u.root_image = u.content = u.dismissed = false;
+    uninstall_close_failed = false;
     u.fd = -1;
     result.put_ok = put_expected = 0;
     job_kind = uninstall_kind;
@@ -90,27 +93,35 @@ void uninstall_command(uint8_t seq, const uint8_t* payload, U32 length) {
 #endif
     send(P::t_uninstall_start, seq, p, sizeof(p));
 }
+void uninstall_view(JobView& v) {
+    const auto& u = uninstall_job;
+    v.id = u.id;
+    v.phase = u.step == un_done    ? xc::phase_done :
+              u.step == un_failed  ? xc::phase_failed :
+              u.step < un_restore  ? xc::phase_inputs :
+              u.step <= un_tidying ? xc::phase_content :
+                                     xc::phase_finish;
+    v.total = u.step == un_read || u.step == un_copy || u.step == un_back ||
+                      (u.step == un_root_read || u.step == un_hash_stage) ?
+                  stock_os_bytes :
+                  0;
+    v.done = v.total ? u.at : 0;
+    v.error = u.code ? (u.code == P::s_link ? xc::e_link : xc::e_verify) : 0u;
+    v.status = u.code;
+    v.state = u.step == un_done || u.step == un_failed ? job_ended : job_busy;
+    v.debris = v.commit = 0;
+}
 void uninstall_status(uint8_t seq, U32 want) {
     const auto& u = uninstall_job;
     if (want && want != u.id) {
         status_only(P::t_job_status, seq, P::s_not_found);
         return;
     }
+    JobView v;
+    uninstall_view(v);
     uint8_t p[80] = {};
-    const U32 phase = u.step == un_done    ? xc::phase_done :
-                      u.step == un_failed  ? xc::phase_failed :
-                      u.step < un_restore  ? xc::phase_inputs :
-                      u.step <= un_tidying ? xc::phase_content :
-                                             xc::phase_finish;
-    P::put32(p + 4, u.id);
-    P::put32(p + 8, phase);
-    if (u.step == un_read || u.step == un_copy || u.step == un_back || u.step == un_root_read) {
-        P::put32(p + 12, u.at);
-        P::put32(p + 16, stock_os_bytes);
-    }
-    P::put32(p + 20, u.code ? (u.code == P::s_link ? xc::e_link : xc::e_verify) : 0u);
-    P::put32(p + 24, u.code);
-    P::put32(p + 28, (u.ended ? u.ended : now()) - u.started);
+    const U32 fields[] = {v.id, v.phase, v.done, v.total, v.error, v.status, (u.ended ? u.ended : now()) - u.started};
+    for (U32 i = 0; i < sizeof(fields) / sizeof(*fields); ++i) P::put32(p + 4 + 4 * i, fields[i]);
     for (U32 i = 0; i < 31 && u.detail[i]; ++i) p[48 + i] = u.detail[i];
     send(P::t_job_status, seq, p, sizeof(p));
 }
@@ -133,6 +144,10 @@ void uninstall_list(UninstallJob& u) {
             if (kind != 0) return uninstall_fail(P::s_refused, "Root OS is not a regular file");
             u.root_image = true;
         }
+        if (root && same_text(name, "content")) {
+            if (kind != 1) return uninstall_fail(P::s_refused, "Invalid content folder");
+            u.content = true;
+        }
         if (root && same_text(name, "xy-forever")) {
             if (kind != 1) return uninstall_fail(P::s_refused, "Invalid XY Forever folder");
             u.manager = true;
@@ -141,6 +156,7 @@ void uninstall_list(UninstallJob& u) {
             return uninstall_fail(P::s_refused, "Invalid temporary folder");
         return;
     }
+    if (root && !u.content) return uninstall_fail(P::s_not_found, "Missing content folder");
     u.skip = 0;
     u.step = root && u.manager ? un_tmp : un_source;
 }
@@ -229,6 +245,7 @@ void uninstall_step(UninstallJob& u) {
     case un_restore: return uninstall_restore(u);
     case un_switching:
         if (job_state == job_busy) return;
+        if (uninstall_close_failed) return uninstall_fail(P::s_storage, "Storage close failed");
         if (cslot().job.stage != xc::st_done) return uninstall_fail(P::s_storage, "Official content restore failed");
         job_kind = uninstall_kind;
         job_state = job_busy;
@@ -236,13 +253,14 @@ void uninstall_step(UninstallJob& u) {
         return;
     case un_tidy: {
         job_state = job_ended;
-        const U32 code = adopt_begin("opxy-121", adopt_tidy);
+        const U32 code = adopt_begin("opxy-121", adopt_uninstall_tidy);
         if (code) return uninstall_fail(code, "Cannot check official content");
         uninstall_stage(un_tidying, "Checking stock content");
         return;
     }
     case un_tidying:
         if (job_state == job_busy) return;
+        if (uninstall_close_failed) return uninstall_fail(P::s_storage, "Storage close failed");
         if (aslot().error)
             return uninstall_fail(aslot().code ? aslot().code : U32(P::s_storage), "Stock content check failed");
         job_kind = uninstall_kind;
@@ -294,11 +312,26 @@ void uninstall_step(UninstallJob& u) {
     case un_close:
         // Close the filesystem before entering install mode. Keep the library until read-back.
         settle_begin();
+        put_hash().reset();
+        uninstall_stage(un_hash_stage, "Checking staged stock OS");
+        return;
+    case un_hash_stage: {
+        if (closing) return;
+        if (uninstall_close_failed || mounted == file_client::mounted_stale)
+            return uninstall_fail(P::s_storage, "Storage close failed");
+        xyf_core::hash::Digest d;
+        if (u.at < stock_os_bytes) {
+            const U32 n = stock_os_bytes - u.at < 8192 ? stock_os_bytes - u.at : 8192;
+            put_hash().update(staged + u.at, n);
+            u.at += n;
+            return;
+        }
+        if (!put_hash().finish(d) || !sha_equal(d.bytes, stock_os_sha256))
+            return uninstall_fail(P::s_sha, "Staged OS verification failed");
         uninstall_stage(un_flash, "Writing stock boot partition");
         return;
+    }
     case un_flash: {
-        if (closing) return;
-        if (mounted == file_client::mounted_stale) return uninstall_fail(P::s_storage, "Storage close failed");
         result.put_received = result.put_size = put_expected = stock_os_bytes;
         result.put_crc = u.crc;
         result.put_ok = 1;
@@ -326,7 +359,8 @@ void uninstall_step(UninstallJob& u) {
     }
     case un_sync:
         if (closing) return;
-        if (mounted == file_client::mounted_stale) return uninstall_fail(P::s_storage, "Stock written; close failed");
+        if (uninstall_close_failed || mounted == file_client::mounted_stale)
+            return uninstall_fail(P::s_storage, "Stock written; close failed");
         u.ended = now();
         uninstall_stage(un_done, "Restarting into stock OS 1.2.1");
         return;

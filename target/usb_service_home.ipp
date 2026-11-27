@@ -151,7 +151,7 @@ uint32_t home_pump() {
     }   // the flag, then the boot's only start
 #endif
 #if defined(XYF_TFW_CHECK) && defined(XYF_USB_FILE_WRITE)
-    if (!pack_import_active)
+    if (!pack_import_active && !uninstall_active())
 #endif
         stage2_turn();
 #if defined(XYF_USB_FILE_WRITE)
@@ -254,7 +254,7 @@ static U32 home_receive_chunk() {
                 if (!r.hello_at_ms) r.hello_at_ms = now();
             }
 #if defined(XYF_TFW_CHECK) && defined(XYF_USB_FILE_WRITE)
-            if (!pack_import_active)
+            if (!pack_import_active && !uninstall_active())
 #endif
                 if (!s2_tried) stage2_load(); // once per boot, before the reply
             hello(seq);
@@ -273,11 +273,9 @@ static U32 home_receive_chunk() {
         else if (type == t_crash) crash_command(seq, payload, length); // a fault on purpose (test build only)
 #endif
 #if defined(XYF_USB_FILE_WRITE)
-#if defined(XYF_CONTENT_SWITCH)
         else if (uninstall_active() && type != P::t_job_status && type != P::t_status && type != P::t_screen)
             status_only(type, seq, P::s_busy);
         else if (type == P::t_uninstall_start) uninstall_command(seq, payload, length);
-#endif
 #if defined(XYF_TFW_CHECK)
         else if (type == P::t_packs_manage) packs_manage(seq, payload, length);
         else if (pack_import_active && type != P::t_status && type != P::t_screen) status_only(type, seq, P::s_busy);

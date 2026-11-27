@@ -11,6 +11,7 @@ from test_sim_adopt import AdoptBase
 from test_sim_content_set import ENV, official_env, open_xy
 from test_sim_mod_job import UNAVAILABLE
 from test_sim_open_xy_cleanup import CATALOG, KEPT, OFFICIAL, seeder
+from test_xyf_stage2_service import stage2_file
 
 from xy_forever import sim
 from xy_forever import usb_proto_ids as ids
@@ -74,3 +75,46 @@ class DeviceUninstall(AdoptBase):
         self.wait(lambda: self.job()[1].get('detail') == 'OS differs from stock 1.2.1', 'bad OS refusal')
         self.assertEqual(self.job()[1]['phase'], 9)
         self.assertEqual(self.snapshot(), before)
+
+    @pytest.mark.gate
+    def test_first_connection_during_settings_uninstall_keeps_the_stock_stage(self):
+        extra = self.root / 'xy-forever/stage2'
+        extra.mkdir(exist_ok=True)
+        (extra / 'main.xys2').write_bytes(stage2_file())
+        (self.root / 'os.ldr').write_bytes(b'installer')
+        self.dev.t.close()
+        self.dev = None
+        self.sim.control('power play')
+        self.sim.wait_listening(10)
+        self.quiet()
+        for key in (53, 51, 53, 51, 54, 51):
+            self.press(key)
+        self.wait(lambda: self.lines('menu: usb line: Checking official OS'), 'local stock read')
+        previous = self.sim.status()['stage2_opens']
+        self.connect()  # first HELLO this boot, while Settings owns staging
+        self.assertEqual(self.sim.status()['stage2_opens'], previous)
+        self.wait(lambda: not (self.root / 'xy-forever').exists(), 'stock writer and cleanup')
+        self.assertEqual((self.root / 'os.ldr').read_bytes(), self.image)
+
+    @pytest.mark.gate
+    def test_failed_checkpoint_stops_before_writing_boot(self):
+        (self.root / 'os.ldr').write_bytes(b'installer')
+        self.start_job()
+        self.wait(lambda: self.lines('menu: usb line: Restoring root OS file'), 'the private upload')
+        self.sim.set('fail_unmount', 1)
+        self.wait(lambda: self.job()[1]['phase'] == 9, 'failed filesystem close')
+        self.assertEqual(self.job()[1]['detail'], 'Storage close failed')
+        self.assertTrue((self.root / 'xy-forever/firmware/opxy-121/os.ldr').exists())
+        raw = self.dir / 'bootpart.bin'
+        self.assertFalse(raw.exists() and any(raw.read_bytes()[:512]))
+
+    @pytest.mark.gate
+    def test_content_root_must_be_a_real_folder(self):
+        source = self.root / 'elsewhere'
+        (self.root / 'content').rename(source)
+        (self.root / 'content').symlink_to(source, target_is_directory=True)
+        (source / 'keep').write_text('owner file')
+        self.start_job()
+        self.wait(lambda: self.job()[1]['phase'] == 9, 'root link refusal')
+        self.assertEqual(self.job()[1]['detail'], 'Invalid content folder')
+        self.assertEqual((source / 'keep').read_text(), 'owner file')

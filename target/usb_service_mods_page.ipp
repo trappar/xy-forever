@@ -38,6 +38,7 @@ uint32_t mods_start(const uint8_t* payload, uint32_t length, uint32_t& job, uint
 }
 void job_view(JobView& v) {                                             // as job_status (the commit too)
 #if defined(XYF_CONTENT_SWITCH)
+    if (job_kind == uninstall_kind) return uninstall_view(v);
     if (job_kind == 2) {                                                 // the config job
         const ConfigSlot& g = gslot();
         v.state = job_state;

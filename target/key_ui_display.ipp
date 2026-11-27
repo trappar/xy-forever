@@ -74,9 +74,6 @@ void draw_screen(uint16_t* fb) {
         const Message bye = {"Starting", {ui_status}, 1, "", &chrome};
         draw_message(fb, bye);
 #if defined(XYF_SETTINGS)
-    } else if (const char* message = xy_forever::usb_service::uninstall_message()) {
-        const Message progress = {"Uninstall XY Forever", {message}, 1, "", &chrome};
-        draw_message(fb, progress);
     } else if (asked) {                              // #65: Ask before USB control (the current menu style)
         const Message ask = {"USB control",
                              {"Allow this computer to control your OP-XY?", "",
@@ -86,6 +83,9 @@ void draw_screen(uint16_t* fb) {
                              "PLAY  allow      STOP  don't allow",
                              &chrome};
         draw_message(fb, ask);
+    } else if (const char* message = xy_forever::usb_service::uninstall_message()) {
+        const Message progress = {"Uninstall XY Forever", {message}, 1, "", &chrome};
+        draw_message(fb, progress);
     } else if (saver.on) {                           // #315: the screen saver (the menu's state stays under it)
         draw_saver(fb);
 #endif
