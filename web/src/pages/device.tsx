@@ -203,11 +203,13 @@ function UninstallCard({ info }: { info: DeviceInfo }) {
     let stockRestored: boolean;
     try {
       const client = device();
-      const serial = await uninstallXyf(client, setProgress);
+      const { serial, completed } = await uninstallXyf(client, setProgress);
       stockRestored = await confirmStockBoot(serial, () =>
         confirmAction(
           'Has your OP-XY returned to stock OS 1.2.1?',
-          'The device finished restoring its firmware. Confirm when its usual instrument screen appears.',
+          completed
+            ? 'The device finished restoring its firmware. Confirm when its usual instrument screen appears.'
+            : 'The browser lost contact during uninstall. Follow the OP-XY’s progress and confirm once it finishes, restarts, and shows its usual instrument screen.',
           'Stock OS is running',
         ),
       );

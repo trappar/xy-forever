@@ -38,7 +38,7 @@ it('starts one device job, displays its progress and waits for stock boot confir
     .mockResolvedValueOnce(receipt)
     .mockResolvedValueOnce(status(1, 'Reading official OS'))
     .mockResolvedValueOnce(status(8, 'Complete'));
-  await expect(run()).resolves.toBe('testunit');
+  await expect(run()).resolves.toEqual({ serial: 'testunit', completed: true });
   expect(call.mock.calls.map(([name]) => name)).toEqual(['boot.uninstall_start', 'job.status', 'job.status']);
   expect(call.mock.calls[0]?.[1]).toEqual({ confirm: 1 });
   expect(call.mock.calls[1]?.[1]).toEqual({ job: 15 });
@@ -64,7 +64,7 @@ it('sends no second start when the acknowledgement is lost', async () => {
 it('does not treat losing USB while the job runs as a successful uninstall', async () => {
   const { call, run } = fixture();
   call.mockResolvedValueOnce(receipt).mockRejectedValueOnce(new XyfError('disconnected', 'gone'));
-  await expect(run()).rejects.toThrow('lost contact');
+  await expect(run()).resolves.toEqual({ serial: 'testunit', completed: false });
   expect(call).toHaveBeenCalledTimes(2);
 });
 

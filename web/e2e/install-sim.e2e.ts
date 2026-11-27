@@ -19,7 +19,7 @@ import { control, findSimulator, startAll, until as simUntil } from 'xy-forever-
 import type { SimInfo } from 'xy-forever-client/test/simulators.ts';
 import { Client, tcpOpener } from 'xy-forever-client/node';
 import { verifiedBuild } from './needs.ts';
-import { protocol as wire } from 'xy-forever-client';
+import { isXyfError, protocol as wire } from 'xy-forever-client';
 
 const IMAGE = Buffer.from(Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 + 7) & 0xff));
 const OK_121 = 'mode:bootloader;product:OP-XY;serial:X1;bl_version:1000.0.20+0;os_version:1.2.1+0';
@@ -239,6 +239,15 @@ async function jobToEnd(
 async function simulatedTrack5(sim: SimInfo, bytes: Uint8Array): Promise<void> {
   const c = await Client.connect(tcpOpener(sim.address), { timeoutMs: 20_000 });
   try {
+    await until('the simulated writer to be ready', async () => {
+      try {
+        await c.call('storage.space', { version: 1 });
+        return true;
+      } catch (error) {
+        if (isXyfError(error, 'busy')) return false;
+        throw error;
+      }
+    });
     const { sha256 } = await c.stage(bytes);
     expect((await c.bootInstall(sha256)).written).toBe(bytes.length);
   } finally {
@@ -408,7 +417,8 @@ test('uninstalls to a verified stock partition, then installs again from the sam
     ).toEqual(['os.ldr']);
     writeFileSync(file('os.ldr'), candidate); // the test's fake dev-menu MTP copy
     await control(sim.control, 'power play');
-    await until('the recovery-menu writer harness', () => listening(sim));
+    // The simulator always starts XY Forever, so its first-start job runs before the writer harness.
+    await until('adoption before the recovery-menu writer harness', () => existsSync(file('xy-forever/state-a.txt')));
     await simulatedTrack5(sim, candidate);
     await control(sim.control, 'power play');
     showSerial();

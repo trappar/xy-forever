@@ -30,7 +30,10 @@ export async function stockVisible(serial: string, usb: Usb | undefined): Promis
 }
 
 /** Starts the OP-XY's job once, after confirmation. USB only carries its receipt and progress. */
-export async function uninstallXyf(client: Client, step: (message: string) => void): Promise<string> {
+export async function uninstallXyf(
+  client: Client,
+  step: (message: string) => void,
+): Promise<{ serial: string; completed: boolean }> {
   if (!uninstallAvailable(client.info)) throw new Error('Update XY Forever to use on-device uninstall.');
   step('Starting uninstall on your OP-XY…');
   const { job, serial } = await client.call('boot.uninstall_start', { confirm: 1 }).catch((error: unknown) => {
@@ -42,16 +45,17 @@ export async function uninstallXyf(client: Client, step: (message: string) => vo
     throw error;
   });
   if (!job) throw new Error('The OP-XY did not return an uninstall job.');
+  const unit = new TextDecoder().decode(serial).replace(/\0+$/, '');
   for (;;) {
-    // The stock boot writer can occupy the menu processor before it can answer a progress poll.
+    // The stock writer can occupy B during a poll. A suspended tab can miss its final status before reboot.
     const status = await jobStatus(client, job, { timeoutMs: 900_000 }).catch((error: unknown) => {
-      if (isXyfError(error, 'disconnected', 'timeout'))
-        throw new Error(
-          'The device started uninstalling. Follow its progress on the OP-XY. The browser lost contact before it could verify the result.',
-          { cause: error },
-        );
+      if (isXyfError(error, 'disconnected', 'timeout')) return null;
       throw error;
     });
+    if (!status) {
+      step('The OP-XY is handling the uninstall. Follow its screen while the browser waits for stock OS.');
+      return { serial: unit, completed: false };
+    }
     if (status.job !== job) throw new Error('The OP-XY returned progress for another job.');
     if (status.phase === 'done') break;
     if (status.final) throw new Error(`Uninstall ${status.phase}: ${status.detail || status.error}.`);
@@ -60,7 +64,7 @@ export async function uninstallXyf(client: Client, step: (message: string) => vo
     await client.pause(400);
   }
   step('Waiting for your OP-XY to start stock OS 1.2.1…');
-  return new TextDecoder().decode(serial).replace(/\0+$/, '');
+  return { serial: unit, completed: true };
 }
 
 /** Prefer the stock identity of this unit. A browser without a grant can confirm the physical screen instead. */
