@@ -49,6 +49,9 @@ uint32_t host_marks() {
 #endif
 }
 const char* host_activity() {
+#if defined(XYF_CONTENT_SWITCH)
+    if (const char* message = uninstall_message()) return message;
+#endif
     if (result.reply_out_ms) return "USB: replies are not getting out. Reconnect the cable."; // #314: never silent
 #if defined(XYF_MTP_USB)
     // #144: "transfer" also between a batch's operations (mtp_traffic): not two redraws per small file.
@@ -148,7 +151,7 @@ uint32_t home_pump() {
     }   // the flag, then the boot's only start
 #endif
 #if defined(XYF_TFW_CHECK) && defined(XYF_USB_FILE_WRITE)
-    if (!pack_import_active)
+    if (!pack_import_active && !uninstall_active())
 #endif
         stage2_turn();
 #if defined(XYF_USB_FILE_WRITE)
@@ -161,6 +164,9 @@ uint32_t home_pump() {
         report_turn();
         package_turn();
         job_pump();                                        // a slice of the mod job
+#if defined(XYF_CONTENT_SWITCH)
+        if (uninstall_turn()) home_reboot(reboot_os);
+#endif
         boot_sweep_turn();                                 // #3: leftover tmp/job-* folders, a step per pass
         stream_turn();                                     // #4: a streamed write left without data
         read_stream_turn();                                // a read stream left without requests
@@ -248,7 +254,7 @@ static U32 home_receive_chunk() {
                 if (!r.hello_at_ms) r.hello_at_ms = now();
             }
 #if defined(XYF_TFW_CHECK) && defined(XYF_USB_FILE_WRITE)
-            if (!pack_import_active)
+            if (!pack_import_active && !uninstall_active())
 #endif
                 if (!s2_tried) stage2_load(); // once per boot, before the reply
             hello(seq);
@@ -267,6 +273,9 @@ static U32 home_receive_chunk() {
         else if (type == t_crash) crash_command(seq, payload, length); // a fault on purpose (test build only)
 #endif
 #if defined(XYF_USB_FILE_WRITE)
+        else if (uninstall_active() && type != P::t_job_status && type != P::t_status && type != P::t_screen)
+            status_only(type, seq, P::s_busy);
+        else if (type == P::t_uninstall_start) uninstall_command(seq, payload, length);
 #if defined(XYF_TFW_CHECK)
         else if (type == P::t_packs_manage) packs_manage(seq, payload, length);
         else if (pack_import_active && type != P::t_status && type != P::t_screen) status_only(type, seq, P::s_busy);

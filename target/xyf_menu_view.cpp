@@ -37,13 +37,13 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
     case Screen::settings: {                             // the compact title bar
         uint32_t count = settings::rows;
 #if defined(XYF_SETTING_OPTIONS)
-        static ui::ListRow rows[settings::rows + 1] XYF_DATA = {
+        static ui::ListRow rows[settings::rows + 2] XYF_DATA = {
             // xyf_settings.hpp Row, labels (+ row_packs)
-            {"Mod memory", 0, false},   {"Menu at power-on", 0, false},
-            {"USB mode", 0, false},     {"Ask before USB control", 0, false},
-            {"Screen saver", 0, false}, {"About", 0, false},
-            {"Content packs", 0, false}};
-        if (s.pack_names) ++count;
+            {"Mod memory", 0, false},    {"Menu at power-on", 0, false},
+            {"USB mode", 0, false},      {"Ask before USB control", 0, false},
+            {"Screen saver", 0, false},  {"About", 0, false},
+            {"Content packs", 0, false}, {"Uninstall XY Forever", 0, false}};
+        if (s.pack_names) count += 2;
         rows[settings::row_memory].detail = settings::memory_text(s.memory, false);   // pending: marked
         rows[settings::row_power_on].detail = s.power_on_text;     // #21: 0 (blank) without settings.txt
         rows[settings::row_usb].detail = s.usb_text;               // (About: none; its page has the version)
@@ -67,6 +67,23 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         ui::draw_list(fb, list);
         return;
     }
+    case Screen::uninstall:
+#if defined(XYF_SETTING_OPTIONS)
+    {
+        ui::Confirm dialog;
+        dialog.heading = "Uninstall XY Forever?";
+        dialog.lines[0] = "Restore OS 1.2.1 and remove XY Forever.";
+        dialog.lines[1] = "Your projects and sound packs stay.";
+        dialog.lines[2] = dialog.lines[3] = "";
+        dialog.count = 2;
+        dialog.cancel = "Cancel";
+        dialog.accept = "Uninstall";
+        dialog.accept_selected = s.confirm_accept;
+        dialog.chrome = chrome;
+        ui::draw_confirm(fb, dialog);
+    }
+#endif
+        return;
     case Screen::packs: {
 #if defined(XYF_SETTING_OPTIONS)
         if (s.pack_confirm && s.pack_selected < s.pack_count) {

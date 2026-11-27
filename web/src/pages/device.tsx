@@ -17,7 +17,7 @@ import { channelOf, pinned, releaseName, validPin } from '../install/release.ts'
 import type { Channel, ReleasePin } from '../install/release.ts';
 import { CONTENT_STATE, CONTENT_STATE_OLD, configText, contentText, modeText } from '../model.ts';
 import { navigatePath } from '../routing.ts';
-import { UNINSTALL_PROTOCOL, uninstallAvailable, uninstallXyf } from '../uninstall.ts';
+import { UNINSTALL_PROTOCOL, confirmStockBoot, uninstallAvailable, uninstallXyf } from '../uninstall.ts';
 import { updateAvailable, updateXyf } from '../update.ts';
 
 async function loadDevice() {
@@ -200,13 +200,25 @@ function UninstallCard({ info }: { info: DeviceInfo }) {
     )
       return;
     useConnection.setState({ uninstalling: true });
+    let stockRestored: boolean;
     try {
-      await uninstallXyf(device(), setProgress);
+      const client = device();
+      const { serial, completed } = await uninstallXyf(client, setProgress);
+      stockRestored = await confirmStockBoot(serial, () =>
+        confirmAction(
+          'Has your OP-XY returned to stock OS 1.2.1?',
+          completed
+            ? 'The device finished restoring its firmware. Confirm when its usual instrument screen appears.'
+            : 'The browser lost contact during uninstall. Follow the OP-XY’s progress and confirm once it finishes, restarts, and shows its usual instrument screen.',
+          'Stock OS is running',
+        ),
+      );
+      await client.close();
     } finally {
       useConnection.setState({ uninstalling: false });
       setProgress('');
     }
-    useConnection.setState({ client: null, installed: false, stockRestored: true });
+    useConnection.setState({ client: null, installed: false, stockRestored });
     navigatePath('/install', { replace: true });
   });
   return (
@@ -219,7 +231,9 @@ function UninstallCard({ info }: { info: DeviceInfo }) {
               Uninstall XY Forever
             </Button>
           </div>
-          <p role="status">{progress}</p>
+          <p role="status" data-testid="uninstall-progress">
+            {progress}
+          </p>
         </>
       ) : (
         <p>

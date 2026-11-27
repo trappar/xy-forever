@@ -148,6 +148,7 @@ void job_pump() {
     // job's stage: a stale commit step closed A's window with op 9 in the middle of an import).
     if (menu_pack_active || package_active || blob_collecting || job_state != job_busy) return;
 #if defined(XYF_CONTENT_SWITCH)
+    if (job_kind == uninstall_kind) return; // uninstall_turn owns the outer job
     if (job_kind == 2) return config_pump();                             // the config job
     if (job_kind == 3) return adopt_pump();                              // #178: the stock entry's adoption
     if (job_kind) return content_pump();

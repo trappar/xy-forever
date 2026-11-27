@@ -377,6 +377,12 @@ volatile U32 closing __attribute__((section(".data"))) = 0;
 // #21: the next close ends a settings.txt save: no catalog fetch (the library is unchanged and the menu keeps its
 // row). Taken by that close's settle_end.
 U32 settle_quiet __attribute__((section(".data"))) = 0;
+#if defined(XYF_CONTENT_SWITCH)
+// Every close from the confirmed job (including its content switch and tidy) must acknowledge
+// success. No close needed leaves this clear; stale close results from earlier work do not count.
+bool uninstall_active();
+bool uninstall_close_failed __attribute__((section(".data"))) = false;
+#endif
 void settle_end(U32 v, bool catalog);
 void settle_writes(bool catalog = true) {
     if (!writes_due) return;
@@ -413,6 +419,9 @@ void settle_turn() {
     settle_end(u.outcome ? ~0u : U32(u.value), !u.outcome); // past its bound: no catalog request
 }
 void settle_end(U32 v, bool catalog) {
+#if defined(XYF_CONTENT_SWITCH)
+    if (uninstall_active() && v != 1 && v != 3) uninstall_close_failed = true;
+#endif
     storage_server::Result& s = storage_server::result;
     mounted = v == ~0u ? file_client::mounted_stale : 0;
     s.b_window = v;

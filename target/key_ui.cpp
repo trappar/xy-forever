@@ -205,6 +205,9 @@ void on_key(uint32_t key, uint32_t pressed) {
 
 // A key to the page on screen: the Mods page or the menu (on_key, and the repeat of a held - / +).
 void dispatch(uint32_t key, uint32_t pressed) {
+#if defined(XYF_SETTINGS)
+    if (xy_forever::usb_service::uninstall_key(key, pressed != 0)) return;
+#endif
 #if defined(XYF_MODS_PAGE)
     if (xy_forever::mods_io::converging()) {         // #197: the progress screen (STOP cancels a build)
         if (xy_forever::mods_io::progress_key(key, pressed != 0) != xyf::mods::effect_none) dirty = 1;
@@ -511,6 +514,11 @@ extern "C" void xy_forever_key_ui() {
 #if defined(XYF_SETTINGS)
                     // #21: PLAY on a setting opens its option list; the list's PLAY picks: #191, in effect at once and
                     // saved on its own at a quiet moment (Mod memory as the Mods page, built at the next boot).
+                    if (action == uint32_t(Action::uninstall)) {
+                        app.settings_note = xy_forever::usb_service::menu_uninstall();
+                        dirty = 1;
+                        continue;
+                    }
                     if (action == uint32_t(Action::change_setting)) {
                         using namespace xyf::settings;
                         if (app.entry != row_memory)

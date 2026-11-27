@@ -19,7 +19,7 @@ import { control, findSimulator, startAll, until as simUntil } from 'xy-forever-
 import type { SimInfo } from 'xy-forever-client/test/simulators.ts';
 import { Client, tcpOpener } from 'xy-forever-client/node';
 import { verifiedBuild } from './needs.ts';
-import { protocol as wire } from 'xy-forever-client';
+import { isXyfError, protocol as wire } from 'xy-forever-client';
 
 const IMAGE = Buffer.from(Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 + 7) & 0xff));
 const OK_121 = 'mode:bootloader;product:OP-XY;serial:X1;bl_version:1000.0.20+0;os_version:1.2.1+0';
@@ -239,6 +239,15 @@ async function jobToEnd(
 async function simulatedTrack5(sim: SimInfo, bytes: Uint8Array): Promise<void> {
   const c = await Client.connect(tcpOpener(sim.address), { timeoutMs: 20_000 });
   try {
+    await until('the simulated writer to be ready', async () => {
+      try {
+        await c.call('storage.space', { version: 1 });
+        return true;
+      } catch (error) {
+        if (isXyfError(error, 'busy')) return false;
+        throw error;
+      }
+    });
     const { sha256 } = await c.stage(bytes);
     expect((await c.bootInstall(sha256)).written).toBe(bytes.length);
   } finally {
@@ -247,19 +256,26 @@ async function simulatedTrack5(sim: SimInfo, bytes: Uint8Array): Promise<void> {
   expectActive(sim, bytes);
 }
 
-/** An installed XY Forever with a recorded mod and modded content, an owner's files, the app switched to Manage by
- * itself; the page's link to the device checked on the relay as it passes (interrupted: the first boot write's select
- * fails). The stock os.ldr's 2.3 MB moves several times in an uninstall (read, staged, the root's restore and
- * read-backs): each uninstall test does one, the tests run in parallel. */
+/** A device with modded content and an owner's files. Inspect the web app's requests and the resulting media. */
 async function installedWithMods(build: string, interrupted: boolean) {
-  // A hang bound, not a speed limit (the CPU budget holds that: e2e/budgets.ts): the real stock OS 1.2.1, whose
-  // digest the page and the device check, moves both ways in 1 KB requests (the protocol's limits), about 5 s alone
-  // and past the 15 s default on a loaded machine.
   test.setTimeout(60_000);
   const candidate = readFileSync(build);
   const stock = readFileSync(found.fixtures['stock_os_ldr']!);
   image = digestOf(candidate).slice(0, 8);
-  const sim = await powerOn('stock', false);
+  // The stock manifest that belongs to this simulator fixture. It accepts only the original catalog.
+  const path = 'op1_factory.json';
+  const catalogHash = digestOf(Buffer.from('{"xyf_sim": "stand-in op1_factory.json"}\n'));
+  const listHash = digestOf(Buffer.from(`${catalogHash}  ${path}\n`));
+  const previous = process.env['XYF_SIM_OFFICIAL_CONTENT'];
+  process.env['XYF_SIM_OFFICIAL_CONTENT'] =
+    `${listHash} ${catalogHash} 0,0,0 ${digestOf(Buffer.from(path)).slice(0, 8)}`;
+  let sim: SimInfo;
+  try {
+    sim = await powerOn('stock', false);
+  } finally {
+    if (previous === undefined) delete process.env['XYF_SIM_OFFICIAL_CONTENT'];
+    else process.env['XYF_SIM_OFFICIAL_CONTENT'] = previous;
+  }
   await until('the first adoption', async () => existsSync(join(sim.root, 'xy-forever/state-a.txt')));
   await simulatedTrack5(sim, candidate);
   const file = (rel: string): string => join(sim.root, rel);
@@ -287,53 +303,47 @@ async function installedWithMods(build: string, interrupted: boolean) {
   await control(sim.control, 'power play');
   await until('the menu after preparing content', () => listening(sim));
 
-  let bootWrites = 0,
-    stockChecked = false,
+  let starts = 0,
     serialVisible = true;
-  let reboot: number | undefined;
-  const commands: string[] = [];
   const relay = running!.relay;
-  // The page's link to the device, seen on the relay: each request and reply checked as it passes.
   relay.tap = () => {
     const requests = new wire.FrameParser(),
       replies = new wire.FrameParser();
     return {
-      async up(message, toPage, device) {
+      async up(message, _toPage, device) {
         for (const frame of requests.feed(message)) {
-          if (frame.type === wire.TYPE['boot.uninstall']) {
-            bootWrites++;
-            expect(readFileSync(file(CATALOG)).equals(catalog)).toBe(true);
-            expect(existsSync(file(MOD_FILE))).toBe(false);
-            if (bootWrites === 1 && interrupted) await control(sim.control, 'set fail_select 1');
+          if (frame.type === wire.TYPE['boot.uninstall_start']) {
+            starts++;
+            expect(wire.decodeBootUninstallStartRequest(frame.payload).confirm).toBe(1);
+            if (interrupted) await control(sim.control, 'set fail_select 1');
           }
-          if (frame.type === wire.TYPE['file.list']) commands.push(wire.decodeFileListRequest(frame.payload).path);
+          if (starts && serialVisible) {
+            expect([
+              wire.TYPE['boot.uninstall'],
+              wire.TYPE['device.reboot'],
+              wire.TYPE['stage.begin'],
+              wire.TYPE['file.write_begin'],
+              wire.TYPE['file.delete'],
+              wire.TYPE['file.rmdir'],
+            ]).not.toContain(frame.type);
+          }
           if (frame.type === wire.TYPE['job.status']) await jobToEnd(sim, frame, device);
-          if (frame.type === wire.TYPE['device.reboot']) {
-            reboot = wire.decodeDeviceRebootRequest(frame.payload).target;
-            expect(stockChecked).toBe(true);
-            expect(existsSync(file('xy-forever'))).toBe(false);
-            expect(readFileSync(file('os.ldr')).equals(stock)).toBe(true);
-            // The simulator executes compiled XY Forever regardless of the installed image. Verify the request, then
-            // simulate disappearance of its serial service when real stock starts. Keep the same media for Track 5.
-            serialVisible = false;
-            const reply = wire.encodeDeviceRebootReply({ ok: true, status: 0, fields: {} });
-            toPage.send(wire.encodeFrame(frame.type | wire.REPLY, frame.seq, reply));
-            toPage.close();
-            return false;
-          }
         }
         return true;
       },
       down(message) {
         for (const frame of replies.feed(message)) {
-          if (
-            frame.type === (wire.TYPE['boot.uninstall'] | wire.REPLY) &&
-            wire.decodeBootUninstallReply(frame.payload).ok
-          ) {
+          if (!starts || frame.type !== (wire.TYPE['job.status'] | wire.REPLY)) continue;
+          const reply = wire.decodeJobStatusReply(frame.payload);
+          if (reply.ok && reply.fields.phase === 8) {
             expectActive(sim, stock);
-            expect(readFileSync(file('os.ldr')).equals(candidate)).toBe(true);
-            expect(existsSync(file('xy-forever/firmware'))).toBe(true);
-            stockChecked = true;
+            expect(existsSync(file('xy-forever'))).toBe(false);
+            expect(readFileSync(file('os.ldr')).equals(stock)).toBe(true);
+            expect(readFileSync(file(CATALOG)).equals(catalog)).toBe(true);
+            expect(existsSync(file(MOD_FILE))).toBe(false);
+            // A real stock reboot removes the XY Forever serial port. The simulator always runs the
+            // compiled candidate, so hide the granted port until the simulated reinstall.
+            serialVisible = false;
           }
         }
       },
@@ -359,15 +369,16 @@ async function installedWithMods(build: string, interrupted: boolean) {
     candidate,
     stock,
     catalog,
-    commands,
-    bootWrites: () => bootWrites,
-    reboot: () => reboot,
-    showSerial: () => (serialVisible = true),
+    starts: () => starts,
+    showSerial: () => {
+      starts = 0;
+      serialVisible = true;
+    },
   };
 }
 
 test('uninstalls to a verified stock partition, then installs again from the same browser', async () => {
-  const { sim, page, relay, file, candidate, stock, commands, reboot, showSerial } = await installedWithMods(
+  const { sim, page, relay, file, candidate, stock, starts, showSerial } = await installedWithMods(
     verifiedBuild(found),
     false,
   );
@@ -375,16 +386,17 @@ test('uninstalls to a verified stock partition, then installs again from the sam
     await nav(page, 'Device').click();
     await press(page, 'Uninstall XY Forever');
     await press(page, 'Uninstall');
-    // The stock os.ldr's 2.3 MB upload (4,600 requests), the boot partition write and the reboot: Install, or the error.
+    // The fake MTP endpoint has no stock-OS grant. Wait for the device job before confirming the screen.
     const failure = page.locator('[data-testid=notice][data-type=error]');
     await Promise.race([
-      page.waitForURL((url) => url.pathname === '/install/boot/'),
+      press(page, 'Stock OS is running'),
       failure.waitFor().then(async () => {
         throw new Error(`uninstall failed: ${await failure.textContent()}`);
       }),
     ]);
-    expect(reboot()).toBe(1);
-    expect(await page.getByTestId('stock-restored').textContent()).toContain('Stock OS 1.2.1 was restored');
+    await page.waitForURL((url) => url.pathname === '/install/boot/');
+    expect(starts()).toBe(1);
+    expect(await page.getByTestId('stock-restored').textContent()).toContain('running stock OS 1.2.1');
     expect(readdirSync(sim.root).sort()).toEqual([
       'bootloader.dev',
       'content',
@@ -396,7 +408,6 @@ test('uninstalls to a verified stock partition, then installs again from the sam
     expect(readFileSync(file('bootloader.dev'), 'utf8')).toBe('recovery marker');
     expect(readFileSync(file('user/project.xy'), 'utf8')).toBe('owner project');
     expect(readFileSync(file(UPGRADE)).equals(stock)).toBe(true);
-    expect(commands.some((path) => path.endsWith('/user-alias'))).toBe(false);
     expect((await status(sim))['rw_open']).toBe(0);
 
     expect(await stage(page)).toBe('boot'); // the install starts over
@@ -405,6 +416,9 @@ test('uninstalls to a verified stock partition, then installs again from the sam
       await page.evaluate(() => (window as unknown as { fakes: { usb: { reads: string[] } } }).fakes.usb.reads),
     ).toEqual(['os.ldr']);
     writeFileSync(file('os.ldr'), candidate); // the test's fake dev-menu MTP copy
+    await control(sim.control, 'power play');
+    // The simulator always starts XY Forever, so its first-start job runs before the writer harness.
+    await until('adoption before the recovery-menu writer harness', () => existsSync(file('xy-forever/state-a.txt')));
     await simulatedTrack5(sim, candidate);
     await control(sim.control, 'power play');
     showSerial();
@@ -420,22 +434,20 @@ test('uninstalls to a verified stock partition, then installs again from the sam
 });
 
 test("an uninstall cancelled, then stopped at the boot write, keeps XY Forever, its mods and the owner's files", async () => {
-  const { sim, page, file, candidate, bootWrites } = await installedWithMods(verifiedBuild(found), true);
+  const { sim, page, file, candidate, starts } = await installedWithMods(verifiedBuild(found), true);
   try {
     await nav(page, 'Device').click();
     await press(page, 'Uninstall XY Forever');
     await press(page, 'Cancel');
-    expect(bootWrites()).toBe(0);
+    expect(starts()).toBe(0);
     expect(existsSync(file(MOD_FILE))).toBe(true);
 
     await press(page, 'Uninstall XY Forever');
     await press(page, 'Uninstall');
-    // After the 2.3 MB read and upload: bounded by the test's time-out only, as the first test's wait is.
-    await expect(page.getByTestId('notice')).toHaveText(/boot\.uninstall|read-back/i, { timeout: 0 });
-    expect(bootWrites()).toBe(1);
+    await expect(page.getByTestId('notice')).toHaveText(/stock boot verification failed/i, { timeout: 0 });
+    expect(starts()).toBe(1);
     expectActive(sim, candidate);
     expect(existsSync(file('xy-forever/firmware'))).toBe(true);
-    expect(readFileSync(file('os.ldr')).equals(candidate)).toBe(true);
     expect(readFileSync(file('user/project.xy'), 'utf8')).toBe('owner project');
   } finally {
     await page.close();

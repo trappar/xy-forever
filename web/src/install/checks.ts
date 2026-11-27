@@ -131,7 +131,7 @@ export function spaceVerdict(free: number, need: number): Verdict {
 
 const mib = (bytes: number): string => `${(bytes / 1048576).toFixed(1)} MB`;
 
-export function hex(bytes: Uint8Array): string {
+function hex(bytes: Uint8Array): string {
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 

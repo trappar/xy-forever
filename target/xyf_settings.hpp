@@ -148,7 +148,8 @@ enum Row : uint32_t {
     row_saver,
     row_about,
     rows,
-    row_packs = rows
+    row_packs = rows,
+    row_uninstall
 };
 static const char* const labels[rows] = {
     "Mod memory", "Menu at power-on", "USB mode", "Ask before USB control", "Screen saver", "About"};

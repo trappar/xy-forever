@@ -47,6 +47,7 @@ class PackChanges(Rows, unittest.TestCase):
         self.assertEqual(self.packs('install', 'fixture', '--yes')[0], 0)
         before = (self.root / 'content/op1_factory.json').read_bytes()
         self.settings_page()
+        self.press(MINUS)  # Uninstall, then Content packs
         self.press(MINUS)
         self.press(PLAY)
         self.until(lambda: self.count('pack page 0: 1 entries, more=0'), 'installed pack')

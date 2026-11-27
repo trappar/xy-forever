@@ -1,6 +1,9 @@
 // Part of sim/devices.cpp: the menu's and the Mods page's keys (as key_ui dispatch), included in place.
 // The page on screen gets the key (key_ui dispatch): the Mods page or the menu.
 void dispatch(uint32_t key, uint32_t pressed) {
+#if defined(XYF_SETTINGS)
+    if (xy_forever::usb_service::uninstall_key(key, pressed != 0)) return;
+#endif
 #if defined(XYF_MODS_PAGE)
     using namespace xy_forever;
     if (mods_io::converging()) {                                       // as key_ui: the progress screen has the keys
@@ -40,6 +43,11 @@ void dispatch(uint32_t key, uint32_t pressed) {
         }
 #if defined(XYF_SETTINGS)
         using namespace xyf::settings;
+        if (action == xyf::menu::Action::uninstall) {
+            sim_app.settings_note = usb_service::menu_uninstall();
+            xyf_sim::log("menu: %s", sim_app.settings_note);
+            return;
+        }
         if (action == xyf::menu::Action::change_setting) { // as key_ui (#21: the option list)
             if (sim_app.entry != row_memory) sim_app.settings_note = usb_service::settings_open(sim_app, sim_app.entry);
             else if (sim_app.memory == memory_standard || sim_app.memory == memory_expanded)

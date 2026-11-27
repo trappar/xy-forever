@@ -83,6 +83,9 @@ void draw_screen(uint16_t* fb) {
                              "PLAY  allow      STOP  don't allow",
                              &chrome};
         draw_message(fb, ask);
+    } else if (const char* message = xy_forever::usb_service::uninstall_message()) {
+        const Message progress = {"Uninstall XY Forever", {message}, 1, "", &chrome};
+        draw_message(fb, progress);
     } else if (saver.on) {                           // #315: the screen saver (the menu's state stays under it)
         draw_saver(fb);
 #endif
