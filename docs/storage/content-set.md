@@ -31,7 +31,7 @@ Open-XY leaves its machines' presets, screens and aux presets in `/yaffs2/conten
 
 - **First start and upgrade.** The light check (`adopt_tidy`) runs after adoption. An older install that lacks
   `xy-forever/cleanup.txt` gets the same check at its next plain or PLAY power-on with official content installed.
-  It lists `content/`, skips `dlc/` and `user/`, and reads only the catalog. A missing official path leaves the
+  It checks the root directory entry for a real `content/` folder before listing it. It skips `dlc/` and `user/`, and reads only the catalog. A missing official path leaves the
   content alone. If the catalog differs, removing the Open-XY entries must produce the official SHA-256. Otherwise
   the job stops before writing and reports error 22, "Failed: op1_factory.json can't be repaired. Copy in OS 1.2.1's own."
 - **Uninstall.** After the switch back to official content, `adopt_uninstall_tidy` checks again even if a completion

@@ -109,6 +109,23 @@ class FirstStartCleanup(AdoptBase):
         self.assertEqual(extra.read_bytes(), b'later')
 
     @pytest.mark.gate
+    def test_upgrade_refuses_a_link_in_place_of_the_content_folder(self):
+        def linked(root):
+            self.old_install(root)
+            user = root / 'user'
+            user.mkdir()
+            (root / 'content').rename(user / 'backup')
+            (root / 'content').symlink_to(user / 'backup', target_is_directory=True)
+            (user / 'backup/my-project').write_bytes(b'keep my project')
+
+        self.start(seed=linked)
+        self.wait(lambda: self.lines('menu: save failed: '), 'refusal of linked content')
+        self.assertEqual(self.lines('menu: save failed: '), ['Failed: content is not a folder.'])
+        self.assertEqual((self.root / 'user/backup/my-project').read_bytes(), b'keep my project')
+        self.assertEqual((self.root / 'user/backup/op1_factory.json').read_bytes(), open_xy())
+        self.assertIsNone(self.note())
+
+    @pytest.mark.gate
     def test_cut_after_the_catalog_rename_retries_cleanup_on_play(self):
         """The migration record comes after the cleanup, so a cut leaves work for the next start."""
         self.start(seed=seeder({}))

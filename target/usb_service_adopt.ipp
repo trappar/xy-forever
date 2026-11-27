@@ -67,6 +67,7 @@ enum AdoptStep : U32 {
     ad_rename,
     cs_entry, // #183: the content set's steps
     cs_state,
+    cs_root,
     cs_list,
     cs_open,
     cs_read,
@@ -644,7 +645,18 @@ void adopt_step(AdoptSlot& a) {
             if (st.kind != xyf::content::official)
                 return tidy ? void(a.step = ad_closing) : adopt_fail(a, xc::e_content, P::s_refused);
         } else if (code != P::s_not_found) return adopt_fail(a, code == P::s_link ? xc::e_link : xc::e_read, code);
-        a.step = tidy && !official_known() ? cs_note_window : cs_list;
+        a.step = cs_root;
+        return;
+    }
+    case cs_root: { // A's opendir follows links. Check the directory entry before walking /content.
+        char name[file_client::max_name + 1];
+        uint32_t kind = 0;
+        const int found = a.io.list_one("/yaffs2", cwork().skip++, name, kind);
+        if (found < 0) return adopt_fail(a, xc::e_list, P::s_storage);
+        if (found && !same_text(name, "content")) return;
+        if (!found || kind != 1) return adopt_fail(a, xc::e_list, P::s_refused);
+        cwork().skip = 0;
+        a.step = a.copy == usb_service::adopt_tidy && !official_known() ? cs_note_window : cs_list;
         return;
     }
     case cs_list: { // one page of one folder

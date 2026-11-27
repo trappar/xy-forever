@@ -302,6 +302,7 @@ uint32_t tidying() {
         sv.stage = sv.why == why_tidy ? sv_boot : sv_check;
         return 1;
     }
+    if (v.error == 8 && v.status == xyf::usbp::s_refused) return fail(prefix(), "content is not a folder.");
     if (v.error == 22) return fail(prefix(), "op1_factory.json can't be repaired. Copy in OS 1.2.1's own.");
     char d[12];
     m::decimal(d, v.error);
